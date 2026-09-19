@@ -204,3 +204,112 @@ with a package no downstream project could consume.
 is why SPEC section 7 M0 makes `test/consumer/` an acceptance criterion rather than a
 nicety: an install can only be verified by installing it and building something else
 against it, from outside the build tree.
+
+## D-CORE-1: SPEC 5.1's timestamp representation cannot meet SPEC 5.1's round-trip guarantee
+
+SPEC 5.1 specifies two things about `timestamp` that cannot both hold:
+
+- the representation is "UTC instant (`sys_time<nanoseconds>`) plus original offset
+  (`minutes`)";
+- `to_string` "round-trips byte-for-byte for canonical input".
+
+An instant plus an offset does not determine the spelling. Three canonical RFC 3339
+texts collapse onto the same pair:
+
+| text | instant | offset |
+|---|---|---|
+| `2018-04-05T17:31:00Z` | same | 0 |
+| `2018-04-05T17:31:00+00:00` | same | 0 |
+| `2018-04-05T17:31:00.000Z` | same | 0 |
+
+`Z` and `+00:00` are both canonical and both mean a zero offset; trailing fractional
+zeros are canonical and carry no information the instant records. Rendering from
+instant-plus-offset alone must therefore pick one spelling and lose the other two,
+so an event that arrives and leaves again would not equal itself.
+
+**Decision:** keep `sys_time<nanoseconds>` and the offset exactly as SPEC requires,
+and add two members that record only the spelling: `form` (whether the zero offset
+was written `Z` or numerically) and `fractional_digits` (0-9). The instant remains
+the single source of truth for *when*; these two carry *how it was written*. This is
+the smaller deviation, because dropping the round-trip guarantee instead would break
+SWR-CORE-0009 and the JSON round-trip property in SWR-SEC-0006.
+
+## D-CORE-2: timestamps outside roughly 1678-2262 are rejected, not wrapped
+
+`sys_time<nanoseconds>` counts nanoseconds in an `int64`, which spans about 584
+years: roughly 1678 to 2262. RFC 3339 admits any four-digit year, so CloudEvents
+timestamps exist that this representation cannot hold.
+
+Measured, before the fix: `9999-12-31T23:59:59.999999999-12:59` parsed successfully
+and rendered as `1816-03-30T05:56:08.066277375-12:59`. Silent wraparound, on a
+decode path reachable by any peer that can send a request.
+
+**Decision:** compute the instant in seconds, range-check it, and return
+`errc::out_of_range` when it will not fit. Parsing runs in seconds precisely so the
+check happens before the widening rather than after it, because afterwards there is
+nothing left to detect.
+
+This is a real limitation of the representation SPEC 5.1 mandates, not of the
+parser. The alternative is a wider instant type, which SPEC does not ask for; a
+loud, typed refusal for years outside the supported range is the honest reading, and
+the range comfortably covers every timestamp a CloudEvent is plausibly carrying.
+
+## D-CORE-3: CTRE rejects an unescaped dash in a character class
+
+`[+-]` and `[-+]` both fail to compile; the dash must be escaped, `[+\-]`. CTRE's
+diagnostic is `problem_at_position<N>` with a character offset into the pattern and
+no description, so the offset has to be counted by hand against the pattern text.
+Recorded because the SDK is required to use CTRE for every pattern, and this will
+come up again.
+
+## D-CORE-4: `uri` and `uri_ref` must be distinct types, not aliases
+
+SPEC 5.1 says `attribute_value = variant<bool, int32_t, string, binary, uri,
+uri_ref, timestamp>` and separately introduces `uri` and `uri_ref` alongside
+`binary = std::vector<std::byte>`, which reads as though all three were aliases.
+
+They cannot be. `std::variant` requires distinct alternatives: with `uri` and
+`uri_ref` both aliasing `std::string`, the variant holds `std::string` three times,
+`std::get<std::string>` is ill-formed ("T must occur exactly once in
+alternatives"), and constructing the variant from a `std::string` is ambiguous.
+The type does not compile at all.
+
+The distinction is also real rather than bookkeeping. String, URI and
+URI-Reference are three different types in the CloudEvents type system with an
+identical wire form, so the declared type is the only thing that tells them apart,
+and the typed-extension layer (SPEC 5.5) has to recover it.
+
+**Decision:** `uri` and `uri_ref` are distinct instantiations of a small
+`tagged_string<Tag>` wrapper. Construction from `std::string` and from a string
+literal stays implicit, since a URI is textual and there is nothing to hide; the
+variant still resolves a `std::string` to the `std::string` alternative, because an
+exact match beats a user-defined conversion. A test asserts that, so the resolution
+is pinned rather than assumed.
+
+## D-CORE-5: `to_string` uses `std::format` where the toolchain has it
+
+Rendering a timestamp by hand was fifteen `push_back` calls computing digits with
+`/` and `%`. `std::format` expresses the same thing as one call with a format
+string that reads like the output.
+
+It cannot be used unconditionally. `std::format` is absent at the SPEC section 8
+floor: GCC 12 ships no `<format>` at all, and `__cpp_lib_format` is undefined
+there. The hand-rolled renderer therefore has to stay.
+
+`CE_HAS_FORMAT` in `detail/config.hpp` selects between them. This puts a second
+`#if` outside that header, which SPEC section 10 permits only for the describe
+backends, so the allowance list is extended with the reason rather than quietly
+grown: the choice is between **tokens**, not values. `std::format` cannot be named
+on a branch where `<format>` was never included, so no `constexpr bool` and no
+`if constexpr` can express it. That is the same reason `result.hpp` already
+carries a gate.
+
+`CE_FORCE_NO_FORMAT` compiles the fallback on a compiler that has `std::format`,
+mirroring `CE_FORCE_RESULT_POLYFILL`. A `no-format` preset and a CI job use it. A
+fallback that nothing compiles is untested code that will be broken by the time
+the floor compiler is the one that needs it, and the floor is exactly where it
+runs.
+
+Both paths are verified against the same suite, including the byte-for-byte
+round-trip cases, so the two renderers are held to identical output rather than
+merely to "looks right".

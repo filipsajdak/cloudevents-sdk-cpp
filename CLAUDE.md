@@ -51,6 +51,11 @@ C++ SDK for the CloudEvents v1.0.2 specification. The full work specification is
 - Aggregates are built with **one designated initializer**, never default-constructed
   and assigned field by field. Required members first with no default member
   initializer, optional members after them with `{}`.
+- **Every time quantity is a strongly typed `std::chrono` duration or time point**,
+  never a bare integer carrying an implied unit. That includes intermediates: place
+  values, range limits and offsets are durations too, so a minutes-for-seconds
+  mix-up is a compile error rather than an instant wrong by a factor of sixty.
+  Convert to `.count()` only at the point of formatting or parsing digits.
 - Formatting by the repository `.clang-format`; run it before committing.
 
 ## Toolchain facts (measured on this machine, not remembered)

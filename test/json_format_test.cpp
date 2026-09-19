@@ -1016,6 +1016,47 @@ const boost::ut::suite<"decode-data-yields-json-text"> decode_data_json_text = [
   "mini_codec"_test = [] { check_decode_data_as_json_text<mini_codec>("mini_codec"); };
 };
 
+template <class C>
+void check_extension_name_grammar(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::json_format<C>;
+
+  for (const auto document : {
+           // The underscore is the shape a round-trip fuzzer reached first.
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_bae6s4":"AAEC"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","Upper":"x"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","has-dash":"x"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","has space":"x"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","":"x"})"sv,
+       }) {
+    auto decoded = format::decode(document);
+    expect(!decoded.has_value()) << label << ": should reject " << document;
+    if (!decoded) {
+      expect(decoded.error().code == ce::errc::invalid_attribute_name) << label << ": " << document;
+    }
+  }
+
+  // An attribute that is present but empty is a second way to reach an event
+  // that would not validate.
+  {
+    auto empty_type = format::decode(
+        R"({"specversion":"1.0","id":"1","source":"/s","type":""})");
+    expect(!empty_type.has_value()) << label << ": empty type";
+  }
+
+  // A legal name is still accepted, so the rejection is about the grammar.
+  auto ok = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","seq9":"x"})");
+  expect(ok.has_value()) << label;
+
+  // The invariant the fuzzer asserts: anything decode returns validates, so a
+  // document that decodes can always be encoded again.
+  if (ok) {
+    expect(ok->validate().has_value()) << label;
+    expect(format::encode(*ok).has_value()) << label;
+  }
+}
+
 // spec: SWR-JSON-0020
 const boost::ut::suite<"decode-data-string-with-non-json-content-type-yields-string">
     decode_string_data = [] {
@@ -1091,6 +1132,14 @@ const boost::ut::suite<"empty-batch-decodes-to-no-events"> empty_batch = [] {
 
   "nlohmann_codec"_test = [] { check_empty_batch<nlohmann_codec>("nlohmann_codec"); };
   "mini_codec"_test = [] { check_empty_batch<mini_codec>("mini_codec"); };
+};
+
+// spec: SWR-JSON-0031
+const boost::ut::suite<"decoded-event-always-validates"> extension_name_grammar = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_extension_name_grammar<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_extension_name_grammar<mini_codec>("mini_codec"); };
 };
 
 }  // namespace

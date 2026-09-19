@@ -12,7 +12,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
-verified_by: [test:test/config_test.cpp::config-module-wrapper-optional]
+verified_by: [test:test/module_test.cpp::module-wrapper-optional]
 owner: filip.sajdak
 version: 1
 ---

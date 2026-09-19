@@ -12,7 +12,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
-verified_by: [test:test/config_test.cpp::config-v1-immutable]
+verified_by: [test:test/build_test.cpp::config-v1-immutable]
 owner: filip.sajdak
 version: 1
 ---

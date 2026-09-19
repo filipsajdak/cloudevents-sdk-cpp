@@ -12,7 +12,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
-verified_by: [test:test/config_test.cpp::config-inline-namespace-v1]
+verified_by: [test:test/build_test.cpp::config-inline-namespace-v1]
 owner: filip.sajdak
 version: 1
 ---

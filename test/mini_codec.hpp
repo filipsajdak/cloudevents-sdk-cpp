@@ -21,7 +21,10 @@
 namespace ce::test {
 
 struct mini_codec {
-  struct node;
+  // std::vector may hold an incomplete type; std::pair may not, and libstdc++ 14
+  // static_asserts on it. A forward-declared struct is what lets an object member
+  // name its own value type.
+  struct entry;
 
   struct value {
     ce::json::kind tag = ce::json::kind::null;
@@ -30,7 +33,12 @@ struct mini_codec {
     double number = 0.0;
     std::string text{};
     std::vector<value> elements{};
-    std::vector<std::pair<std::string, value>> members{};
+    std::vector<entry> members{};
+  };
+
+  struct entry {
+    std::string key;
+    value item;
   };
 
   // --- construction --------------------------------------------------------
@@ -62,7 +70,7 @@ struct mini_codec {
         return;
       }
     }
-    object.members.emplace_back(std::string{key}, std::move(member));
+    object.members.push_back(entry{.key = std::string{key}, .item = std::move(member)});
   }
 
   static void push(value& array, value element) { array.elements.push_back(std::move(element)); }
@@ -274,7 +282,8 @@ inline auto parse_value(reader& input) -> ce::result<mini_codec::value> {
         return member;
       }
       // Duplicate keys are kept rather than merged, so the format layer decides.
-      object.members.emplace_back(std::move(*key), std::move(*member));
+      object.members.push_back(
+          mini_codec::entry{.key = std::move(*key), .item = std::move(*member)});
       input.skip_space();
       if (input.peek() == ',') {
         ++input.pos;

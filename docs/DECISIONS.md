@@ -326,3 +326,37 @@ could not rot. That works, and it cost a preprocessor conditional in a header th
 now has none, a preset, a CI job, and a second body of code held to the same tests
 as the first. Dropping GCC 12 buys all of that back.
 
+
+## D-DESC-4: CE_DESCRIBE defines an ADL hook, not a specialization
+
+An explicit specialization of a `ce::` template must appear at global scope or in
+a namespace enclosing `ce`. A user type in `my::app` could therefore not be
+described beside itself, which is where SPEC 5.2 says the macro goes.
+
+`CE_DESCRIBE` instead defines `ce_describe_fields(describe_tag<T>)`, found by ADL
+because `describe_tag<T>` associates T's own namespace. The macro then works in
+the namespace that declares the type.
+
+One consequence worth knowing: a type in an unnamed namespace associates that
+namespace, not the enclosing one, so the macro has to sit inside it too. The
+parity suite does exactly that.
+
+## D-DESC-5: the parity suite is checked for being a no-op, not assumed not to be
+
+Macro precedence means a parity fixture carrying `CE_DESCRIBE` exercises the macro
+path twice and reports success while the reflection backend goes uncompiled.
+
+Two things rule that out. The reflection fixtures carry no `CE_DESCRIBE` at all,
+and the reflection-only test names appear in the `reflect-cxx26` binary and in no
+other, which is checkable from outside the suite.
+
+Then the suite was broken on purpose: the annotation lookup was pointed at the
+wrong annotation type, so a renamed member would report its identifier instead.
+The build fails, at compile time, on the `static_assert` comparing the two
+backends' names. Compile-time is the stronger outcome, because it cannot be
+skipped by a stale binary.
+
+That last point is worth stating plainly, because the first attempt at this check
+was wrong. It ignored the build exit code and ran ctest anyway, which ran the
+previous binary and reported a pass. A verification step that does not check
+whether the build succeeded proves nothing at all.

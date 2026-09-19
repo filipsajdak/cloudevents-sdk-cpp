@@ -9,7 +9,10 @@
 /// and integers kept strictly apart from doubles.
 
 #include <cstddef>
+#include <cerrno>
+#include <charconv>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -245,10 +248,27 @@ inline auto parse_number(reader& input) -> ce::result<mini_codec::value> {
   if (token.empty() || token == "-") {
     return ce::fail(ce::errc::parse_error, "expected a number");
   }
+  // stoll and stod throw, on a malformed token ("+") and on an out-of-range one
+  // alike, and the SDK builds with exceptions disabled. Requiring the whole
+  // token to be consumed is also what rejects "1.2.3", which the scan above
+  // admits.
   if (fractional) {
-    return mini_codec::make_double(std::stod(token));
+    errno = 0;
+    char* end = nullptr;
+    const double parsed = std::strtod(token.c_str(), &end);
+    if (end != token.c_str() + token.size() || errno == ERANGE) {
+      return ce::fail(ce::errc::parse_error, "not a JSON number", token);
+    }
+    return mini_codec::make_double(parsed);
   }
-  return mini_codec::make_int(static_cast<std::int64_t>(std::stoll(token)));
+  std::int64_t parsed = 0;
+  const char* const first = token.data();
+  const char* const last = first + token.size();
+  const auto [stop, code] = std::from_chars(first, last, parsed);
+  if (code != std::errc{} || stop != last) {
+    return ce::fail(ce::errc::parse_error, "not a JSON integer", token);
+  }
+  return mini_codec::make_int(parsed);
 }
 
 inline auto parse_value(reader& input) -> ce::result<mini_codec::value> {

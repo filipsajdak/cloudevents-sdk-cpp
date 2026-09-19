@@ -360,3 +360,46 @@ That last point is worth stating plainly, because the first attempt at this chec
 was wrong. It ignored the build exit code and ran ctest anyway, which ran the
 previous binary and reported a pass. A verification step that does not check
 whether the build succeeded proves nothing at all.
+
+## D-CI-1: Clang's C++23 job uses libc++ 17, and the format gate carves it out
+
+Clang could not be tested at C++23 at all, and fixing that showed the
+`std::format` gate refusing a library that works.
+
+**libstdc++ cannot pair with clang 16 at C++23.** The job failed inside
+`<ranges>` ("requires clause differs in template redeclaration", "type-id
+cannot have a name"), with no SDK header in the stack, on libstdc++ 14 and on
+the SPEC floor of 13 alike. Their C++23 `<ranges>` uses language features
+clang 16 does not implement, so the pairing is untestable rather than
+untested. clang-16 now proves libstdc++ 13 at C++20, pinned with
+`--gcc-install-dir` because ubuntu-24.04 would otherwise supply 14.
+
+**libc++ implements std::format well before it says so.** Measured by
+printing the macro from `<version>` and compiling a real `std::format` call
+in the `silkeh/clang` images:
+
+| libc++ | `__has_include(<format>)` | `__cpp_lib_format` | `std::format` call |
+|---|---|---|---|
+| 16 | true | undefined | no member named 'format' |
+| 17 | true | undefined | works |
+| 18 | true | undefined | works |
+| 19 | true | 202110 | works |
+
+`-fexperimental-library` changes none of it. cppreference lists libc++ 17 as
+supporting the feature, and that is correct; libc++ withheld the macro until
+19.
+
+Gating on the macro alone would refuse two releases that serve the SDK, so
+`detail/config.hpp` carves out `_LIBCPP_VERSION >= 170000`. The SDK formats
+only integers and strings (`detail/timestamp.hpp`), which is well inside what
+libc++ 17 provides.
+
+`__has_include(<format>)` is not the carve-out, because it is true on libc++
+16, where the header exists and `std::format` is not in it. That would trade
+a named `#error` for "no member named 'format'" - the same false positive
+`__has_include(<meta>)` produces for reflection (D-CONFIG-2).
+
+Verified by building `parse_timestamp` and `to_string` against each library:
+16 stops at the named `#error`; 17 and 18 round-trip
+`2026-09-20T12:34:56Z`. The C++23 job uses libc++ 17 deliberately, because a
+newer one would leave the carve-out unexecuted.

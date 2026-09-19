@@ -9,7 +9,7 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/codec/nlohmann.hpp]
 verified_by: [test:test/json_codec_test.cpp::nlohmann-codec-non-throwing-parse]
 owner: filip.sajdak
 version: 1

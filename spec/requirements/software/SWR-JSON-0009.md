@@ -9,7 +9,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
+satisfied_by: [code:test/mini_codec.hpp]
 verified_by: [test:test/json_codec_test.cpp::mini-codec-satisfies-json-codec-concept]
 owner: filip.sajdak
 version: 1

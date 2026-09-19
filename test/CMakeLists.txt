@@ -14,6 +14,20 @@ ce_add_test(config_test SOURCES config_test.cpp)
 ce_add_test(core_test SOURCES core_test.cpp)
 ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
+ce_add_test(base64_test SOURCES base64_test.cpp)
+
+# These two name nlohmann_codec directly, and with CE_DEFAULT_CODEC=OFF the
+# nlohmann target does not exist. Registering them unconditionally would make the
+# no-default-codec preset fail to configure, which is the very build that proves
+# SWR-JSON-0030. base64_test above has no codec dependency, so it stays.
+if(CE_DEFAULT_CODEC)
+  ce_add_test(json_codec_test
+    SOURCES json_codec_test.cpp no_nlohmann_probe.cpp
+    LIBS ce::codec_nlohmann)
+  ce_add_test(json_format_test
+    SOURCES json_format_test.cpp
+    LIBS ce::codec_nlohmann)
+endif()
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
 # not to ours. That is easy to get wrong later -- someone marks our own include

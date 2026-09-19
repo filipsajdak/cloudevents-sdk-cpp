@@ -9,7 +9,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
+satisfied_by: [code:cmake/CeDependencies.cmake]
 verified_by: [test:test/json_codec_test.cpp::build-without-default-codec-has-no-nlohmann]
 owner: filip.sajdak
 version: 1

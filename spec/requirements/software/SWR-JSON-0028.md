@@ -9,7 +9,7 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/format/base64.hpp]
 verified_by: [test:test/base64_test.cpp::base64-decode-rejects-invalid-input]
 owner: filip.sajdak
 version: 1

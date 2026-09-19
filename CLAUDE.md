@@ -36,6 +36,11 @@ C++ SDK for the CloudEvents v1.0.2 specification. The full work specification is
 6. Never weaken or delete a test to make a build pass. Never add `#ifdef` branches
    outside `detail/config.hpp` and the `describe` backends.
 7. Small, reviewable commits: one work item per commit, conventional-commit messages.
+   **A pull request always includes the tests for the code it adds.** Never open one
+   with the implementation and the suites to follow: an implementation whose
+   requirements have no `verified_by` evidence can merge while every one of them
+   still reads as work not yet done, and the gate cannot tell that from work that
+   has genuinely not started. If the tests are not ready, the PR is not ready.
 8. Spec-first: a new behaviour needs an approved requirement in `spec/requirements/`
    before its implementation, and every test cites its requirement with a
    `// spec: SWR-AREA-NNNN` marker.

@@ -260,7 +260,9 @@ require it, with a note in `docs/DECISIONS.md`.
 **The real constraint is the standard library, not the compiler.** The SDK requires
 `std::format`, so it requires a library that defines `__cpp_lib_format`: libstdc++
 13 or newer, libc++ 17 or newer, or the MSVC STL from 19.29. Measured: GCC 12 has
-no `<format>` at all, and Clang 16 has it with libc++ but not with libstdc++ 12.
+no `<format>` at all; libc++ 16 has the header without `std::format` in it; and
+libc++ 17 and 18 have a working `std::format` without defining
+`__cpp_lib_format`, so `detail/config.hpp` carves them out by version (D-CI-1).
 Compiler versions are therefore a shorthand; `detail/config.hpp` fails the build
 with a named `#error` when the library is too old, so the diagnosis never depends
 on reading this table.

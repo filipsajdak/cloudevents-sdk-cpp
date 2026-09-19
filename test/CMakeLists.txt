@@ -30,6 +30,9 @@ if(CE_DEFAULT_CODEC)
   ce_add_test(http_binding_test
     SOURCES http_binding_test.cpp
     LIBS ce::codec_nlohmann)
+  ce_add_test(extensions_test
+    SOURCES extensions_test.cpp
+    LIBS ce::codec_nlohmann)
 endif()
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and

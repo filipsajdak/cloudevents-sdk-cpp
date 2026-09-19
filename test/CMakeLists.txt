@@ -11,3 +11,4 @@ function(ce_add_test name)
 endfunction()
 
 ce_add_test(config_test SOURCES config_test.cpp)
+ce_add_test(core_test SOURCES core_test.cpp)

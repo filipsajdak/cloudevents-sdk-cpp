@@ -29,6 +29,13 @@ if(CE_DEFAULT_CODEC)
       GIT_REPOSITORY https://github.com/nlohmann/json.git
       GIT_TAG 65ee68451d8eb2b5f3a30b410476ab83deb3289b  # v3.12.0
       GIT_SHALLOW FALSE)
+    # nlohmann's JSON_Install defaults to ${MAIN_PROJECT}, which is OFF when it is
+    # fetched as a subproject. Without this the installed package is not
+    # self-contained: cloudeventsConfig.cmake find_dependency()s nlohmann, nothing
+    # staged it, and a consumer on a machine with no system nlohmann cannot
+    # configure. CTRE already installs itself this way, so this makes the two
+    # dependencies behave alike.
+    set(JSON_Install ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(nlohmann_json)
   endif()
 endif()

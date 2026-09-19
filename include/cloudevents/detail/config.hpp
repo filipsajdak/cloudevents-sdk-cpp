@@ -39,10 +39,16 @@
 #  error "cloudevents: the reflection backend requires expansion statements (template for)"
 #endif
 
+/// libc++ 17 and 18 implement std::format but do not define __cpp_lib_format;
+/// the macro appears only in 19. The version check is the carve-out, not
+/// __has_include(<format>), which is true on libc++ 16 where the header exists
+/// and std::format is not in it.
 #if !defined(__cpp_lib_format) || __cpp_lib_format < 201907L
-#  error "cloudevents requires std::format: libstdc++ 13+, libc++ 17+, or MSVC 19.29+. \
-Compiler version alone is not enough - GCC 12 has no <format>, and Clang 16 has it \
-with libc++ but not with libstdc++ 12."
+#  if !(defined(_LIBCPP_VERSION) && _LIBCPP_VERSION >= 170000)
+#    error "cloudevents requires std::format: libstdc++ 13+, libc++ 17+, or MSVC 19.29+. \
+Compiler version alone is not enough - GCC 12 has no <format>, and libc++ 16 has the \
+header without std::format in it."
+#  endif
 #endif
 
 #include <format>

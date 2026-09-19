@@ -11,7 +11,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/describe.hpp]
 verified_by: [test:test/describe_parity_test.cpp::supported-member-types]
 owner: filip.sajdak
 version: 1

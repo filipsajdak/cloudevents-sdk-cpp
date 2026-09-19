@@ -67,7 +67,18 @@ if(CE_DEFAULT_CODEC)
   add_library(ce_codec_nlohmann INTERFACE)
   add_library(ce::codec_nlohmann ALIAS ce_codec_nlohmann)
   set_target_properties(ce_codec_nlohmann PROPERTIES EXPORT_NAME codec_nlohmann)
-  target_link_libraries(ce_codec_nlohmann INTERFACE ce_format_json nlohmann_json::nlohmann_json)
+  # nlohmann is linked for the BUILD only. install(EXPORT) refuses a target that
+  # links something outside the export set, and FetchContent makes nlohmann a real
+  # target in our build tree rather than an imported one. Consumers get the link
+  # back from cloudeventsConfig.cmake, which find_dependency()s nlohmann and then
+  # re-attaches it.
+  #
+  # This never reproduced locally: Homebrew supplies nlohmann, so find_package wins
+  # and produces an IMPORTED target, which install(EXPORT) accepts. Only a machine
+  # without nlohmann installed takes the FetchContent path and sees the error.
+  target_link_libraries(ce_codec_nlohmann INTERFACE
+    ce_format_json
+    $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>)
 endif()
 
 # ---------------------------------------------------------------------------

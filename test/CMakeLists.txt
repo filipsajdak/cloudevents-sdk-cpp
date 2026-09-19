@@ -12,6 +12,7 @@ endfunction()
 
 ce_add_test(config_test SOURCES config_test.cpp)
 ce_add_test(core_test SOURCES core_test.cpp)
+ce_add_test(build_test SOURCES build_test.cpp)
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
 # not to ours. That is easy to get wrong later -- someone marks our own include

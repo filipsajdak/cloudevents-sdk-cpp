@@ -3,9 +3,8 @@
 /// \file
 /// \brief The error model: `errc`, `error`, `result<T>` and `fail`.
 ///
-/// Every fallible operation in the SDK returns `ce::result<T>`; nothing throws.
-/// See ADR-0001 for why, and ADR-0002 for the enforced subset of `result<T>` that
-/// makes the C++20 polyfill removable without touching a call site.
+/// Nothing throws; every fallible operation returns `result<T>`. ADR-0001 has the
+/// reasoning, ADR-0002 the permitted subset.
 
 #include <cstdint>
 #include <string>
@@ -21,11 +20,8 @@
 
 namespace ce::inline v1 {
 
-/// \brief What went wrong, as a closed set.
-///
-/// There is deliberately no `ok` enumerator: an `error` only exists on the failure
-/// path, and SWR-SEC-0003 requires a negative test per enumerator, which a success
-/// value could not have.
+/// \brief What went wrong, as a closed set. There is no `ok`: an `error` exists
+/// only on the failure path.
 enum class errc : std::uint8_t {
   /// A required context attribute is absent or empty (CloudEvents core §3).
   missing_required_attribute = 1,
@@ -43,9 +39,7 @@ enum class errc : std::uint8_t {
   invalid_content_type,
   /// The input is not well-formed for its format.
   parse_error,
-  /// The value is well-formed but has the wrong CloudEvents type. Includes a
-  /// floating-point extension value, which the type system has no room for
-  /// (SPEC §9, D6).
+  /// Wrong CloudEvents type, including a floating-point extension value.
   type_mismatch,
   /// An integer is outside the range the CloudEvents `Integer` type permits.
   out_of_range,
@@ -55,10 +49,8 @@ enum class errc : std::uint8_t {
   invalid_base64,
   /// A byte sequence is not well-formed UTF-8.
   invalid_utf8,
-  /// The message carries no `ce-specversion` and no CloudEvents content type, so
-  /// it is not a CloudEvent at all. Kept distinct from a malformed one, because a
-  /// receiver usually wants to pass these through rather than reject them
-  /// (SWR-HTTP-0014).
+  /// Not a CloudEvent at all, kept distinct from a malformed one: a receiver
+  /// usually passes these through rather than rejecting them.
   not_a_cloudevent,
   /// A described struct has a member whose type the SDK cannot map.
   unsupported_field_type,
@@ -86,12 +78,8 @@ enum class errc : std::uint8_t {
   return "unknown";
 }
 
-/// \brief A failure: what went wrong, where, and in which terms.
-///
-/// An aggregate with the required member first and no default member initializer,
-/// so a designated initializer that forgets `code` fails to compile on GCC.
-/// `where` names the attribute or JSON pointer the failure concerns, so a decode
-/// error is locatable in the offending document rather than merely named.
+/// \brief A failure. `where` names the attribute or JSON pointer it concerns, so
+/// a decode error is locatable in the offending document.
 struct error {
   errc code;
   std::string detail = {};
@@ -100,11 +88,8 @@ struct error {
 
 #if CE_HAS_EXPECTED
 
-/// \brief The result of a fallible operation.
-///
-/// Aliases `std::expected` wherever the standard library provides it. Only the
-/// subset listed in ADR-0002 may be used on this type inside the library; the
-/// polyfill build is what enforces that.
+/// \brief The result of a fallible operation. Only the ADR-0002 subset may be
+/// used on it inside the library.
 template <class T>
 using result = std::expected<T, error>;
 
@@ -120,10 +105,6 @@ using failure = detail::poly::unexpected<error>;
 #endif
 
 /// \brief Build a failure that converts into any `result<T>`.
-///
-/// Returns the unexpected carrier rather than a `result<T>`, so one helper serves
-/// every return type on both backends with no deduction at the call site:
-/// `return ce::fail(errc::parse_error, "trailing bytes");`
 [[nodiscard]] inline auto fail(errc code, std::string detail = {}, std::string where = {})
     -> failure {
   return failure{error{.code = code, .detail = std::move(detail), .where = std::move(where)}};

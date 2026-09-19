@@ -8,20 +8,16 @@
 #include <concepts>
 #include <type_traits>
 
-// Build-level requirements whose subject is the core: the permitted result<T>
-// subset, and the inline namespace that keeps ce::X meaning the same thing after a
-// future v2 exists. They live here rather than in config_test.cpp because
-// config_test.cpp is M0 and compiles against detail/config.hpp alone, where none of
-// these types exist yet.
+// Build-level requirements whose subject is the core, so they cannot live in
+// config_test.cpp, which compiles against detail/config.hpp alone.
 
 namespace {
 
 // ---------------------------------------------------------------------------
 // Detectors for the permitted result<T> subset.
 // ---------------------------------------------------------------------------
-// Templates on purpose: a requires-expression naming a member of a CONCRETE type
-// hard-errors instead of evaluating to false, so a non-template detector could not
-// express "this member is absent" at all.
+// Templates on purpose: a requires-expression over a concrete type hard-errors
+// instead of evaluating to false.
 
 template <class R>
 concept has_has_value = requires(const R& r) {

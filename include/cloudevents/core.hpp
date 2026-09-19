@@ -3,9 +3,7 @@
 /// \file
 /// \brief The CloudEvents v1.0.2 event model, its attribute types and validation.
 ///
-/// Leniency principle, from SPEC §5.1: strict on produce, tolerant on consume.
-/// `validate()` is the gate a producer runs before sending; a decoder accepts
-/// anything it can represent and reports only what it genuinely cannot.
+/// Strict on produce, tolerant on consume.
 
 #include <cstdint>
 #include <map>
@@ -23,30 +21,23 @@
 
 namespace ce::inline v1 {
 
-/// \brief Raw payload bytes. `std::byte` rather than `char` so it never reads as text.
+/// \brief Raw payload bytes.
 using binary = std::vector<std::byte>;
 
 namespace detail {
 
 /// \brief A string that carries which CloudEvents attribute type it is.
 ///
-/// `uri` and `uri_ref` cannot be plain `std::string` aliases. SPEC §5.1 lists
-/// `string`, `uri` and `uri_ref` as separate alternatives of `attribute_value`,
-/// and `std::variant` requires its alternatives to be distinct: three aliases of
-/// the same type make `std::get<std::string>` ill-formed and the variant
-/// unusable. They are also genuinely different types in the CloudEvents type
-/// system -- a decoder has to know whether it is looking at a String, a URI or a
-/// URI-Reference, because the wire form is identical and only the declared type
-/// tells them apart.
+/// String, URI and URI-Reference share a wire form, so only the declared type
+/// tells them apart. They must also be distinct types for `attribute_value` to
+/// be a well-formed variant.
 template <class Tag>
 class tagged_string {
  public:
   tagged_string() = default;
 
-  // Implicit on purpose: a URI is textual, there is no narrowing to hide, and
-  // requiring a cast at every call site would buy nothing. The variant still
-  // resolves `std::string` to the `std::string` alternative, because an exact
-  // match beats a user-defined conversion.
+  // Implicit on purpose: an exact `std::string` still selects the `std::string`
+  // alternative, because an exact match beats a user-defined conversion.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   tagged_string(std::string text) : text_{std::move(text)} {}
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
@@ -74,19 +65,13 @@ using uri = detail::tagged_string<detail::uri_tag>;
 /// \brief A URI reference, absolute or relative (CloudEvents `URI-Reference`).
 using uri_ref = detail::tagged_string<detail::uri_ref_tag>;
 
-/// \brief The CloudEvents attribute type system, in the order SPEC §5.1 lists it.
-///
-/// There is no floating-point alternative: the CloudEvents type system has none,
-/// and SPEC §9 decision D6 makes a float-valued extension a `type_mismatch` on
-/// decode rather than something to round to an integer.
+/// \brief The CloudEvents attribute type system. There is no floating-point
+/// alternative; the CloudEvents type system has none.
 using attribute_value =
     std::variant<bool, std::int32_t, std::string, binary, uri, uri_ref, timestamp>;
 
-/// \brief Already-serialized JSON, carried opaquely.
-///
-/// This is what keeps `core` free of any codec: the core stores the bytes and
-/// never parses or validates them. The format layer is the only thing that turns
-/// this into a JSON value (ADR-0004).
+/// \brief Already-serialized JSON, carried opaquely. Core never parses it; the
+/// format layer does (ADR-0004).
 struct json_text {
   std::string raw;
 
@@ -111,8 +96,7 @@ inline constexpr std::string_view reserved_names[] = {
     "dataschema", "subject", "time",     "data",    "data_base64",
 };
 
-/// \brief Lowercase an ASCII character. Media types are case-insensitive, and
-/// `std::tolower` is locale-dependent, which this must not be.
+/// \brief Lowercase an ASCII character, without `std::tolower`'s locale.
 [[nodiscard]] constexpr auto ascii_lower(char character) noexcept -> char {
   return (character >= 'A' && character <= 'Z')
              ? static_cast<char>(character - 'A' + 'a')
@@ -141,11 +125,8 @@ inline constexpr std::string_view reserved_names[] = {
 
 }  // namespace detail
 
-/// \brief True when `name` is a well-formed extension attribute name.
-///
-/// The CloudEvents core spec restricts extension names to `[a-z0-9]+`. Length is
-/// deliberately not checked here: the spec makes the 20-character limit a SHOULD,
-/// so it surfaces through `lint()` as a warning instead (SWR-CORE-0021).
+/// \brief True when `name` matches `[a-z0-9]+`. Length is a SHOULD, so it
+/// surfaces through `lint()` rather than here.
 [[nodiscard]] constexpr auto valid_attribute_name(std::string_view name) noexcept -> bool {
   return ctre::match<detail::attribute_name_pattern>(name);
 }
@@ -161,12 +142,8 @@ inline constexpr std::string_view reserved_names[] = {
   return false;
 }
 
-/// \brief True when a media type denotes JSON.
-///
-/// Matches `*/json` and `*/*+json`, case-insensitively, with parameters allowed:
-/// `application/json`, `APPLICATION/JSON; charset=utf-8` and
-/// `application/cloudevents+json` all qualify. Used to decide whether `data`
-/// decodes as JSON or as a string (SWR-JSON-0020).
+/// \brief True when a media type denotes JSON: `*/json` or `*/*+json`,
+/// case-insensitively, parameters allowed.
 [[nodiscard]] constexpr auto is_json_content_type(std::string_view content_type) noexcept -> bool {
   const auto match = ctre::match<detail::content_type_pattern>(content_type);
   if (!match) {
@@ -184,12 +161,8 @@ struct lint_warning {
   friend auto operator==(const lint_warning&, const lint_warning&) -> bool = default;
 };
 
-/// \brief A CloudEvent.
-///
-/// A public aggregate, per SPEC §9 decision D1: `validate()` is the gate, not a
-/// constructor. Required attributes come first with no default member
-/// initializer, so a designated initializer that omits `id` fails to compile on
-/// GCC rather than producing an event that is silently invalid.
+/// \brief A CloudEvent. A public aggregate: `validate()` is the gate, not a
+/// constructor.
 struct event {
   std::string id;
   uri_ref source;
@@ -208,10 +181,7 @@ struct event {
 
   friend auto operator==(const event&, const event&) -> bool = default;
 
-  /// \brief Set an extension attribute, rejecting a name the spec forbids.
-  ///
-  /// Strict on produce: an invalid or reserved name is refused here rather than
-  /// discovered by a peer at decode time.
+  /// \brief Set an extension attribute, rejecting an invalid or reserved name.
   auto set_extension(std::string name, attribute_value value) -> result<void> {
     if (!valid_attribute_name(name)) {
       return fail(errc::invalid_attribute_name,
@@ -226,20 +196,13 @@ struct event {
   }
 
   /// \brief Look up an extension attribute, or nullptr when absent.
-  ///
-  /// A pointer rather than an optional, so absence costs nothing and the caller
-  /// can distinguish it from a present-but-empty value.
   [[nodiscard]] auto extension(std::string_view name) const noexcept -> const attribute_value* {
     const auto found = extensions.find(name);
     return found == extensions.end() ? nullptr : &found->second;
   }
 
-  /// \brief Check the event against the MUST-level rules of the core spec.
-  ///
-  /// Reports the first violation. `source` is checked only for non-emptiness:
-  /// SPEC §5.1 makes full RFC 3986 validation explicitly not required, because a
-  /// receiver that rejects a URI its peer considers valid is worse than one that
-  /// passes it along.
+  /// \brief Check the event against the MUST-level rules, reporting the first
+  /// violation. `source` is checked for non-emptiness only.
   [[nodiscard]] auto validate() const -> result<void> {
     if (specversion != "1.0") {
       return fail(errc::unsupported_spec_version,
@@ -255,8 +218,6 @@ struct event {
       return fail(errc::missing_required_attribute, "type must be non-empty", "type");
     }
 
-    // An optional attribute may be absent, but when present the spec requires it
-    // to be non-empty. An empty string here means a producer set it by mistake.
     if (datacontenttype && datacontenttype->empty()) {
       return fail(errc::invalid_attribute_value,
                   "datacontenttype is present but empty", "datacontenttype");
@@ -286,11 +247,8 @@ struct event {
     return {};
   }
 
-  /// \brief SHOULD-level observations that are not validation failures.
-  ///
-  /// Kept separate from `validate()` precisely because the core spec words these
-  /// as SHOULD. Folding them into validation would reject events the spec permits
-  /// (SWR-CORE-0021).
+  /// \brief SHOULD-level observations, kept out of `validate()` so they never
+  /// reject an event the spec permits.
   [[nodiscard]] auto lint() const -> std::vector<lint_warning> {
     std::vector<lint_warning> warnings;
     constexpr std::size_t recommended_name_length = 20;

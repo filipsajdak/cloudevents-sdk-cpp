@@ -1,20 +1,11 @@
 #pragma once
 
 /// \file
-/// \brief A deliberately small stand-in for std::expected at the C++20 floor.
+/// \brief A stand-in for std::expected implementing exactly the subset ADR-0002
+/// permits, so building against it is what enforces that subset.
 ///
-/// This implements exactly the subset of std::expected the SDK is permitted to
-/// use, and nothing else. That is the enforcement mechanism described in ADR-0002:
-/// building the whole library and suite against this type makes any use of a
-/// banned member (value(), value_or, error_or, and_then, or_else, transform,
-/// transform_error, emplace, swap, operator==) a hard compile error. Deleting this
-/// header once the floor reaches C++23 is then provably a no-op, because every
-/// call site compiled against the smaller surface.
-///
-/// Two members are absent on purpose rather than by omission. value() throws
-/// std::bad_expected_access, which SPEC section 9 decision D4 forbids; the monadic
-/// operations would compile here only by growing the surface this type exists to
-/// constrain.
+/// `value()` and the monadic operations are absent on purpose: `value()` throws,
+/// which -fno-exceptions forbids.
 
 #include <memory>
 #include <type_traits>
@@ -39,11 +30,11 @@ class unexpected {
 template <class E>
 unexpected(E) -> unexpected<E>;
 
-/// \brief Holds either a value or an error, with a narrow-contract accessor set.
+/// \brief Holds either a value or an error.
 ///
-/// operator*, operator-> and error() have preconditions rather than checks: they
-/// never throw, which is what keeps the type usable under -fno-exceptions. Calling
-/// them on the wrong alternative is undefined, exactly as it is for std::expected.
+/// `operator*`, `operator->` and `error()` have preconditions rather than checks
+/// and never throw. Calling one on the wrong alternative is undefined, as for
+/// std::expected.
 template <class T, class E>
 class expected {
  public:
@@ -54,12 +45,11 @@ class expected {
     requires std::is_default_constructible_v<T>
       : has_value_{true}, value_{} {}
 
-  // Implicit by design: std::expected converts from its value type, and every
-  // `return some_value;` in a function returning result<T> relies on it.
+  // Implicit by design, as std::expected is.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   constexpr expected(T value) : has_value_{true}, value_{std::move(value)} {}
 
-  // Implicit by design: this is what lets ce::fail() convert into any result<T>.
+  // Implicit by design: ce::fail() converts into any result<T>.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   constexpr expected(unexpected<E> error) : has_value_{false}, error_{std::move(error).error()} {}
 
@@ -143,8 +133,7 @@ class expected {
   };
 };
 
-/// \brief The void specialization: success carries nothing, so there is no
-/// operator* to provide.
+/// \brief Success carries nothing, so there is no operator*.
 template <class E>
 class expected<void, E> {
  public:
@@ -153,7 +142,7 @@ class expected<void, E> {
 
   constexpr expected() noexcept : has_value_{true} {}
 
-  // Implicit by design: this is what lets ce::fail() convert into any result<T>.
+  // Implicit by design: ce::fail() converts into any result<T>.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   constexpr expected(unexpected<E> error) : has_value_{false}, error_{std::move(error).error()} {}
 

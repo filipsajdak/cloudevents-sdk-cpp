@@ -13,9 +13,8 @@
 #include <type_traits>
 #include <vector>
 
-// The configuration header is the single home of every feature gate, so the thing
-// worth asserting is not what the flags happen to be on this machine but that they
-// are coherent with each other and reachable as constants rather than macros.
+// What is worth asserting is not what the flags happen to be here, but that they
+// are coherent and reachable as constants.
 //
 // Two of the suites below read the headers as TEXT rather than compiling against
 // them. A rule of the form "no other header contains an #if" is a statement about
@@ -187,12 +186,9 @@ struct source_line {
 
 /// \brief The headers allowed to carry a feature-test conditional.
 ///
-/// config.hpp is the single gate. The other entries are documented allowances, and
-/// each is here for the same reason: the choice is between TOKENS, which no
-/// constexpr bool can make, because the alternative does not exist to be named on
-/// one of the branches.
-///
-/// result.hpp selects between the std::expected alias and the polyfill alias. SPEC section 10 extends the
+/// config.hpp is the single gate. result.hpp is the one allowance: selecting
+/// between the std::expected alias and the polyfill alias is a choice of tokens,
+/// which no constexpr bool can make. SPEC section 10 extends the
 /// same allowance to the describe backends, whose `^^` splice syntax cannot even be
 /// PARSED where reflection is off; those headers do not exist yet, and the rule is
 /// written here so adding one does not require rewriting the check.
@@ -226,17 +222,12 @@ const boost::ut::suite<"config-ce-has-constants"> config_ce_has_constants = [] {
 const boost::ut::suite<"config-feature-test-macros-only"> config_feature_test_macros_only = [] {
   using namespace boost::ut;
 
-  // The reflection backend is written in terms of `template for` over a static
-  // array, because a splice needs a constant expression. Reflection without
-  // expansion statements would therefore be unbuildable; config.hpp turns that
-  // into an #error, and this records the invariant for a reader.
+  // config.hpp turns this into an #error; the test records the invariant.
   "reflection implies expansion statements"_test = [] {
     expect(!ce::detail::has_reflection || ce::detail::has_expansion_statements);
   };
 
-  // Guarding reflection on __has_include(<meta>) alone would trip here: the
-  // header is present at plain -std=c++2c, where reflection is off and expansion
-  // statements are on. Measured on GCC 16.2.0; see docs/DECISIONS.md.
+  // Guarding reflection on __has_include(<meta>) alone would trip here.
   "expansion statements do not imply reflection"_test = [] {
     expect(ce::detail::has_expansion_statements || !ce::detail::has_reflection);
   };
@@ -394,11 +385,8 @@ const boost::ut::suite<"config-macro-leakage"> config_macro_leakage = [] {
   };
 };
 
-// A preset that asks for reflection must actually get it. Without this, dropping
-// -freflection from the reflect preset would leave every suite green while the
-// C++26 backend silently stopped being compiled at all, which is the failure mode
-// a parity suite is least able to notice. The preset defines CE_EXPECT_REFLECTION;
-// nothing else does.
+// A preset that asks for reflection must get it: without this, dropping
+// -freflection would leave every suite green while the backend stopped compiling.
 #if defined(CE_EXPECT_REFLECTION)
 static_assert(ce::detail::has_reflection,
               "this build was configured for the reflection backend, but reflection "

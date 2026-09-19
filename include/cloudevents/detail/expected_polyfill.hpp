@@ -18,7 +18,7 @@ template <class E>
 class unexpected {
  public:
   constexpr explicit unexpected(E error) noexcept(std::is_nothrow_move_constructible_v<E>)
-      : error_{std::move(error)} {}
+      : error_(std::move(error)) {}
 
   [[nodiscard]] constexpr auto error() const& noexcept -> const E& { return error_; }
   [[nodiscard]] constexpr auto error() && noexcept -> E&& { return std::move(error_); }
@@ -43,17 +43,17 @@ class expected {
 
   constexpr expected()
     requires std::is_default_constructible_v<T>
-      : has_value_{true}, value_{} {}
+      : has_value_(true), value_() {}
 
   // Implicit by design, as std::expected is.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
-  constexpr expected(T value) : has_value_{true}, value_{std::move(value)} {}
+  constexpr expected(T value) : has_value_(true), value_(std::move(value)) {}
 
   // Implicit by design: ce::fail() converts into any result<T>.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
-  constexpr expected(unexpected<E> error) : has_value_{false}, error_{std::move(error).error()} {}
+  constexpr expected(unexpected<E> error) : has_value_(false), error_(std::move(error).error()) {}
 
-  constexpr expected(const expected& other) : has_value_{other.has_value_} {
+  constexpr expected(const expected& other) : has_value_(other.has_value_) {
     if (has_value_) {
       std::construct_at(std::addressof(value_), other.value_);
     } else {
@@ -63,7 +63,7 @@ class expected {
 
   constexpr expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
                                                 std::is_nothrow_move_constructible_v<E>)
-      : has_value_{other.has_value_} {
+      : has_value_(other.has_value_) {
     if (has_value_) {
       std::construct_at(std::addressof(value_), std::move(other.value_));
     } else {
@@ -140,11 +140,11 @@ class expected<void, E> {
   using value_type = void;
   using error_type = E;
 
-  constexpr expected() noexcept : has_value_{true} {}
+  constexpr expected() noexcept : has_value_(true) {}
 
   // Implicit by design: ce::fail() converts into any result<T>.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
-  constexpr expected(unexpected<E> error) : has_value_{false}, error_{std::move(error).error()} {}
+  constexpr expected(unexpected<E> error) : has_value_(false), error_(std::move(error).error()) {}
 
   [[nodiscard]] constexpr auto has_value() const noexcept -> bool { return has_value_; }
   [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_value_; }

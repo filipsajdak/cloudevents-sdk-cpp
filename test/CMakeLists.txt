@@ -33,6 +33,9 @@ if(CE_DEFAULT_CODEC)
   ce_add_test(extensions_test
     SOURCES extensions_test.cpp
     LIBS ce::codec_nlohmann)
+  ce_add_test(typed_payload_test
+    SOURCES typed_payload_test.cpp no_nlohmann_probe.cpp
+    LIBS ce::codec_nlohmann)
 endif()
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and

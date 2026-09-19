@@ -12,13 +12,17 @@
 
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>
+#include <cloudevents/extensions.hpp>
 #include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/describe_json.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
+#include <cloudevents/format/typed_payload.hpp>
 #include <cloudevents/result.hpp>
 
 #include "mini_codec.hpp"
 
+#include <cstdint>
 #include <string>
 #include <variant>
 
@@ -38,6 +42,13 @@ constexpr bool nlohmann_seen_here =
     false;
 #endif
 
+struct parcel {
+  std::string label;
+  std::int32_t weight;
+};
+
+CE_DESCRIBE(parcel, label, weight);
+
 }  // namespace
 
 auto probe() -> report {
@@ -54,6 +65,8 @@ auto probe() -> report {
         .nlohmann_macro_defined = nlohmann_seen_here,
         .format_round_tripped = false,
         .encoded = {},
+        .typed_payload_round_tripped = false,
+        .typed_extension_round_tripped = false,
     };
   }
 
@@ -62,10 +75,28 @@ auto probe() -> report {
                              decoded->type == subject.type &&
                              std::holds_alternative<ce::json_text>(decoded->data);
 
+  // The typed payload accessors, over the same user-supplied codec.
+  ce::event typed{.id = "2", .source = "/spec/test", .type = "com.example.parcel"};
+  const parcel sent{.label = "crate", .weight = 12};
+  const bool stored = ce::set_data<parcel, ce::test::mini_codec>(typed, sent).has_value();
+  auto read = ce::data_as<parcel, ce::test::mini_codec>(typed);
+  const bool payload_round_tripped =
+      stored && read.has_value() && read->label == sent.label && read->weight == sent.weight;
+
+  // The typed extension layer, which is core and needs no codec at all.
+  ce::event tagged{.id = "3", .source = "/spec/test", .type = "com.example.traced"};
+  const bool wrote_extension =
+      tagged.set(ce::ext::tracing{.traceparent = "00-a-b-01", .tracestate = {}}).has_value();
+  auto tracing = tagged.get<ce::ext::tracing>();
+  const bool extension_round_tripped =
+      wrote_extension && tracing.has_value() && tracing->traceparent == "00-a-b-01";
+
   return report{
       .nlohmann_macro_defined = nlohmann_seen_here,
       .format_round_tripped = round_tripped,
       .encoded = std::move(*encoded),
+      .typed_payload_round_tripped = payload_round_tripped,
+      .typed_extension_round_tripped = extension_round_tripped,
   };
 }
 

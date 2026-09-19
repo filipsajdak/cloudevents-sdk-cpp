@@ -286,30 +286,43 @@ variant still resolves a `std::string` to the `std::string` alternative, because
 exact match beats a user-defined conversion. A test asserts that, so the resolution
 is pinned rather than assumed.
 
-## D-CORE-5: `to_string` uses `std::format` where the toolchain has it
+## D-CORE-5: `std::format` is required, and the floor rises to meet it
 
-Rendering a timestamp by hand was fifteen `push_back` calls computing digits with
-`/` and `%`. `std::format` expresses the same thing as one call with a format
-string that reads like the output.
+`to_string` uses `std::format` and keeps no second implementation. Rendering by
+hand was fifteen `push_back` calls computing digits with `/` and `%`; the format
+string now reads like the output it produces.
 
-It cannot be used unconditionally. `std::format` is absent at the SPEC section 8
-floor: GCC 12 ships no `<format>` at all, and `__cpp_lib_format` is undefined
-there. The hand-rolled renderer therefore has to stay.
+This raises the toolchain floor, which SPEC section 8 said may be raised "only if
+CTRE or ut require it". Neither does. The floor moved because the specification's
+owner decided a second renderer was not worth carrying, and SPEC section 8 is
+updated to match rather than left contradicting the code.
 
-`CE_HAS_FORMAT` in `detail/config.hpp` selects between them. This puts a second
-`#if` outside that header, which SPEC section 10 permits only for the describe
-backends, so the allowance list is extended with the reason rather than quietly
-grown: the choice is between **tokens**, not values. `std::format` cannot be named
-on a branch where `<format>` was never included, so no `constexpr bool` and no
-`if constexpr` can express it. That is the same reason `result.hpp` already
-carries a gate.
+**The constraint is the standard library, not the compiler.** Measured:
 
-`CE_FORCE_NO_FORMAT` compiles the fallback on a compiler that has `std::format`,
-mirroring `CE_FORCE_RESULT_POLYFILL`. A `no-format` preset and a CI job use it. A
-fallback that nothing compiles is untested code that will be broken by the time
-the floor compiler is the one that needs it, and the floor is exactly where it
-runs.
+| toolchain | `<format>` | `__cpp_lib_format` | builds the SDK |
+|---|---|---|---|
+| GCC 12 (libstdc++ 12) | absent | undefined | no |
+| GCC 13, 14, 16 | present | defined | yes |
+| Clang 16 + libstdc++ 12 | absent | undefined | no |
+| Clang 16 + libc++ 16 | **present** | **undefined** | **no** |
+| Clang 16 + libstdc++ 14 | present | defined | yes |
+| AppleClang 21 (libc++) | present | defined | yes |
 
-Both paths are verified against the same suite, including the byte-for-byte
-round-trip cases, so the two renderers are held to identical output rather than
-merely to "looks right".
+The libc++ 16 row is why the guard tests `__cpp_lib_format` rather than
+`__has_include(<format>)`. That library ships the header while the feature is
+incomplete, so it advertises nothing, and `__has_include` would wave it through to
+fail later and less clearly. This is the same trap as `__has_include(<meta>)` in the
+reflection guard, and the same answer.
+
+So a compiler version alone never decides it: the same Clang 16 builds the SDK or
+does not, depending on which library it is paired with. `detail/config.hpp`
+therefore fails with a named `#error` naming the three libraries that qualify,
+rather than letting the build collapse into "`<format>` file not found" followed by
+a hundred errors about `std::format`.
+
+The alternative was the one just deleted: keep both renderers, gate them on
+`CE_HAS_FORMAT`, and compile the fallback on a dedicated preset and CI job so it
+could not rot. That works, and it cost a preprocessor conditional in a header that
+now has none, a preset, a CI job, and a second body of code held to the same tests
+as the first. Dropping GCC 12 buys all of that back.
+

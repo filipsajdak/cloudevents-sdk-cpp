@@ -32,13 +32,17 @@ jobs:
           # The toolchain floor from SPEC section 8. These are the versions the
           # SDK claims to support, so they are the ones that must be proven; the
           # newer local compilers prove nothing about the floor.
-          - { name: "gcc-12 c++20",   os: ubuntu-22.04, cxx: g++-12,     std: 20, apt: g++-12 }
-          - { name: "gcc-12 c++23",   os: ubuntu-22.04, cxx: g++-12,     std: 23, apt: g++-12 }
-          # clang-16 is not in the ubuntu-22.04 archive; 24.04 carries it.
+          # GCC 13 is the floor because libstdc++ 13 is the first with <format>.
+          - { name: "gcc-13 c++20",   os: ubuntu-24.04, cxx: g++-13,     std: 20, apt: g++-13 }
+          - { name: "gcc-13 c++23",   os: ubuntu-24.04, cxx: g++-13,     std: 23, apt: g++-13 }
+          # Clang 16 stays in the floor, but only against a library that has
+          # <format>. ubuntu-24.04 pairs it with libstdc++ 14; the same compiler on
+          # 22.04 (libstdc++ 12) would not build the SDK, which is the point of the
+          # #error in detail/config.hpp.
           - { name: "clang-16 c++20", os: ubuntu-24.04, cxx: clang++-16, std: 20, apt: clang-16 }
           - { name: "clang-16 c++23", os: ubuntu-24.04, cxx: clang++-16, std: 23, apt: clang-16 }
-          - { name: "appleclang c++20", os: macos-14,   cxx: clang++,    std: 20, apt: "" }
-          - { name: "appleclang c++23", os: macos-14,   cxx: clang++,    std: 23, apt: "" }
+          - { name: "appleclang c++20", os: macos-15,   cxx: clang++,    std: 20, apt: "" }
+          - { name: "appleclang c++23", os: macos-15,   cxx: clang++,    std: 23, apt: "" }
     steps:
       - uses: actions/checkout@v4
       - name: Install compiler
@@ -92,25 +96,6 @@ jobs:
           cmake -S . -B build -G Ninja
           -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CXX_STANDARD=23
           -DCE_WERROR=ON -DCMAKE_CXX_FLAGS=-DCE_FORCE_RESULT_POLYFILL=1
-      - run: cmake --build build
-      - run: ctest --test-dir build --output-on-failure
-
-  no-format:
-    # std::format is absent at the SPEC section 8 floor: GCC 12 ships no <format>.
-    # The hand-rolled renderer therefore has to exist, and this job is what compiles
-    # it. Without it the fallback is untested code that breaks precisely when the
-    # floor compiler is the one that needs it.
-    name: forced hand-rolled rendering
-    needs: gate
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y g++-14 ninja-build
-      - name: Configure
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CXX_STANDARD=20
-          -DCE_WERROR=ON -DCMAKE_CXX_FLAGS=-DCE_FORCE_NO_FORMAT=1
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
 

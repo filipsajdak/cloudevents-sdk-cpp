@@ -192,16 +192,12 @@ struct source_line {
 /// constexpr bool can make, because the alternative does not exist to be named on
 /// one of the branches.
 ///
-/// result.hpp selects between the std::expected alias and the polyfill alias.
-/// detail/timestamp.hpp selects between a std::format call and a hand-rolled
-/// renderer; std::format cannot be named at all where <format> is absent, and it is
-/// absent at the SPEC section 8 floor. SPEC section 10 extends the
+/// result.hpp selects between the std::expected alias and the polyfill alias. SPEC section 10 extends the
 /// same allowance to the describe backends, whose `^^` splice syntax cannot even be
 /// PARSED where reflection is off; those headers do not exist yet, and the rule is
 /// written here so adding one does not require rewriting the check.
 [[nodiscard]] auto may_carry_feature_gate(std::string_view relative) -> bool {
   return relative == "detail/config.hpp" || relative == "result.hpp" ||
-         relative == "detail/timestamp.hpp" ||
          relative.starts_with("detail/describe") || relative.starts_with("describe");
 }
 

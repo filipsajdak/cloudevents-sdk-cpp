@@ -188,11 +188,7 @@ template <class Capture>
 }
 
 /// \brief Render an RFC 3339 date-time, reproducing canonical input exactly.
-///
-/// Two implementations, chosen by `CE_HAS_FORMAT`. std::format is not available at
-/// the SPEC section 8 floor -- GCC 12 ships no `<format>` -- so the hand-rolled
-/// path has to exist. It is compiled on the `no-format` preset rather than left to
-/// rot, because a fallback nothing builds is wrong by the time anyone needs it.
+
 [[nodiscard]] inline auto to_string(const timestamp& value) -> std::string {
   const auto local = value.utc + value.offset;
   const auto days = std::chrono::floor<std::chrono::days>(local);
@@ -227,7 +223,6 @@ template <class Capture>
   const auto offset_minutes = value.offset.count();
   const auto offset_magnitude = offset_minutes < 0 ? -offset_minutes : offset_minutes;
 
-#if CE_HAS_FORMAT
   if (value.form == offset_form::utc_designator) {
     return std::format("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{}Z", static_cast<int>(ymd.year()),
                        static_cast<unsigned>(ymd.month()), static_cast<unsigned>(ymd.day()),
@@ -238,42 +233,6 @@ template <class Capture>
                      static_cast<unsigned>(ymd.day()), hours.count(), minutes.count(),
                      seconds.count(), fraction, offset_minutes < 0 ? '-' : '+',
                      offset_magnitude / 60, offset_magnitude % 60);
-#else
-  const auto pad2 = [](std::string& out, long long number) {
-    out.push_back(static_cast<char>('0' + (number / 10) % 10));
-    out.push_back(static_cast<char>('0' + number % 10));
-  };
-
-  std::string out;
-  out.reserve(35);
-
-  const int year = static_cast<int>(ymd.year());
-  out.push_back(static_cast<char>('0' + (year / 1000) % 10));
-  out.push_back(static_cast<char>('0' + (year / 100) % 10));
-  out.push_back(static_cast<char>('0' + (year / 10) % 10));
-  out.push_back(static_cast<char>('0' + year % 10));
-  out.push_back('-');
-  pad2(out, static_cast<unsigned>(ymd.month()));
-  out.push_back('-');
-  pad2(out, static_cast<unsigned>(ymd.day()));
-  out.push_back('T');
-  pad2(out, hours.count());
-  out.push_back(':');
-  pad2(out, minutes.count());
-  out.push_back(':');
-  pad2(out, seconds.count());
-  out.append(fraction);
-
-  if (value.form == offset_form::utc_designator) {
-    out.push_back('Z');
-  } else {
-    out.push_back(offset_minutes < 0 ? '-' : '+');
-    pad2(out, offset_magnitude / 60);
-    out.push_back(':');
-    pad2(out, offset_magnitude % 60);
-  }
-  return out;
-#endif
 }
 
 }  // namespace ce::inline v1

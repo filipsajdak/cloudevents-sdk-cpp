@@ -73,22 +73,21 @@
 // ---------------------------------------------------------------------------
 // std::format
 // ---------------------------------------------------------------------------
-// Not available at the floor: GCC 12 ships no <format>, and the SPEC section 8
-// floor names GCC 12. Where it exists, rendering a timestamp is one call instead
-// of fifteen hand-rolled digit pushes, so it is worth the gate.
+// A hard requirement rather than a capability. The SDK renders timestamps with
+// std::format and keeps no second implementation, so a library without it cannot
+// build the SDK at all -- and should say so here, in one line, rather than as a
+// cascade of errors from <format> not existing.
 //
-// CE_FORCE_NO_FORMAT compiles the fallback even where std::format exists, for the
-// same reason CE_FORCE_RESULT_POLYFILL exists: a fallback that nothing compiles is
-// untested code that will be wrong when the floor compiler finally reaches it.
-#if defined(__cpp_lib_format) && __cpp_lib_format >= 201907L && !defined(CE_FORCE_NO_FORMAT)
-#  define CE_HAS_FORMAT 1
-#else
-#  define CE_HAS_FORMAT 0
+// This is a LIBRARY requirement. GCC 12 has no <format>, and Clang 16 has it with
+// libc++ but not with libstdc++ 12, so the compiler version alone does not decide
+// it. See SPEC section 8.
+#if !defined(__cpp_lib_format) || __cpp_lib_format < 201907L
+#  error "cloudevents requires std::format: libstdc++ 13+, libc++ 17+, or MSVC 19.29+. \
+Compiler version alone is not enough - GCC 12 has no <format>, and Clang 16 has it \
+with libc++ but not with libstdc++ 12."
 #endif
 
-#if CE_HAS_FORMAT
-#  include <format>
-#endif
+#include <format>
 
 // ---------------------------------------------------------------------------
 // Exceptions
@@ -116,7 +115,5 @@ inline constexpr bool has_expansion_statements = CE_HAS_EXPANSION_STATEMENTS == 
 /// \brief True when the translation unit is compiled with exceptions enabled.
 inline constexpr bool has_exceptions = CE_HAS_EXCEPTIONS == 1;
 
-/// \brief True when std::format is available for rendering.
-inline constexpr bool has_format = CE_HAS_FORMAT == 1;
 
 }  // namespace ce::inline v1::detail

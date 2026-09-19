@@ -252,10 +252,18 @@ described payload), README, API reference via Doxygen, `cloudevents.cppm` wrappe
 
 ## 8. Toolchain floor
 
-GCC 12, Clang 16, MSVC 19.36 (VS 2022 17.6), AppleClang 15. Reflection job: newest
+GCC 13, Clang 16, MSVC 19.36 (VS 2022 17.6), AppleClang 16. Reflection job: newest
 GCC with reflection enabled, or the Bloomberg clang-p2996 fork in a container;
 verify which is available and record it. The floor may be raised only if CTRE or ut
 require it, with a note in `docs/DECISIONS.md`.
+
+**The real constraint is the standard library, not the compiler.** The SDK requires
+`std::format`, so it requires a library that defines `__cpp_lib_format`: libstdc++
+13 or newer, libc++ 17 or newer, or the MSVC STL from 19.29. Measured: GCC 12 has
+no `<format>` at all, and Clang 16 has it with libc++ but not with libstdc++ 12.
+Compiler versions are therefore a shorthand; `detail/config.hpp` fails the build
+with a named `#error` when the library is too old, so the diagnosis never depends
+on reading this table.
 
 ## 9. Open decisions (owner: Filip)
 

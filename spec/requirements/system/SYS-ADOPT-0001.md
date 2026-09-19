@@ -11,7 +11,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [STK-ADOPT-0001]
-satisfied_by: []
+satisfied_by: [code:CMakeLists.txt]
 verified_by: [test:test/consumer/CMakeLists.txt::consumer-find-package]
 owner: filip.sajdak
 version: 1

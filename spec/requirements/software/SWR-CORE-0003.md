@@ -11,7 +11,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/detail/expected_polyfill.hpp]
 verified_by: [test:test/core_test.cpp::core-result-polyfill]
 owner: filip.sajdak
 version: 1

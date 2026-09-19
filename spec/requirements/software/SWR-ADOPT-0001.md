@@ -11,7 +11,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-ADOPT-0001]
-satisfied_by: []
+satisfied_by: [code:CMakeLists.txt]
 verified_by: [test:test/consumer/CMakeLists.txt::consumer-target-graph]
 owner: filip.sajdak
 version: 1

@@ -12,7 +12,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
-verified_by: [test:test/config_test.cpp::config-polyfill-parity]
+verified_by: [test:test/build_test.cpp::config-polyfill-parity]
 owner: filip.sajdak
 version: 1
 ---

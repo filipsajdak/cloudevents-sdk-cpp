@@ -58,7 +58,8 @@ C++ SDK for the CloudEvents v1.0.2 specification. The full work specification is
 These discharge `docs/SPEC.md` §3 rule 2. Re-verify before trusting them on other hosts.
 
 - **GCC 16.2.0 implements C++26 static reflection (P2996)**, but only behind
-  `-freflection`, and its C++26 dialect flag is `-std=c++2c` (it rejects `-std=c++26`).
+  `-freflection`. It accepts both `-std=c++26` and `-std=c++2c` for compilation;
+  only a preprocessor-only (`-E -dM`) invocation rejects the former.
 - `__cpp_impl_reflection` is `202603L` and is defined **only when `-freflection` is
   passed**. `__cpp_lib_reflection` is `202603L`, from `<meta>`. `<experimental/meta>`
   does not exist.

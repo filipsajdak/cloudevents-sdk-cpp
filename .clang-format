@@ -1,0 +1,28 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+Standard: c++20
+ColumnLimit: 100
+IndentWidth: 2
+AccessModifierOffset: -1
+AllowShortFunctionsOnASingleLine: Inline
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: false
+BinPackParameters: false
+DerivePointerAlignment: false
+PointerAlignment: Left
+SpaceAfterTemplateKeyword: false
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<boost/ut\.hpp>'
+    Priority: 1
+  - Regex: '^<cloudevents/'
+    Priority: 3
+  - Regex: '^<nlohmann/'
+    Priority: 2
+  - Regex: '^<ctre'
+    Priority: 2
+  - Regex: '^<.*>'
+    Priority: 0
+  - Regex: '.*'
+    Priority: 4

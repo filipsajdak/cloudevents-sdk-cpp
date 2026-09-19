@@ -54,8 +54,9 @@ backend's shape depends on `template for`.
   D-CONFIG-1 rather than left as an undocumented divergence.
 
 ### Neutral
-- The C++26 presets select the dialect with an explicit `-std=c++2c` flag rather
-  than `CMAKE_CXX_STANDARD 26`, because GCC 16 rejects the `c++26` spelling.
+- The C++26 preset sets `CMAKE_CXX_STANDARD 26` and adds only `-freflection`.
+  Reflection is gated by a flag rather than by the dialect, so the two are set
+  independently.
 
 ## References
 

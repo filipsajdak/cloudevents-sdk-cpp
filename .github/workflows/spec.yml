@@ -8,6 +8,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Called by ci.yml so the build matrix can depend on this gate's result.
+  workflow_call:
 
 permissions:
   contents: read

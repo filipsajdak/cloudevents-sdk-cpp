@@ -526,6 +526,52 @@ const boost::ut::suite<"build-without-default-codec-has-no-nlohmann"> without_de
   };
 };
 
+// A malformed or out-of-range number must come back as a parse_error rather
+// than an exception: the SDK builds with exceptions disabled, and mini_codec is
+// compiled into those builds.
+const boost::ut::suite<"mini-codec-number-parsing-never-throws"> mini_codec_numbers = [] {
+  using namespace boost::ut;
+
+  "malformed and out-of-range numbers are parse errors"_test = [] {
+    for (const auto document : {
+             R"({"a":+m})"sv,
+             R"({"a":+})"sv,
+             R"({"a":-})"sv,
+             R"({"a":1.2.3})"sv,
+             R"({"a":1e})"sv,
+             R"({"a":99999999999999999999999})"sv,
+             R"({"a":1e999999})"sv,
+         }) {
+      auto parsed = mini_codec::parse(document);
+      expect(!parsed.has_value()) << "should reject " << document;
+      if (!parsed) {
+        expect(parsed.error().code == ce::errc::parse_error) << document;
+      }
+    }
+  };
+
+  "ordinary numbers still parse"_test = [] {
+    auto parsed = mini_codec::parse(R"({"i":-42,"d":1.5})");
+    expect(parsed.has_value());
+    if (parsed) {
+      const auto* i = mini_codec::find(*parsed, "i");
+      const auto* d = mini_codec::find(*parsed, "d");
+      expect(i != nullptr);
+      expect(d != nullptr);
+      if (i != nullptr && d != nullptr) {
+        auto as_int = mini_codec::as_int(*i);
+        auto as_double = mini_codec::as_double(*d);
+        expect(as_int.has_value());
+        expect(as_double.has_value());
+        if (as_int && as_double) {
+          expect(*as_int == std::int64_t{-42});
+          expect(*as_double == 1.5_d);
+        }
+      }
+    }
+  };
+};
+
 }  // namespace
 
 int main() {}

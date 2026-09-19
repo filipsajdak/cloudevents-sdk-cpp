@@ -190,6 +190,15 @@ struct json_format {
       if (!extension_error || reserved_name(name)) {
         return;
       }
+      // An unknown member becomes an extension only if its name is one the spec
+      // allows. Accepting others would let decode return an event that
+      // validate() rejects, so the same document would decode and then fail to
+      // re-encode.
+      if (!valid_attribute_name(name)) {
+        extension_error = fail(errc::invalid_attribute_name,
+                               "extension names must match [a-z0-9]+", std::string{name});
+        return;
+      }
       auto decoded = decode_attribute(member);
       if (!decoded) {
         extension_error = fail(decoded.error().code, decoded.error().detail, std::string{name});
@@ -200,6 +209,12 @@ struct json_format {
     if (!extension_error) {
       return fail(extension_error.error().code, extension_error.error().detail,
                   extension_error.error().where);
+    }
+
+    // The decoder must not hand back an event the encoder would refuse, so the
+    // same document cannot decode and then fail to re-encode.
+    if (auto valid = subject.validate(); !valid) {
+      return fail(valid.error().code, valid.error().detail, valid.error().where);
     }
 
     return subject;

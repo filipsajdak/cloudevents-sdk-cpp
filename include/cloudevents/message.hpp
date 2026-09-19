@@ -1,0 +1,82 @@
+#pragma once
+
+/// \file
+/// \brief A transport-neutral message. No HTTP library type appears in the SDK.
+
+#include <algorithm>
+#include <cstddef>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include <cloudevents/core.hpp>
+
+namespace ce::inline v1 {
+
+/// \brief Headers, in order, with case-insensitive lookup.
+///
+/// Order and duplicates are preserved because the HTTP binding permits repeated
+/// headers, so a multimap that merged them would lose information a receiver may
+/// need.
+class headers {
+ public:
+  using entry = std::pair<std::string, std::string>;
+
+  void add(std::string name, std::string value) {
+    entries_.emplace_back(std::move(name), std::move(value));
+  }
+
+  /// \brief Replace every header of this name, or add one when absent.
+  void set(std::string name, std::string value) {
+    const auto matches = [&name](const entry& candidate) {
+      return detail::iequals(candidate.first, name);
+    };
+    std::erase_if(entries_, matches);
+    entries_.emplace_back(std::move(name), std::move(value));
+  }
+
+  /// \brief The first header of this name, or nullptr.
+  [[nodiscard]] auto find(std::string_view name) const noexcept -> const std::string* {
+    for (const auto& [candidate, value] : entries_) {
+      if (detail::iequals(candidate, name)) {
+        return &value;
+      }
+    }
+    return nullptr;
+  }
+
+  [[nodiscard]] auto contains(std::string_view name) const noexcept -> bool {
+    return find(name) != nullptr;
+  }
+
+  [[nodiscard]] auto begin() const noexcept { return entries_.begin(); }
+  [[nodiscard]] auto end() const noexcept { return entries_.end(); }
+  [[nodiscard]] auto size() const noexcept -> std::size_t { return entries_.size(); }
+  [[nodiscard]] auto empty() const noexcept -> bool { return entries_.empty(); }
+
+  friend auto operator==(const headers&, const headers&) -> bool = default;
+
+ private:
+  std::vector<entry> entries_;
+};
+
+/// \brief What a binding produces and consumes.
+struct message {
+  headers header_fields = {};
+  binary body = {};
+
+  friend auto operator==(const message&, const message&) -> bool = default;
+};
+
+/// \brief How an event is laid out in a message.
+enum class content_mode : std::uint8_t {
+  /// Attributes in headers, the payload as the body.
+  binary_mode,
+  /// The whole event as a JSON document in the body.
+  structured,
+  /// An array of events as a JSON document in the body.
+  batched,
+};
+
+}  // namespace ce::inline v1

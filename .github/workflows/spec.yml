@@ -1,0 +1,46 @@
+name: spec
+
+# The traceability gate. The C++ build jobs depend on this workflow's result, so a
+# requirement that does not lint, does not trace, or whose evidence does not resolve
+# blocks the build rather than merging alongside it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: requirements gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install gate dependencies
+        run: pip install --quiet pyyaml jsonschema
+
+      - name: Lint requirements
+        working-directory: spec/tools
+        run: python lint_requirements.py
+
+      - name: Check traceability
+        working-directory: spec/tools
+        run: python check_trace.py --matrix-out "$GITHUB_WORKSPACE/trace_matrix.csv"
+
+      - name: Check reference resolution
+        working-directory: spec/tools
+        run: python check_references.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: traceability-matrix
+          path: trace_matrix.csv
+          if-no-files-found: ignore

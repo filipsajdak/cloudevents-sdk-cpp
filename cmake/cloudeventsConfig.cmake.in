@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(ctre)
+if(@CE_DEFAULT_CODEC@)
+  find_dependency(nlohmann_json 3.12.0)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/cloudeventsTargets.cmake")
+
+check_required_components(cloudevents)

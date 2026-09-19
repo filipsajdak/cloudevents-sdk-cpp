@@ -1,0 +1,265 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CE_BUILD_TESTING": "ON",
+        "CE_WERROR": "ON",
+        "CMAKE_CXX_EXTENSIONS": "OFF"
+      }
+    },
+    {
+      "name": "gcc-cxx20",
+      "inherits": "base",
+      "displayName": "GCC, C++20 floor (result<T> polyfill is live here)",
+      "description": "GCC 16 does not define __cpp_lib_expected at -std=c++20, so this preset exercises the polyfill for real. It is load-bearing: see ADR-0002.",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON"
+      }
+    },
+    {
+      "name": "gcc-cxx23",
+      "inherits": "base",
+      "displayName": "GCC, C++23 (result<T> aliases std::expected)",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON"
+      }
+    },
+    {
+      "name": "clang-cxx20",
+      "inherits": "base",
+      "displayName": "Clang, C++20",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON"
+      }
+    },
+    {
+      "name": "clang-cxx23",
+      "inherits": "base",
+      "displayName": "Clang, C++23",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON"
+      }
+    },
+    {
+      "name": "msvc-cxx20",
+      "inherits": "base",
+      "displayName": "MSVC, C++20",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON"
+      }
+    },
+    {
+      "name": "reflect-cxx26",
+      "inherits": "base",
+      "displayName": "GCC, C++26 static reflection backend",
+      "description": "Reflection is gated by -freflection, not by the dialect, so the flag is additional to CMAKE_CXX_STANDARD rather than a replacement for it. Setting the dialect by hand in CMAKE_CXX_FLAGS does not work: target_compile_features(cxx_std_20) appends its own -std afterwards and the last one wins.",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_CXX_STANDARD": "26",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_EXTENSIONS": "OFF",
+        "CMAKE_CXX_FLAGS": "-freflection -DCE_EXPECT_REFLECTION=1"
+      }
+    },
+    {
+      "name": "polyfill-cxx23",
+      "inherits": "base",
+      "displayName": "Forced result<T> polyfill on a compiler that has std::expected",
+      "description": "ADR-0002: building the whole suite against the polyfill is what enforces the permitted result<T> subset. Any use of a banned member is a hard compile error here.",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_FLAGS": "-DCE_FORCE_RESULT_POLYFILL=1"
+      }
+    },
+    {
+      "name": "no-exceptions",
+      "inherits": "base",
+      "displayName": "Exceptions disabled (SPEC section 9, D4)",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_FLAGS": "-fno-exceptions"
+      }
+    },
+    {
+      "name": "asan",
+      "inherits": "base",
+      "displayName": "Address and undefined-behaviour sanitizers",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all"
+      }
+    },
+    {
+      "name": "fuzz",
+      "inherits": "base",
+      "displayName": "libFuzzer targets",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CE_BUILD_FUZZERS": "ON",
+        "CMAKE_CXX_FLAGS": "-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer"
+      }
+    },
+    {
+      "name": "no-default-codec",
+      "inherits": "base",
+      "displayName": "Core, format and binding without nlohmann present",
+      "description": "Proves SWR-ADOPT-0002 and SWR-JSON-0030: with the default codec off, nothing pulls in nlohmann.",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_CXX_STANDARD": "20",
+        "CE_DEFAULT_CODEC": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "gcc-cxx20",
+      "configurePreset": "gcc-cxx20"
+    },
+    {
+      "name": "gcc-cxx23",
+      "configurePreset": "gcc-cxx23"
+    },
+    {
+      "name": "clang-cxx20",
+      "configurePreset": "clang-cxx20"
+    },
+    {
+      "name": "clang-cxx23",
+      "configurePreset": "clang-cxx23"
+    },
+    {
+      "name": "msvc-cxx20",
+      "configurePreset": "msvc-cxx20"
+    },
+    {
+      "name": "reflect-cxx26",
+      "configurePreset": "reflect-cxx26"
+    },
+    {
+      "name": "polyfill-cxx23",
+      "configurePreset": "polyfill-cxx23"
+    },
+    {
+      "name": "no-exceptions",
+      "configurePreset": "no-exceptions"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz"
+    },
+    {
+      "name": "no-default-codec",
+      "configurePreset": "no-default-codec"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "gcc-cxx20",
+      "configurePreset": "gcc-cxx20",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "gcc-cxx23",
+      "configurePreset": "gcc-cxx23",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "clang-cxx20",
+      "configurePreset": "clang-cxx20",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "clang-cxx23",
+      "configurePreset": "clang-cxx23",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "msvc-cxx20",
+      "configurePreset": "msvc-cxx20",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "reflect-cxx26",
+      "configurePreset": "reflect-cxx26",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "polyfill-cxx23",
+      "configurePreset": "polyfill-cxx23",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "no-exceptions",
+      "configurePreset": "no-exceptions",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "no-default-codec",
+      "configurePreset": "no-default-codec",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

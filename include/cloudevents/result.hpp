@@ -54,6 +54,9 @@ enum class errc : std::uint8_t {
   not_a_cloudevent,
   /// A described struct has a member whose type the SDK cannot map.
   unsupported_field_type,
+  /// The call names an entry point that cannot serve this input, such as asking
+  /// the single-event encoder for a batch.
+  invalid_argument,
 };
 
 /// \brief A human-readable name for an `errc`, for diagnostics and test output.
@@ -74,6 +77,7 @@ enum class errc : std::uint8_t {
     case errc::invalid_utf8:               return "invalid_utf8";
     case errc::not_a_cloudevent:           return "not_a_cloudevent";
     case errc::unsupported_field_type:     return "unsupported_field_type";
+    case errc::invalid_argument:           return "invalid_argument";
   }
   return "unknown";
 }

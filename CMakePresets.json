@@ -142,6 +142,18 @@
         "CMAKE_CXX_STANDARD": "20",
         "CE_DEFAULT_CODEC": "OFF"
       }
+    },
+    {
+      "name": "no-format",
+      "inherits": "base",
+      "displayName": "Forced hand-rolled rendering on a compiler that has std::format",
+      "description": "std::format is absent at the SPEC section 8 floor (GCC 12 ships no <format>), so the fallback has to exist. This preset is what compiles it; without it the fallback would be untested code that breaks exactly when the floor compiler reaches it.",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_FLAGS": "-DCE_FORCE_NO_FORMAT=1"
+      }
     }
   ],
   "buildPresets": [
@@ -188,6 +200,10 @@
     {
       "name": "no-default-codec",
       "configurePreset": "no-default-codec"
+    },
+    {
+      "name": "no-format",
+      "configurePreset": "no-format"
     }
   ],
   "testPresets": [
@@ -257,6 +273,13 @@
     {
       "name": "no-default-codec",
       "configurePreset": "no-default-codec",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "no-format",
+      "configurePreset": "no-format",
       "output": {
         "outputOnFailure": true
       }

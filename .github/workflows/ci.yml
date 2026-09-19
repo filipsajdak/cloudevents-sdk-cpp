@@ -95,6 +95,25 @@ jobs:
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
 
+  no-format:
+    # std::format is absent at the SPEC section 8 floor: GCC 12 ships no <format>.
+    # The hand-rolled renderer therefore has to exist, and this job is what compiles
+    # it. Without it the fallback is untested code that breaks precisely when the
+    # floor compiler is the one that needs it.
+    name: forced hand-rolled rendering
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y g++-14 ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CXX_STANDARD=20
+          -DCE_WERROR=ON -DCMAKE_CXX_FLAGS=-DCE_FORCE_NO_FORMAT=1
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+
   no-exceptions:
     name: exceptions disabled
     needs: gate

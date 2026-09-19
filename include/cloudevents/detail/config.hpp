@@ -69,6 +69,27 @@
 #  error "cloudevents: the reflection backend requires expansion statements (template for)"
 #endif
 
+
+// ---------------------------------------------------------------------------
+// std::format
+// ---------------------------------------------------------------------------
+// Not available at the floor: GCC 12 ships no <format>, and the SPEC section 8
+// floor names GCC 12. Where it exists, rendering a timestamp is one call instead
+// of fifteen hand-rolled digit pushes, so it is worth the gate.
+//
+// CE_FORCE_NO_FORMAT compiles the fallback even where std::format exists, for the
+// same reason CE_FORCE_RESULT_POLYFILL exists: a fallback that nothing compiles is
+// untested code that will be wrong when the floor compiler finally reaches it.
+#if defined(__cpp_lib_format) && __cpp_lib_format >= 201907L && !defined(CE_FORCE_NO_FORMAT)
+#  define CE_HAS_FORMAT 1
+#else
+#  define CE_HAS_FORMAT 0
+#endif
+
+#if CE_HAS_FORMAT
+#  include <format>
+#endif
+
 // ---------------------------------------------------------------------------
 // Exceptions
 // ---------------------------------------------------------------------------
@@ -94,5 +115,8 @@ inline constexpr bool has_expansion_statements = CE_HAS_EXPANSION_STATEMENTS == 
 
 /// \brief True when the translation unit is compiled with exceptions enabled.
 inline constexpr bool has_exceptions = CE_HAS_EXCEPTIONS == 1;
+
+/// \brief True when std::format is available for rendering.
+inline constexpr bool has_format = CE_HAS_FORMAT == 1;
 
 }  // namespace ce::inline v1::detail

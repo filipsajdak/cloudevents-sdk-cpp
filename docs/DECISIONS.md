@@ -403,3 +403,76 @@ Verified by building `parse_timestamp` and `to_string` against each library:
 16 stops at the named `#error`; 17 and 18 round-trip
 `2026-09-20T12:34:56Z`. The C++23 job uses libc++ 17 deliberately, because a
 newer one would leave the carve-out unexecuted.
+
+## D-EXT-1: An extension field may declare any attribute type except Binary
+
+`event::get<Ext>()` and `event::set()` accept fields of type `bool`,
+`std::int32_t`, `std::string`, `uri`, `uri_ref` and `timestamp`, each
+optionally wrapped in `std::optional`. That is the CloudEvents attribute type
+system exactly, less Binary.
+
+Binary is out because recovering one from its wire form needs base64, which
+lives in the format layer, and core may not reach into it. None of the five
+documented extensions declares a Binary attribute, so nothing is lost today. A
+struct that declares one fails a `static_assert` naming the permitted types
+rather than failing somewhere inside the mapping.
+
+The describe seam's own supported set is wider in one direction (`int64_t`,
+`double`, `vector`, `map`) and narrower in another (no `uri`, `uri_ref` or
+`timestamp`), because it exists to map JSON payloads. The two sets are
+deliberately separate: an extension attribute is not a payload.
+
+## D-EXT-2: Two extension structs name their field `value`
+
+`sequence` and `dataref` each define a single attribute whose name equals the
+struct's. A member named `sequence` inside `struct sequence` hides the injected
+class name, so both use `value` with the wire name given explicitly:
+
+```cpp
+CE_DESCRIBE(sequence, CE_FIELD(value, "sequence"));
+```
+
+The wire name is what the CloudEvents spec fixes, and it is what the tests
+assert. The other three name their fields after their attributes, because no
+collision arises.
+
+## D-EXT-3: `sampledrate > 0` is checked on the struct, not on the event
+
+The sampling extension requires a rate above zero. `event::validate()` does not
+check it, because core cannot know which extensions a given event is carrying,
+and an event that merely holds a `sampledrate` attribute is still a valid
+CloudEvent by the core spec.
+
+`ext::sampled_rate::validate()` is where the constraint lives, so a caller that
+has asked for the typed view gets the check and one that has not is not
+second-guessed.
+
+## D-EXT-4: The typed payload accessors take the codec as a template parameter
+
+SPEC 5.5 writes them as `event::data_as<T>(codec)` and
+`event::set_data(const T&, codec)`. They ship as free function templates,
+`data_as<T, Codec>(event)` and `set_data<T, Codec>(event, value)`, for two
+reasons.
+
+They cannot be members: SWR-EXT-0006 requires that core name no codec, and a
+member would put one in `core.hpp`. A test pins that by asserting `ce::event`
+has no such member.
+
+The codec is a template parameter rather than a value because that is how
+`json_format<Codec>` and the HTTP binding already take theirs. A codec is a
+set of statics with no state to pass.
+
+`event::get<Ext>()` and `event::set()` stay members, as SPEC 5.5 writes them,
+because an extension attribute needs no codec at all.
+
+## D-EXT-5: A described struct decodes with absent members left at their default
+
+`from_json_value` fills only the members the document carries. An absent member
+leaves the field value-initialized rather than failing, so an optional field
+need not be written and a struct that grows a field still reads older
+documents.
+
+A member that IS present must match the declared type, and an integer that does
+not fit its declared field is `out_of_range` rather than a silent truncation:
+a wrapped value would make the decoded struct disagree with the document it
+came from.

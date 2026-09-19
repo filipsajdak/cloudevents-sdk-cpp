@@ -5,16 +5,20 @@
 ///
 /// Strict on produce, tolerant on consume.
 
+#include <charconv>
 #include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
 #include <ctre.hpp>
 
+#include <cloudevents/describe.hpp>
 #include <cloudevents/detail/config.hpp>
 #include <cloudevents/detail/timestamp.hpp>
 #include <cloudevents/result.hpp>
@@ -153,6 +157,124 @@ inline constexpr std::string_view reserved_names[] = {
   return detail::iequals(subtype, "json") || detail::iends_with(subtype, "+json");
 }
 
+namespace detail {
+
+/// \brief The field types an extension struct may declare.
+///
+/// Exactly the CloudEvents attribute type system, less Binary: recovering a
+/// Binary attribute from its wire form needs base64, which belongs to the format
+/// layer, and none of the documented extensions declares one.
+template <class F>
+struct extension_field_type : std::false_type {};
+
+template <>
+struct extension_field_type<bool> : std::true_type {};
+template <>
+struct extension_field_type<std::int32_t> : std::true_type {};
+template <>
+struct extension_field_type<std::string> : std::true_type {};
+template <>
+struct extension_field_type<uri> : std::true_type {};
+template <>
+struct extension_field_type<uri_ref> : std::true_type {};
+template <>
+struct extension_field_type<timestamp> : std::true_type {};
+
+template <class U>
+struct extension_field_type<std::optional<U>> : extension_field_type<U> {};
+
+template <class F>
+concept extension_field = extension_field_type<std::remove_cvref_t<F>>::value;
+
+template <class F>
+struct extension_value_type {
+  using type = F;
+};
+template <class U>
+struct extension_value_type<std::optional<U>> {
+  using type = U;
+};
+template <class F>
+using extension_value_t = typename extension_value_type<std::remove_cvref_t<F>>::type;
+
+template <class F>
+inline constexpr bool is_optional_field = false;
+template <class U>
+inline constexpr bool is_optional_field<std::optional<U>> = true;
+
+/// \brief Recover a declared field type from the string a lossy wire form left.
+///
+/// The JSON format and the HTTP binary binding both carry an extension as text,
+/// so this is where a declared Integer, Boolean, URI or Timestamp becomes one
+/// again (SWR-EXT-0003).
+template <extension_field F>
+[[nodiscard]] auto from_attribute_text(std::string_view text, std::string_view where)
+    -> result<extension_value_t<F>> {
+  using value_type = extension_value_t<F>;
+
+  if constexpr (std::is_same_v<value_type, std::string>) {
+    return std::string{text};
+  } else if constexpr (std::is_same_v<value_type, uri>) {
+    return uri{std::string{text}};
+  } else if constexpr (std::is_same_v<value_type, uri_ref>) {
+    return uri_ref{std::string{text}};
+  } else if constexpr (std::is_same_v<value_type, bool>) {
+    // The two spellings the JSON format produces for a Boolean attribute.
+    if (text == "true") {
+      return true;
+    }
+    if (text == "false") {
+      return false;
+    }
+    return fail(errc::type_mismatch, "expected \"true\" or \"false\"", std::string{where});
+  } else if constexpr (std::is_same_v<value_type, std::int32_t>) {
+    std::int32_t parsed = 0;
+    const char* const first = text.data();
+    const char* const last = first + text.size();
+    const auto [stop, code] = std::from_chars(first, last, parsed);
+    if (code != std::errc{} || stop != last) {
+      return fail(errc::type_mismatch, "expected an integer", std::string{where});
+    }
+    return parsed;
+  } else {
+    auto parsed = parse_timestamp(text);
+    if (!parsed) {
+      return fail(errc::type_mismatch, parsed.error().detail, std::string{where});
+    }
+    return *parsed;
+  }
+}
+
+/// \brief Read one attribute into a declared field type.
+/// \brief True when every described field of `Ext` maps to an attribute type.
+template <described Ext>
+[[nodiscard]] consteval auto extension_fields_supported() -> bool {
+  bool supported = true;
+  Ext probe{};
+  for_each_field(probe, [&supported](std::string_view, auto& field) {
+    supported = supported && extension_field<std::remove_cvref_t<decltype(field)>>;
+  });
+  return supported;
+}
+
+template <extension_field F>
+[[nodiscard]] auto read_attribute(const attribute_value& stored, std::string_view where)
+    -> result<extension_value_t<F>> {
+  using value_type = extension_value_t<F>;
+
+  // The type survived, so no conversion is needed or wanted.
+  if (const auto* exact = std::get_if<value_type>(&stored)) {
+    return *exact;
+  }
+  if (const auto* text = std::get_if<std::string>(&stored)) {
+    return from_attribute_text<F>(*text, where);
+  }
+  return fail(errc::type_mismatch, "the stored attribute has an unrelated type",
+              std::string{where});
+}
+
+}  // namespace detail
+
 /// \brief A SHOULD-level observation about an event: not an error.
 struct lint_warning {
   std::string attribute;
@@ -199,6 +321,78 @@ struct event {
   [[nodiscard]] auto extension(std::string_view name) const noexcept -> const attribute_value* {
     const auto found = extensions.find(name);
     return found == extensions.end() ? nullptr : &found->second;
+  }
+
+  /// \brief Read a described extension struct out of the extension attributes.
+  ///
+  /// An absent optional field yields `nullopt`; an absent required field is an
+  /// error naming the attribute (SWR-EXT-0002).
+  template <described Ext>
+  [[nodiscard]] auto get() const -> result<Ext> {
+    static_assert(detail::extension_fields_supported<Ext>(),
+                  "an extension struct may only declare bool, int32_t, std::string, uri, "
+                  "uri_ref or timestamp fields, optionally wrapped in std::optional");
+
+    // Filled field by field because the fields are reached generically; a
+    // designated initializer cannot name what only the describe seam knows.
+    Ext out{};
+    result<void> mapping_error{};
+
+    for_each_field(out, [this, &mapping_error](std::string_view name, auto& field) {
+      using field_type = std::remove_cvref_t<decltype(field)>;
+      if (!mapping_error) {
+        return;
+      }
+      const attribute_value* stored = extension(name);
+      if (stored == nullptr) {
+        if constexpr (!detail::is_optional_field<field_type>) {
+          mapping_error = fail(errc::missing_required_attribute,
+                         "the extension requires this attribute", std::string{name});
+        }
+        return;
+      }
+      auto read = detail::read_attribute<field_type>(*stored, name);
+      if (!read) {
+        mapping_error = fail(read.error().code, read.error().detail, read.error().where);
+        return;
+      }
+      field = std::move(*read);
+    });
+
+    if (!mapping_error) {
+      return fail(mapping_error.error().code, mapping_error.error().detail, mapping_error.error().where);
+    }
+    return out;
+  }
+
+  /// \brief Write a described extension struct into the extension attributes.
+  ///
+  /// Each field is stored under its declared type, which is what makes a value
+  /// survive the next encode with its type intact. A `nullopt` optional removes
+  /// the attribute, so the event matches the struct exactly afterwards.
+  template <described Ext>
+  auto set(const Ext& value) -> result<void> {
+    static_assert(detail::extension_fields_supported<Ext>(),
+                  "an extension struct may only declare bool, int32_t, std::string, uri, "
+                  "uri_ref or timestamp fields, optionally wrapped in std::optional");
+
+    result<void> mapping_error{};
+    for_each_field(value, [this, &mapping_error](std::string_view name, const auto& field) {
+      using field_type = std::remove_cvref_t<decltype(field)>;
+      if (!mapping_error) {
+        return;
+      }
+      if constexpr (detail::is_optional_field<field_type>) {
+        if (!field) {
+          extensions.erase(std::string{name});
+          return;
+        }
+        mapping_error = set_extension(std::string{name}, attribute_value{*field});
+      } else {
+        mapping_error = set_extension(std::string{name}, attribute_value{field});
+      }
+    });
+    return mapping_error;
   }
 
   /// \brief Check the event against the MUST-level rules, reporting the first

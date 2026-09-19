@@ -22,6 +22,13 @@ struct report {
   bool format_round_tripped;
   /// The document json_format produced there, so the caller can inspect it.
   std::string encoded;
+  /// True when a described payload went out and came back through the typed
+  /// payload accessors in that same translation unit, which is what shows they
+  /// name no codec of their own (SWR-EXT-0006).
+  bool typed_payload_round_tripped;
+  /// True when a typed extension struct read back what it wrote there, which
+  /// shows the typed extension layer is core and pulls in no codec.
+  bool typed_extension_round_tripped;
 };
 
 /// \brief Run the probe. Its value is what its translation unit proves, not what

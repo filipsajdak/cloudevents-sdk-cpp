@@ -19,6 +19,7 @@ if(NOT ctre_FOUND)
   FetchContent_MakeAvailable(ctre)
 endif()
 
+
 # Pinned to 3.12.0 deliberately: that is the version the first consuming platform
 # vendors, so the SDK builds against the copy it already has rather than dragging
 # in a second one.
@@ -84,3 +85,27 @@ if(CE_BUILD_TESTING)
     endif()
   endif()
 endif()
+
+# Dependency headers are consumed as SYSTEM headers, so their diagnostics do not
+# fail our build while ours still do. This is load-bearing rather than tidiness:
+# CTRE 3.9.0 does not compile under any current Clang with our warning set. Two
+# separate diagnostics fire inside CTRE itself, on Apple Clang 21 and Homebrew
+# Clang 23 alike:
+#
+#   wrapper.hpp:173  Method::template exec()  ->  -Wmissing-template-arg-list-after-template-kw
+#                    which newer Clang makes an error by DEFAULT, so it breaks even
+#                    without -Werror
+#   utf8.hpp:178     const char8_t -> char32_t  ->  -Wcharacter-conversion, via our -Wconversion
+#
+# Suppressing those two warnings globally would also blind us to real instances in
+# our own code. Marking the dependency SYSTEM scopes the suppression to exactly the
+# headers we do not maintain; a test confirms our own narrowing conversions are
+# still caught.
+#
+# M0 never hit this because nothing had included <ctre.hpp> yet, which is why the
+# Clang presets only went red once the core landed.
+foreach(dependency IN ITEMS ctre nlohmann_json)
+  if(TARGET ${dependency})
+    set_target_properties(${dependency} PROPERTIES SYSTEM TRUE)
+  endif()
+endforeach()

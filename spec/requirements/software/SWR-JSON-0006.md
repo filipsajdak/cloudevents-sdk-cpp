@@ -9,7 +9,7 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/format/json_codec.hpp]
 verified_by: [test:test/json_codec_test.cpp::json-codec-kind-and-as-accessors]
 owner: filip.sajdak
 version: 1

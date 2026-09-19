@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [STK-INTEROP-0001]
-satisfied_by: []
-verified_by: [test:test/json_format_test.cpp::json-format-spec-examples]
+satisfied_by: [code:include/cloudevents/format/json_format.hpp]
+verified_by: [test:test/json_format_test.cpp::json-format-entry-points]
 owner: filip.sajdak
 version: 1
 ---

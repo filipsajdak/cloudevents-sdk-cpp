@@ -1,5 +1,7 @@
 #include <boost/ut.hpp>
 
+#include <initializer_list>
+
 #include <cloudevents/core.hpp>
 #include <cloudevents/detail/timestamp.hpp>
 #include <cloudevents/result.hpp>
@@ -200,6 +202,27 @@ const boost::ut::suite<"core-result-polyfill"> core_result_polyfill = [] {
     const ce::result<void> void_bad = ce::fail(ce::errc::invalid_utf8, "bad continuation byte");
     expect(!void_bad.has_value());
     expect(void_bad.error().code == ce::errc::invalid_utf8);
+  };
+
+  // A type whose constructor takes an initializer_list must not be wrapped by it.
+  // Brace-initialising the stored value picks that overload, so result<json> held
+  // [{"a":1}] where the caller passed {"a":1}. std::expected direct-initialises,
+  // so the polyfill has to as well or it is not a drop-in.
+  "a value with an initializer_list constructor is stored unchanged"_test = [] {
+    struct greedy {
+      int tag = 0;
+      std::size_t elements = 0;
+      greedy() = default;
+      explicit greedy(int value) : tag(value) {}
+      greedy(std::initializer_list<greedy> list) : elements(list.size()) {}
+    };
+
+    const greedy original{7};
+    ce::result<greedy> stored = original;
+
+    expect(stored.has_value());
+    expect(stored->tag == 7_i) << "the value was rebuilt rather than stored";
+    expect(stored->elements == 0_ul) << "an initializer_list constructor was selected";
   };
 };
 

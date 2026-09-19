@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scudoai.com/spec/requirement.schema.json",
+  "title": "Requirement frontmatter (ISO/IEC/IEEE 29148 attribute set)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "uid",
+    "title",
+    "type",
+    "status",
+    "priority",
+    "rationale",
+    "verification_method",
+    "security_classification",
+    "owner",
+    "version"
+  ],
+  "properties": {
+    "uid": {
+      "type": "string",
+      "description": "Stable unique identifier; never reused; filename must equal uid + .md",
+      "pattern": "^(STK|SYS|SWR)-[A-Z0-9]+-[0-9]{4}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "type": {
+      "type": "string",
+      "description": "29148 requirement level",
+      "enum": ["stakeholder", "system", "software"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "reviewed", "approved", "implemented", "verified", "obsolete"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Why this requirement exists; auditors and reviewers rely on this",
+      "minLength": 10
+    },
+    "verification_method": {
+      "type": "string",
+      "enum": ["test", "analysis", "inspection", "demonstration"]
+    },
+    "security_classification": {
+      "type": "string",
+      "description": "Validated against the active profile in schema/profiles.yml"
+    },
+    "derived_from": {
+      "type": "array",
+      "description": "Upward trace: parent requirement UIDs, exactly one level up",
+      "items": {
+        "type": "string",
+        "pattern": "^(STK|SYS|SWR)-[A-Z0-9]+-[0-9]{4}$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "satisfied_by": {
+      "type": "array",
+      "description": "Downward trace to implementation artifacts, e.g. code:src/x.rs or doc:adr/0008.md",
+      "items": {
+        "type": "string",
+        "pattern": "^(code|doc):.+$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "verified_by": {
+      "type": "array",
+      "description": "Verification trace to real evidence, e.g. test:signing_softhsm_test or acc:scenario-G",
+      "items": {
+        "type": "string",
+        "pattern": "^(test|acc|val):.+$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 3
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "delivered_in": {
+      "type": "string",
+      "description": "App release that delivered this requirement, e.g. v0.10.0; set once status is implemented/verified",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+# Profiles for the requirements process.
+#
+# The schema is generic ISO/IEC/IEEE 29148; the active profile only changes
+# which security_classification scheme is in force. Switch profile by
+# changing active_profile - the lint then validates the
+# security_classification field of every requirement against that profile's
+# allowed values.
+
+active_profile: scudoai-eu-regulated
+
+profiles:
+  generic:
+    standard: "ISO/IEC/IEEE 29148"
+    security_classification: ["none", "low", "medium", "high"]
+
+  # ScudoAI desktop products operating in regulated-adjacent EU sectors.
+  # The classification gates the assurance rigour a requirement attracts and
+  # maps onto the EU compliance concerns (see docs/compliance/):
+  #   none              - no security/privacy/signature relevance
+  #   operational       - normal function; correctness matters, no special regime
+  #   security-relevant - touches credentials, auth, access, integrity (ISO 27001)
+  #   privacy-sensitive - processes personal data in documents (GDPR)
+  #   signature-critical- part of the qualified e-signature path (eIDAS); highest rigour
+  scudoai-eu-regulated:
+    standard: "ISO/IEC 27001 + eIDAS + GDPR (EU regulated-adjacent)"
+    security_classification:
+      - "none"
+      - "operational"
+      - "security-relevant"
+      - "privacy-sensitive"
+      - "signature-critical"

@@ -1,0 +1,15 @@
+# Local enforcement of the same three checks CI runs, so a requirement that would
+# fail the gate never reaches a push. The CI workflow is authoritative; this exists
+# to shorten the feedback loop, not to replace it.
+
+pre-push:
+  parallel: true
+  commands:
+    spec-lint:
+      glob: "spec/**/*.md"
+      run: ./.venv/bin/python spec/tools/lint_requirements.py
+    spec-trace:
+      glob: "spec/**/*.md"
+      run: ./.venv/bin/python spec/tools/check_trace.py
+    spec-refs:
+      run: ./.venv/bin/python spec/tools/check_references.py

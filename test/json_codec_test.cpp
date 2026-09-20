@@ -605,10 +605,13 @@ const boost::ut::suite<"codecs-decode-surrogate-pairs"> surrogate_pairs = [] {
       auto text = mini_codec::as_string(*member);
       expect(text.has_value());
       if (text) {
-        // Four bytes, not six: CESU-8 would encode each half separately and
-        // produce something the HTTP binding then rejects as invalid UTF-8.
+        // Named as BYTES, not as a character literal. This test is about the
+        // byte sequence, and a universal-character-name is the thing a
+        // compiler may reinterpret - which is what hid the defect twice. MSVC
+        // additionally cannot represent this one in its default code page.
+        const std::string expected{"\xF0\x9F\x98\x80"};
         expect(text->size() == 4_ul) << "expected 4 bytes, got " << text->size();
-        expect(std::string{*text} == std::string{"\U0001F600"});
+        expect(std::string{*text} == expected);
       }
     }
   };

@@ -749,3 +749,37 @@ The concept now states three rules the in-tree codecs disagreed about:
 `size_of` is documented rather than changed: the SDK never calls it, nlohmann
 returns 1 for a scalar where the others return 0, and narrowing that under a
 frozen `v1` would buy nothing.
+
+## D-CODEC-1: RapidJSON ships with a stateless allocator and a stated hazard
+
+The benchmark (PR #14) measured RapidJSON fastest on every event-sized document,
+smallest binary and shortest compile, so it is the second shipped codec. Three
+things about it needed deciding rather than copying.
+
+**The allocator.** RapidJSON wants one at every mutation and the concept passes
+none. The codec uses a shared `rapidjson::CrtAllocator`, not the default
+`MemoryPoolAllocator`: a pool does not return memory until it is destroyed, so a
+pooled codec would be a process-wide arena that only grows - faster in a
+benchmark, unbounded in a service. `CrtAllocator` is stateless and forwards to
+`malloc`/`free`, which the C standard requires to be thread-safe, so the shared
+instance is not shared state. A `static_assert` pins the choice, because `parse`
+moves the root out of the document and that is sound only while the allocator
+holds nothing.
+
+**Pointer invalidation.** `find` returns a pointer into a contiguous member
+array, so a later `set` on the same object may invalidate it. nlohmann's DOM is
+node-stable and does not behave this way, so code that is correct against one is
+wrong against the other. `json_format` never mutates a document it is reading, so
+the SDK cannot observe it - but a caller using the codec directly can, and the
+header says so.
+
+**Two defects in the prototype, both fixed here.** `kind_of` reported an integer
+above `INT64_MAX` as `kind::floating`, which would make the format layer diagnose
+it as a fractional extension value - a different and wrong complaint. And `as_int`
+refused the same value with `type_mismatch` rather than `out_of_range`. Both now
+follow the rules D-JSON-3 wrote into the concept.
+
+`codec-headers-are-mutually-isolated` reads the headers and refuses a codec that
+names another codec's library. It strips comments first: `rapidjson.hpp` explains
+how nlohmann's DOM differs, and saying so is the point of the comment rather than
+a dependency.

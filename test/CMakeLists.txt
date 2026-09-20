@@ -58,6 +58,9 @@ if(CE_CODEC_NLOHMANN)
   ce_add_codec_test(json_codec_test
     SOURCES json_codec_test.cpp no_nlohmann_probe.cpp
     LIBS ce::codec_nlohmann)
+  # The isolation suite reads the headers, so it needs to know where they are.
+  target_compile_definitions(json_codec_test
+    PRIVATE "CE_INCLUDE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../include\"")
   ce_add_codec_test(json_format_test
     SOURCES json_format_test.cpp
     LIBS ce::codec_nlohmann)

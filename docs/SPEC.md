@@ -67,20 +67,22 @@ Rules that keep the C++29 upgrade cheap:
 ```
 ce::core            std + CTRE           event, types, validation, describe seam
 ce::format_json     core                 json_codec concept, json_format<Codec>
-ce::codec_nlohmann  format_json+nlohmann nlohmann_codec (default_codec)
+ce::codec_nlohmann  format_json+nlohmann nlohmann_codec (the default)
+ce::codec_rapidjson format_json+RapidJSON rapidjson_codec
 ce::binding_http    core (+format)       message, http binding
 ```
 
 All targets are header-only INTERFACE libraries. Dependency direction is strictly
-downward; `core` never includes format or binding headers. CMake option
-`CE_DEFAULT_CODEC` (default ON) controls whether `codec_nlohmann` is built.
+downward; `core` never includes format or binding headers. `CE_CODECS` is the list
+of codec targets to build (default `nlohmann`); `CE_DEFAULT_CODEC=OFF` subtracts
+nlohmann from it and is kept because four requirements and a preset name it.
 
 Layout:
 ```
 include/cloudevents/{core,describe,message}.hpp
 include/cloudevents/detail/config.hpp
 include/cloudevents/format/{json_codec,json_format,base64}.hpp
-include/cloudevents/codec/nlohmann.hpp
+include/cloudevents/codec/{nlohmann,rapidjson}.hpp
 include/cloudevents/binding/http.hpp
 include/cloudevents/extensions/{tracing,partitioning,sequence,sampledrate,dataref}.hpp
 test/  fuzz/  examples/  cmake/  docs/  prototype/

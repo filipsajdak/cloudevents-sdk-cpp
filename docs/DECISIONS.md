@@ -596,8 +596,9 @@ twenty-two times at run time. The coverage job runs on Linux, and that job is
 the measurement `SWR-SEC-0007` refers to.
 
 The floor is enforced by `gcovr --fail-under-line`, so it fails the build rather
-than printing a number. It has not yet been demonstrated to be met; the first
-run of the coverage job is what establishes that.
+than printing a number. Measured on the first run of the coverage job: **95.9
+percent of lines** (1021 of 1065), 88.3 percent of functions, 60.5 percent of
+branches. The line floor of 90 is met.
 
 ## D-SEC-4: The JSON parsers carry a nesting depth limit
 

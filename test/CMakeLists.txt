@@ -16,6 +16,7 @@ ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
 
+
 # These two name nlohmann_codec directly, and with CE_DEFAULT_CODEC=OFF the
 # nlohmann target does not exist. Registering them unconditionally would make the
 # no-default-codec preset fail to configure, which is the very build that proves
@@ -36,6 +37,14 @@ if(CE_DEFAULT_CODEC)
   ce_add_test(typed_payload_test
     SOURCES typed_payload_test.cpp no_nlohmann_probe.cpp
     LIBS ce::codec_nlohmann)
+  ce_add_test(conformance_test
+    SOURCES conformance_test.cpp
+    LIBS ce::codec_nlohmann)
+  # The fixtures are read from the source tree, not copied into the build tree:
+  # a stale copy would let the suite pass against bytes the repository no longer
+  # holds.
+  target_compile_definitions(conformance_test
+    PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conformance\"")
 endif()
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
@@ -56,3 +65,4 @@ add_test(NAME warning-scope-probe-must-not-compile
 set_tests_properties(warning-scope-probe-must-not-compile PROPERTIES
   WILL_FAIL TRUE
   LABELS "guard")
+

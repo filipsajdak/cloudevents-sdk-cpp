@@ -19,6 +19,7 @@
 #include <variant>
 #include <vector>
 
+#include "codecs_under_test.hpp"
 #include "mini_codec.hpp"
 
 // The binding is a template over the JSON codec, exactly as json_format is. So
@@ -1162,8 +1163,9 @@ const boost::ut::suite<"headers-ordered-multimap"> headers_ordered_multimap = []
 const boost::ut::suite<"to-message-modes"> to_message_modes = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_to_message_modes<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_to_message_modes<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_to_message_modes<C>(codec); };
+  });
 
   "the send-side entry points have the declared signatures"_test = [] {
     static_assert(
@@ -1182,16 +1184,18 @@ const boost::ut::suite<"to-message-modes"> to_message_modes = [] {
 const boost::ut::suite<"from-message-roundtrip"> from_message_roundtrip = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_from_message_roundtrip<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_from_message_roundtrip<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_from_message_roundtrip<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0005
 const boost::ut::suite<"batched-variants"> batched_variants = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_batched_variants<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_batched_variants<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_batched_variants<C>(codec); };
+  });
 
   "the batch entry points have the declared signatures"_test = [] {
     static_assert(std::is_same_v<decltype(ce::http::to_batch_message<nlohmann_codec>(
@@ -1268,34 +1272,36 @@ const boost::ut::suite<"content-mode-detection"> content_mode_detection = [] {
     }
   };
 
-  "nlohmann_codec"_test = [] {
-    check_detection_of_produced_messages<nlohmann_codec>("nlohmann_codec");
-  };
-  "mini_codec"_test = [] { check_detection_of_produced_messages<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_detection_of_produced_messages<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0007
 const boost::ut::suite<"binary-mode-ce-headers"> binary_mode_ce_headers = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_binary_mode_ce_headers<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_binary_mode_ce_headers<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_binary_mode_ce_headers<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0008
 const boost::ut::suite<"datacontenttype-header-mapping"> datacontenttype_header_mapping = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_datacontenttype_mapping<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_datacontenttype_mapping<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_datacontenttype_mapping<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0009
 const boost::ut::suite<"binary-mode-body-is-raw-data"> binary_mode_body_is_raw_data = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_binary_mode_body<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_binary_mode_body<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_binary_mode_body<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0010
@@ -1334,8 +1340,9 @@ const boost::ut::suite<"header-value-percent-encoding"> header_value_percent_enc
     static_assert(!ce::http::detail::needs_escape('A'));
   };
 
-  "nlohmann_codec"_test = [] { check_percent_encoding_roundtrip<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_percent_encoding_roundtrip<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_percent_encoding_roundtrip<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0011
@@ -1379,8 +1386,9 @@ const boost::ut::suite<"header-value-percent-decoding"> header_value_percent_dec
     }
   };
 
-  "nlohmann_codec"_test = [] { check_percent_decoding<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_percent_decoding<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_percent_decoding<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0012
@@ -1414,16 +1422,18 @@ const boost::ut::suite<"header-value-invalid-utf8"> header_value_invalid_utf8 = 
     static_assert(!ce::http::detail::is_valid_utf8("\xC0\x80"));
   };
 
-  "nlohmann_codec"_test = [] { check_invalid_utf8_rejected<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_invalid_utf8_rejected<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_invalid_utf8_rejected<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0013
 const boost::ut::suite<"binary-mode-extension-string-type"> binary_mode_extension_string_type = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_extension_string_type<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_extension_string_type<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_extension_string_type<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0014
@@ -1431,8 +1441,9 @@ const boost::ut::suite<"not-a-cloudevent-distinct-from-malformed">
     not_a_cloudevent_distinct_from_malformed = [] {
       using namespace boost::ut;
 
-      "nlohmann_codec"_test = [] { check_not_a_cloudevent<nlohmann_codec>("nlohmann_codec"); };
-      "mini_codec"_test = [] { check_not_a_cloudevent<mini_codec>("mini_codec"); };
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] { check_not_a_cloudevent<C>(codec); };
+      });
     };
 
 // The three content modes of the system requirement are exercised end to end on
@@ -1442,16 +1453,18 @@ const boost::ut::suite<"not-a-cloudevent-distinct-from-malformed">
 const boost::ut::suite<"http-binding-spec-examples"> http_binding_spec_examples = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_spec_examples<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_spec_examples<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_spec_examples<C>(codec); };
+  });
 };
 
 // spec: SWR-HTTP-0015
 const boost::ut::suite<"decoded-message-always-validates"> ce_header_name_grammar = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_ce_header_name_grammar<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_ce_header_name_grammar<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_ce_header_name_grammar<C>(codec); };
+  });
 };
 
 }  // namespace

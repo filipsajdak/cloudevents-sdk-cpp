@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -91,10 +92,28 @@ struct nlohmann_codec {
   }
 
   [[nodiscard]] static auto as_int(const value& subject) -> result<std::int64_t> {
-    if (!subject.is_number_integer() && !subject.is_number_unsigned()) {
-      return fail(errc::type_mismatch, "not a JSON integer");
+    // The unsigned test comes FIRST. is_number_integer() is true for an unsigned
+    // value too, so testing it first would make the range check below dead code.
+    if (subject.is_number_unsigned()) {
+      const auto held = subject.get<std::uint64_t>();
+      if (held > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+        // get<std::int64_t>() reinterprets rather than refusing: 2^64-1 arrives
+        // as -1, which is inside the CloudEvents Integer range, so the format
+        // layer accepts it and the caller is handed a value that is not the one
+        // on the wire.
+        //
+        // out_of_range, not type_mismatch: it IS a JSON integer, and an integer
+        // the Integer type cannot hold already reports out_of_range when it
+        // merely exceeds int32. Two sizes of the same mistake should not report
+        // two different codes.
+        return fail(errc::out_of_range, "JSON integer too large for int64");
+      }
+      return static_cast<std::int64_t>(held);
     }
-    return subject.get<std::int64_t>();
+    if (subject.is_number_integer()) {
+      return subject.get<std::int64_t>();
+    }
+    return fail(errc::type_mismatch, "not a JSON integer");
   }
 
   [[nodiscard]] static auto as_double(const value& subject) -> result<double> {

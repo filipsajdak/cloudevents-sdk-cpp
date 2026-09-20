@@ -717,3 +717,35 @@ All three accept both spellings, so this is not an interoperability failure.
 It is a difference a producer should know about: a value that must be a strict
 RFC 3986 URI-reference has to be escaped before it is handed over, because
 nothing downstream will do it.
+
+## D-JSON-3: A codec may refuse an unrepresentable integer at parse or at as_int
+
+`nlohmann::json::get<std::int64_t>()` reinterprets an out-of-range unsigned value
+rather than refusing it. `18446744073709551615` arrived as `-1`, which is inside
+the CloudEvents `Integer` range, so the format layer's own bounds check did not
+catch it and a decode produced an extension holding a number the document never
+carried. `9223372036854775808` was masked only by accident: it reinterprets to
+`INT64_MIN`, which the int32 check then rejects for the wrong reason.
+
+The defect surfaced while writing a second codec. Boost.JSON's accessor
+range-checks an unsigned value before narrowing, which made the absence of that
+check in the shipped codec visible. Nothing in the suite had reached for a number
+above `int64`, because nothing had reason to.
+
+The concept now states three rules the in-tree codecs disagreed about:
+
+- `kind_of` follows the **text**. A number written without a fractional part or an
+  exponent is `kind::integer` whatever its magnitude. Reporting a large integer as
+  `floating` would make the format layer diagnose it as a fractional extension
+  value, which is a different and wrong complaint.
+- `as_int` returns `out_of_range`, not `type_mismatch`. The value is an integer,
+  and one that merely exceeds the 32-bit `Integer` type already reports
+  `out_of_range`; two sizes of the same mistake should not report two codes.
+- A codec may instead refuse the document at `parse`, which is equally conformant.
+  `mini_codec` does, because its hand-written parser uses `from_chars`. What is
+  forbidden is returning a value that is not the one on the wire, and that is what
+  the suites assert - the error code is checked as a disjunction.
+
+`size_of` is documented rather than changed: the SDK never calls it, nlohmann
+returns 1 for a scalar where the others return 0, and narrowing that under a
+frozen `v1` would buy nothing.

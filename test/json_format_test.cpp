@@ -1198,6 +1198,65 @@ const boost::ut::suite<"null-attribute-decodes-as-unset"> null_is_unset = [] {
   "mini_codec"_test = [] { check_null_is_unset<mini_codec>("mini_codec"); };
 };
 
+/// \brief An extension integer beyond int64 must not decode to some other number.
+template <class C>
+void check_out_of_range_integer_extension(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::json_format<C>;
+
+  // 18446744073709551615 reinterprets as -1, which is INSIDE the CloudEvents
+  // Integer range, so the format layer's own bounds check does not catch it.
+  // Before the codec refused it, this decoded to an extension holding -1.
+  for (const auto document : {
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","n":9223372036854775808})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","n":18446744073709551615})"sv,
+       }) {
+    auto decoded = format::decode(document);
+    expect(!decoded.has_value()) << label << ": should reject " << document;
+    if (decoded) {
+      // Name the value, so a regression says what it produced rather than only
+      // that it produced something.
+      const auto* held = decoded->extension("n");
+      if (held != nullptr && std::holds_alternative<std::int32_t>(*held)) {
+        expect(false) << label << ": decoded to " << std::get<std::int32_t>(*held);
+      }
+      continue;
+    }
+    // Either route is conformant, and the two in-tree codecs take one each:
+    // nlohmann parses the number and refuses it at as_int (out_of_range), while
+    // mini_codec's hand-written parser refuses the document (parse_error). What
+    // the concept forbids is a value, which is asserted above.
+    const auto code = decoded.error().code;
+    expect(code == ce::errc::out_of_range || code == ce::errc::parse_error)
+        << label << ": " << document << " gave " << ce::to_string_view(code);
+  }
+
+  // A value inside the Integer range still decodes, so the refusal is about the
+  // range and not about extensions that happen to be numbers.
+  auto fine = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","n":42})");
+  expect(fine.has_value()) << label;
+  if (fine) {
+    const auto* held = fine->extension("n");
+    expect(held != nullptr) << label;
+    if (held != nullptr && std::holds_alternative<std::int32_t>(*held)) {
+      expect(std::get<std::int32_t>(*held) == 42) << label;
+    }
+  }
+}
+
+// spec: SWR-JSON-0035
+const boost::ut::suite<"extension-integer-beyond-int64-is-refused"> beyond_int64 = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] {
+    check_out_of_range_integer_extension<nlohmann_codec>("nlohmann_codec");
+  };
+  "mini_codec"_test = [] {
+    check_out_of_range_integer_extension<mini_codec>("mini_codec");
+  };
+};
+
 }  // namespace
 
 int main() {}

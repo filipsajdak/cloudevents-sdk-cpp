@@ -741,11 +741,13 @@ void check_extension_type_mapping(std::string_view label) {
   }
 
   // A kind with no CloudEvents attribute type is a type mismatch, not a silent
-  // drop: an object, an array or a null under an unknown name is not an event.
+  // drop: an object or an array under an unknown name is not an event.
+  //
+  // null is NOT in this list. JSON format section 2.2 requires a null attribute
+  // to decode as unset, which null-attribute-decodes-as-unset covers.
   for (const auto document : {
            R"({"specversion":"1.0","id":"1","source":"/s","type":"t","obj":{"a":1}})"sv,
            R"({"specversion":"1.0","id":"1","source":"/s","type":"t","arr":[1]})"sv,
-           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","nil":null})"sv,
        }) {
     auto rejected = format::decode(document);
     expect(!rejected.has_value()) << label << ": should reject " << document;
@@ -1140,6 +1142,60 @@ const boost::ut::suite<"decoded-event-always-validates"> extension_name_grammar 
 
   "nlohmann_codec"_test = [] { check_extension_name_grammar<nlohmann_codec>("nlohmann_codec"); };
   "mini_codec"_test = [] { check_extension_name_grammar<mini_codec>("mini_codec"); };
+};
+
+template <class C>
+void check_null_is_unset(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::json_format<C>;
+
+  // The shape the JSON format specification's own example uses.
+  auto decoded = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","unsetextension":null})");
+  expect(decoded.has_value()) << label;
+  if (decoded) {
+    expect(decoded->extension("unsetextension") == nullptr)
+        << label << ": a null extension must not become an attribute";
+    expect(decoded->extensions.empty()) << label;
+    expect(decoded->validate().has_value()) << label;
+  }
+
+  // A null OPTIONAL context attribute is unset too, and an absent one and an
+  // explicitly null one decode to the same event.
+  auto explicit_null = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","subject":null,"time":null})");
+  auto omitted = format::decode(R"({"specversion":"1.0","id":"1","source":"/s","type":"t"})");
+  expect(explicit_null.has_value()) << label;
+  expect(omitted.has_value()) << label;
+  if (explicit_null && omitted) {
+    expect(bool{*explicit_null == *omitted}) << label;
+    expect(!explicit_null->subject.has_value()) << label;
+    expect(!explicit_null->time.has_value()) << label;
+  }
+
+  // data is the documented exception: an explicit null payload is distinct from
+  // an absent one, so it is NOT swallowed by the unset rule.
+  auto null_data = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":null})");
+  expect(null_data.has_value()) << label;
+
+  // A non-null extension beside a null one still arrives.
+  auto mixed = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","gone":null,"kept":"x"})");
+  expect(mixed.has_value()) << label;
+  if (mixed) {
+    expect(mixed->extension("gone") == nullptr) << label;
+    expect(mixed->extension("kept") != nullptr) << label;
+    expect(mixed->extensions.size() == 1_ul) << label;
+  }
+}
+
+// spec: SWR-JSON-0032
+const boost::ut::suite<"null-attribute-decodes-as-unset"> null_is_unset = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_null_is_unset<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_null_is_unset<mini_codec>("mini_codec"); };
 };
 
 }  // namespace

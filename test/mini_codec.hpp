@@ -149,9 +149,15 @@ struct mini_codec {
 
 namespace mini_detail {
 
+/// Deeply nested input must not exhaust the stack. A recursive-descent parser
+/// with no limit turns one small document into a crash, which fuzz_json_decode
+/// reached after 2.37 million executions.
+inline constexpr int max_parse_depth = 100;
+
 struct reader {
   std::string_view text;
   std::size_t pos = 0;
+  int depth = 0;
 
   void skip_space() {
     while (pos < text.size() &&
@@ -226,6 +232,15 @@ inline auto parse_string_body(reader& input) -> ce::result<std::string> {
   return ce::fail(ce::errc::parse_error, "unterminated string");
 }
 
+/// Restores the depth on every exit path, including the error ones.
+struct depth_guard {
+  reader& input;
+  explicit depth_guard(reader& r) : input{r} { ++input.depth; }
+  ~depth_guard() { --input.depth; }
+  depth_guard(const depth_guard&) = delete;
+  auto operator=(const depth_guard&) -> depth_guard& = delete;
+};
+
 inline auto parse_number(reader& input) -> ce::result<mini_codec::value> {
   const std::size_t start = input.pos;
   if (input.peek() == '-') {
@@ -272,6 +287,10 @@ inline auto parse_number(reader& input) -> ce::result<mini_codec::value> {
 }
 
 inline auto parse_value(reader& input) -> ce::result<mini_codec::value> {
+  if (input.depth >= max_parse_depth) {
+    return ce::fail(ce::errc::parse_error, "JSON nested beyond the depth limit");
+  }
+  const depth_guard guard{input};
   input.skip_space();
   if (input.done()) {
     return ce::fail(ce::errc::parse_error, "unexpected end of input");

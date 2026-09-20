@@ -18,6 +18,10 @@ option(CE_DEFAULT_CODEC "Build the nlohmann/json codec target" ON)
 cmake_dependent_option(CE_BUILD_TESTING "Build the test suite" ON "CE_IS_TOP_LEVEL" OFF)
 option(CE_BUILD_FUZZERS "Build the libFuzzer targets" OFF)
 option(CE_BUILD_EXAMPLES "Build the examples" OFF)
+# Kept OFF by default and never made dependent on the compiler: module support
+# across the toolchains SPEC section 8 names is uneven, and a module target that
+# switched itself on would break the floor configuration (SWR-BUILD-0010).
+option(CE_BUILD_MODULE "Build the optional cloudevents.cppm module interface" OFF)
 option(CE_WERROR "Treat warnings as errors" ${CE_IS_TOP_LEVEL})
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
@@ -95,6 +99,33 @@ endif()
 
 if(CE_BUILD_EXAMPLES)
   add_subdirectory(examples)
+endif()
+
+if(CE_BUILD_MODULE)
+  if(CMAKE_VERSION VERSION_LESS 3.28)
+    message(FATAL_ERROR "ce: CE_BUILD_MODULE needs CMake 3.28 or newer for C++ modules")
+  endif()
+  add_library(ce_module)
+  add_library(ce::module ALIAS ce_module)
+  set_target_properties(ce_module PROPERTIES EXPORT_NAME module)
+  target_sources(ce_module
+    PUBLIC FILE_SET CXX_MODULES
+    BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include
+    FILES include/cloudevents/cloudevents.cppm)
+  target_link_libraries(ce_module PUBLIC ce_core)
+  target_compile_features(ce_module PUBLIC cxx_std_20)
+
+  # A module that compiles but exports nothing usable would pass unnoticed, so
+  # the optional build also consumes it.
+  add_executable(module_consumer test/module_consumer.cpp)
+  target_link_libraries(module_consumer PRIVATE ce_module ce::warnings)
+  # Without this the consumer is compiled as an ordinary translation unit and
+  # `import` is a syntax error, which is a confusing way to learn that the
+  # module was never reached.
+  set_target_properties(module_consumer PROPERTIES CXX_SCAN_FOR_MODULES ON)
+  if(CE_BUILD_TESTING)
+    add_test(NAME module_consumer COMMAND module_consumer)
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------

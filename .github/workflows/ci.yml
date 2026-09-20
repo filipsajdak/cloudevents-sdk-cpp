@@ -197,3 +197,150 @@ jobs:
             -DCMAKE_CXX_FLAGS="-std=c++2c -freflection" -DCE_WERROR=ON
           cmake --build build
           ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: asan + ubsan
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-17 libc++-17-dev libc++abi-17-dev ninja-build \
+            nlohmann-json3-dev
+      # SWR-SEC-0002. -fno-sanitize-recover=all is what makes a report fail the
+      # job: without it a finding is counted and the process still exits zero.
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++-17
+          -DCMAKE_CXX_STANDARD=20
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCE_BUILD_EXAMPLES=ON
+          -DCE_WERROR=ON
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all"
+      - name: Build
+        run: cmake --build build
+      - name: asan-ubsan-suite
+        run: cmake --build build --target asan-ubsan-suite
+
+  coverage:
+    name: coverage floor
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 ninja-build gcovr nlohmann-json3-dev
+      # SWR-SEC-0007. The floor is enforced by gcovr's exit code, not printed
+      # for someone to read, and the examples are built so their lines count.
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-13
+          -DCMAKE_CXX_STANDARD=20
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCE_BUILD_EXAMPLES=ON
+          -DCE_GCOV_EXECUTABLE=gcov-13
+          "-DCMAKE_CXX_FLAGS=--coverage -fprofile-update=atomic -O0 -g"
+          "-DCMAKE_EXE_LINKER_FLAGS=--coverage"
+      - name: Build
+        run: cmake --build build
+      - name: coverage-report
+        run: cmake --build build --target coverage-report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: build/coverage/
+
+  fuzz:
+    name: fuzz, ten minutes per target
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-17 ninja-build nlohmann-json3-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++-17
+          -DCMAKE_CXX_STANDARD=20
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCE_BUILD_FUZZERS=ON
+          "-DCMAKE_CXX_FLAGS=-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer"
+      - name: Build
+        run: cmake --build build
+      # SWR-SEC-0001 requires a ten-minute clean run per target. The scratch
+      # directory is named FIRST because libFuzzer writes what it discovers into
+      # the first corpus directory, and pointing it at the seeds would bury them.
+      - name: Run each target for ten minutes
+        run: |
+          set -e
+          mkdir -p /tmp/found
+          for target in fuzz_timestamp fuzz_base64 fuzz_json_decode fuzz_http_message fuzz_typed; do
+            case "$target" in
+              fuzz_timestamp) seeds=timestamp ;;
+              fuzz_base64) seeds=base64 ;;
+              fuzz_json_decode) seeds=json ;;
+              fuzz_http_message) seeds=http ;;
+              fuzz_typed) seeds=typed ;;
+            esac
+            echo "::group::$target"
+            mkdir -p "/tmp/found/$target"
+            ./build/fuzz/$target "/tmp/found/$target" "fuzz/corpus/$seeds" \
+              -max_total_time=600 -timeout=25 -rss_limit_mb=4096 \
+              -print_final_stats=1 -artifact_prefix=/tmp/found/$target/
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-findings
+          path: /tmp/found/
+
+  examples:
+    name: examples build and run
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 ninja-build nlohmann-json3-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-13
+          -DCMAKE_CXX_STANDARD=20
+          -DCE_BUILD_EXAMPLES=ON
+          -DCE_WERROR=ON
+      - name: Build
+        run: cmake --build build
+      - name: Run them
+        run: ctest --test-dir build -L example --output-on-failure
+
+  interop:
+    name: interop with the Go and Java SDKs
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 cmake ninja-build nlohmann-json3-dev
+      # Verify only: the committed goldens must not move in a pull request. Both
+      # SDKs read the documents this one produced, and the job fails if either
+      # rejects one (SWR-SEC-0005).
+      - name: Verify both directions
+        run: CXX=g++-13 ./interop/run.sh verify
+      - name: The committed goldens are unchanged
+        run: git diff --exit-code test/fixtures/interop

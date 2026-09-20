@@ -1,0 +1,1 @@
+{"specversion":"1.0","id":"id-full","source":"https://example.test/interop/go","type":"com.example.full","subject":"the-subject","datacontenttype":"application/json","dataschema":"https://example.test/schema/1","time":"2026-09-20T12:34:56Z","data":{"count":3,"label":"go"}}

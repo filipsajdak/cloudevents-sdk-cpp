@@ -91,7 +91,6 @@ const boost::ut::suite<"core-error-type"> core_error_type = [] {
     static_assert(ce::to_string_view(ce::errc::invalid_base64) == "invalid_base64");
     static_assert(ce::to_string_view(ce::errc::invalid_utf8) == "invalid_utf8");
     static_assert(ce::to_string_view(ce::errc::not_a_cloudevent) == "not_a_cloudevent");
-    static_assert(ce::to_string_view(ce::errc::unsupported_field_type) == "unsupported_field_type");
     expect(true);
   };
 

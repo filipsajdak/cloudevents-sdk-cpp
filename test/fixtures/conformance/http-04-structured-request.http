@@ -1,0 +1,17 @@
+
+PUT /myresource HTTP/1.1
+Host: webhook.example.com
+Content-Type: application/cloudevents+json; charset=utf-8
+Content-Length: nnnn
+
+{
+    "specversion" : "1.0",
+    "type" : "com.example.someevent",
+
+    ... further attributes omitted ...
+
+    "data" : {
+        ... application data ...
+    }
+}
+

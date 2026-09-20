@@ -476,3 +476,151 @@ A member that IS present must match the declared type, and an integer that does
 not fit its declared field is `out_of_range` rather than a silent truncation:
 a wrapped value would make the decoded struct disagree with the document it
 came from.
+
+## D-SEC-1: `errc::unsupported_field_type` removed before the first tag
+
+The enumerator existed and nothing could produce it. Its only occurrence outside
+the enum was the case in `to_string_view`.
+
+`SWR-SEC-0003` requires a negative test per `errc` that presents input causing
+that error. For a code the SDK cannot emit, no such input exists, so the
+requirement was unsatisfiable rather than merely unmet.
+
+The condition it described - a described struct with a member type the SDK
+cannot map - is caught by `static_assert` in `describe.hpp` and `core.hpp`,
+which names the struct at the point of use. A compile-time diagnostic is
+strictly better here, so the runtime code was never written and the enumerator
+was vestigial.
+
+Removing it renumbers `invalid_argument` from 16 to 15, which
+`test/build_test.cpp` pins. `SWR-BUILD-0006` requires a new version namespace
+for a breaking change, so before `v0.1.0` is the only moment this is free.
+
+## D-SEC-2: The conformance fixtures are stored verbatim, placeholders and all
+
+`SWR-SEC-0004` requires every example from the core, JSON format and HTTP
+binding documents. Nineteen exist, and several are illustrations rather than
+wire bytes: `Content-Length: nnnn`, `... application data ...`,
+`...raw binary bytes...`, `"... base64 encoded string ..."`.
+
+They are stored as published, with no placeholders filled in. A fixture that had
+been repaired would no longer be the specification's example, which is the one
+thing it is for.
+
+`conformance_test.cpp` carries a table saying which are elided, and asserts that
+classification by scanning the bytes. A revision that replaces a placeholder
+with real content fails that assertion, which is the signal to give the fixture
+a real decode rather than leaving it on the weaker path unnoticed.
+
+`json-01` and `json-09` are elided only inside `data_base64`. They decode as far
+as that member and are then rejected with `invalid_base64`, which is the correct
+answer for the published bytes; the suite asserts that, and asserts the same
+documents decode once the placeholder is replaced with real base64.
+
+**The fixtures found a conformance bug.** `json-03` carries
+`"unsetextension": null`, and the decoder rejected it. JSON format section 2.2:
+*a null value encountered while decoding an attribute MUST be treated as the
+equivalent of unset or omitted*. The optional context attributes already did
+this; extensions did not. `SWR-JSON-0032` now states the rule. `data` is
+excluded, because the specification makes an explicit null payload distinct from
+an absent one.
+
+An existing test asserted the old behaviour, listing `null` beside an object and
+an array as a type mismatch. That test was wrong against the specification and
+was corrected rather than deleted.
+
+## D-INTEROP-1: The SDKs disagree about how to carry a non-JSON payload
+
+Given the same `text/plain` payload of the same bytes:
+
+| producer | representation |
+|---|---|
+| Go | JSON string under `data` |
+| this SDK | JSON string under `data` |
+| Java | `data_base64` |
+
+Both are permitted. The Java API was handed a `byte[]`, and its serializer maps
+bytes to the binary representation regardless of the content type.
+
+A consumer that assumes either one breaks against the other. `interop_test.cpp`
+therefore asserts that the payload **bytes** agree across producers rather than
+that the representation does, and pins the divergence in a test of its own so it
+is a known fact rather than a surprise during an upgrade.
+
+This is why `ce::data_t` is a variant a caller inspects, rather than an
+accessor that guesses from `datacontenttype`.
+
+## D-MODULE-1: What the module interface can and cannot do
+
+`cloudevents.cppm` compiles, links and is importable. `module_consumer.cpp`
+builds an event, parses a timestamp, round-trips a typed extension and calls
+base64 entirely through `import cloudevents;`. Two constraints were measured
+getting there, and both are properties of the toolchain rather than of the SDK.
+
+**The using-declarations must name `ce::v1`, not `ce`.** The public API lives in
+`namespace ce::inline v1`. Writing `export namespace ce { using ce::event; }`
+redeclares each name into the scope it already occupies and exports nothing; the
+consumer then reports that `ce` has not been declared, which points nowhere near
+the cause.
+
+**An importing translation unit may not include a standard header the module's
+global module fragment already absorbed.** Under GCC's `-fmodules-ts`, a
+consumer that does gets `redefinition of 'constexpr bool
+std::__is_constant_evaluated()'` and conflicting `pthread` declarations from
+inside libstdc++, naming nothing in the consumer. `module_consumer.cpp`
+therefore includes no standard header and uses member functions rather than the
+free comparison operators, which come from `<string>`.
+
+**`CE_DESCRIBE`'s hook has to be exported too.** It defines a function found by
+ADL, and a function declared in the global module fragment is not reachable from
+an importing translation unit unless exported. Without
+`using ce::v1::ext::ce_describe_fields;`, `described<ce::ext::tracing>` is false
+on the far side of the boundary and `get<>`/`set<>` do not resolve.
+
+This unevenness is the reason `SWR-BUILD-0010` keeps the module out of the
+default build, and the reason `CE_BUILD_MODULE` never switches itself on.
+
+## D-SEC-3: Coverage is measured on Linux, and gcovr is told which gcov to use
+
+`gcovr` defaults to `gcov`. On macOS that is Apple's, which cannot read GCC's
+`.gcda`, and it does not fail: it reports every header as **0 percent**. A
+coverage gate that reports zero and a coverage gate that reports nothing are
+equally useless, and the first looks like a result.
+
+`CE_GCOV_EXECUTABLE` therefore names the `gcov` matching the compiler, and the
+CI job passes `gcov-13`.
+
+Local macOS measurement stayed unreliable even so: with `gcov-16` named
+explicitly, `base64.hpp` reported 0 of 65 lines from a suite that calls it
+twenty-two times at run time. The coverage job runs on Linux, and that job is
+the measurement `SWR-SEC-0007` refers to.
+
+The floor is enforced by `gcovr --fail-under-line`, so it fails the build rather
+than printing a number. Measured on the first run of the coverage job: **95.9
+percent of lines** (1021 of 1065), 88.3 percent of functions, 60.5 percent of
+branches. The line floor of 90 is met.
+
+## D-SEC-4: The JSON parsers carry a nesting depth limit
+
+`fuzz_json_decode` reached a stack overflow after 2.37 million executions in
+CI. Deeply nested input, one small document, no memory safety violation
+anywhere: recursive descent with no limit simply runs out of stack.
+
+The shipped codec was never affected. Measured against a well-formed document
+nested 100,000 deep:
+
+| parser | before |
+|---|---|
+| `nlohmann_codec` | parses it; nlohmann is not recursive here |
+| `mini_codec` | stack overflow |
+| `examples/custom_codec` | same shape, same exposure |
+
+Both of those are demonstrations rather than shipped code - `mini_codec` is the
+second codec the format layer is tested against, and the example exists to be
+copied. That is precisely why the example needed fixing: a reader who takes it
+as a starting point inherits the defect into something that does ship.
+
+Both now refuse input nested beyond 100 levels with a `parse_error`, and the
+depth is restored by a guard object so an error path cannot leak it. The limit
+is a constant rather than an option: a caller who needs deeper nesting in a
+CloudEvent has a different problem.

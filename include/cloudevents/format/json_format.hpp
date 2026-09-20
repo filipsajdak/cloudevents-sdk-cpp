@@ -190,6 +190,13 @@ struct json_format {
       if (!extension_error || reserved_name(name)) {
         return;
       }
+      // JSON format section 2.2: an attribute encoded as null MUST be treated as
+      // unset. The optional context attributes already do this; an extension is
+      // no different, and the format specification's own example carries an
+      // "unsetextension": null member to demonstrate it.
+      if (Codec::kind_of(member) == json::kind::null) {
+        return;
+      }
       // An unknown member becomes an extension only if its name is one the spec
       // allows. Accepting others would let decode return an event that
       // validate() rejects, so the same document would decode and then fail to

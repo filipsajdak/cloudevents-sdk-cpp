@@ -33,8 +33,30 @@ if(TARGET ce::codec_nlohmann)
   target_compile_features(consumer_codec PRIVATE cxx_std_20)
 endif()
 
+# SWR-ADOPT-0001: all four targets exist in the installed package, with the
+# dependency direction the SPEC fixes. A missing or misnamed target fails at
+# configure time, which is earlier and clearer than a link error.
+foreach(expected ce::core ce::format_json ce::binding_http)
+  if(NOT TARGET ${expected})
+    message(FATAL_ERROR "consumer-target-graph: the installed package has no ${expected}")
+  endif()
+endforeach()
+
+add_executable(consumer_target_graph target_graph_main.cpp)
+target_link_libraries(consumer_target_graph
+  PRIVATE ce::core ce::format_json ce::binding_http)
+target_compile_features(consumer_target_graph PRIVATE cxx_std_20)
+
+# SWR-ADOPT-0002: ce::core alone, with nothing else on the link line. If core
+# ever grows a dependency, this is where it surfaces.
+add_executable(consumer_no_nlohmann no_nlohmann_main.cpp)
+target_link_libraries(consumer_no_nlohmann PRIVATE ce::core)
+target_compile_features(consumer_no_nlohmann PRIVATE cxx_std_20)
+
 enable_testing()
 add_test(NAME consumer-find-package COMMAND consumer_find_package)
+add_test(NAME consumer-target-graph COMMAND consumer_target_graph)
+add_test(NAME consumer-no-nlohmann COMMAND consumer_no_nlohmann)
 add_test(NAME consumer-fno-exceptions COMMAND consumer_fno_exceptions)
 if(TARGET consumer_codec)
   add_test(NAME consumer-codec-link COMMAND consumer_codec)

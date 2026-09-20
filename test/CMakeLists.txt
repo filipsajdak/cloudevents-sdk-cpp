@@ -16,6 +16,15 @@ ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
 
+ce_add_test(module_test SOURCES module_test.cpp)
+# CE_MODULE_IN_DEFAULT_BUILD carries the option's value rather than a constant,
+# so the assertion reads the real configuration: switching CE_BUILD_MODULE on
+# makes the test fail, which is what proves it is off by default.
+target_compile_definitions(module_test PRIVATE
+  "CE_MODULE_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/../include/cloudevents/cloudevents.cppm\""
+  "CE_INCLUDE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../include\""
+  "CE_MODULE_IN_DEFAULT_BUILD=$<BOOL:${CE_BUILD_MODULE}>")
+
 # These two name nlohmann_codec directly, and with CE_DEFAULT_CODEC=OFF the
 # nlohmann target does not exist. Registering them unconditionally would make the
 # no-default-codec preset fail to configure, which is the very build that proves
@@ -36,6 +45,25 @@ if(CE_DEFAULT_CODEC)
   ce_add_test(typed_payload_test
     SOURCES typed_payload_test.cpp no_nlohmann_probe.cpp
     LIBS ce::codec_nlohmann)
+  ce_add_test(roundtrip_test
+    SOURCES roundtrip_test.cpp
+    LIBS ce::codec_nlohmann)
+  ce_add_test(errors_test
+    SOURCES errors_test.cpp
+    LIBS ce::codec_nlohmann)
+  ce_add_test(conformance_test
+    SOURCES conformance_test.cpp
+    LIBS ce::codec_nlohmann)
+  # The fixtures are read from the source tree, not copied into the build tree:
+  # a stale copy would let the suite pass against bytes the repository no longer
+  # holds.
+  target_compile_definitions(conformance_test
+    PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conformance\"")
+  ce_add_test(interop_test
+    SOURCES interop_test.cpp
+    LIBS ce::codec_nlohmann)
+  target_compile_definitions(interop_test
+    PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 endif()
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
@@ -56,3 +84,42 @@ add_test(NAME warning-scope-probe-must-not-compile
 set_tests_properties(warning-scope-probe-must-not-compile PROPERTIES
   WILL_FAIL TRUE
   LABELS "guard")
+
+# --- build-level checks named by requirements ------------------------------
+#
+# These are targets rather than ut suites, because what they assert is a
+# property of the BUILD: that the whole suite runs clean under the sanitizers,
+# and that line coverage reaches the floor. check_references.py resolves a
+# verified_by that names this file by looking for the target name in it.
+
+# SWR-SEC-0002: the complete suite under ASan and UBSan, failing on any report.
+# The asan preset supplies -fsanitize=address,undefined together with
+# -fno-sanitize-recover=all, so a report aborts rather than being counted and
+# ignored. Running ctest through a target keeps the invocation in one place.
+add_custom_target(asan-ubsan-suite
+  COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+  COMMENT "Running the whole suite under AddressSanitizer and UndefinedBehaviorSanitizer")
+
+# SWR-SEC-0007: line coverage for core, format and binding, with the floor
+# enforced rather than reported. gcovr exits non-zero below it, so the target
+# fails the build instead of printing a number nobody reads.
+set(CE_COVERAGE_FLOOR 90 CACHE STRING "Minimum line coverage percent for the headers")
+# gcovr defaults to `gcov`, which on macOS is Apple's and cannot read GCC's
+# .gcda. It reports every header as 0 percent rather than failing, so the
+# executable is named explicitly and defaults to the one beside the compiler.
+set(CE_GCOV_EXECUTABLE "gcov" CACHE STRING "The gcov matching CMAKE_CXX_COMPILER")
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/coverage)
+add_custom_target(coverage-report
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage
+  COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+  COMMAND gcovr --root ${CMAKE_SOURCE_DIR}
+          --gcov-executable ${CE_GCOV_EXECUTABLE}
+          --filter ${CMAKE_SOURCE_DIR}/include/cloudevents/
+          --exclude ${CMAKE_SOURCE_DIR}/include/cloudevents/detail/expected_polyfill.hpp
+          --print-summary
+          --html-details ${CMAKE_BINARY_DIR}/coverage/index.html
+          --xml ${CMAKE_BINARY_DIR}/coverage/coverage.xml
+          --fail-under-line ${CE_COVERAGE_FLOOR}
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+  COMMENT "Measuring line coverage for the SDK headers, floor ${CE_COVERAGE_FLOOR} percent")

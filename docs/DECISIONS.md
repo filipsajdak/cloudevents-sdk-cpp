@@ -624,3 +624,28 @@ Both now refuse input nested beyond 100 levels with a `parse_error`, and the
 depth is restored by a guard object so an error path cannot leak it. The limit
 is a constant rather than an option: a caller who needs deeper nesting in a
 CloudEvent has a different problem.
+
+## D-ADOPT-1: nlohmann is looked up softly, so the package stays usable without it
+
+The package configuration called `find_dependency(nlohmann_json 3.12.0)` whenever
+the SDK had been built with the codec. `find_dependency` is a hard failure, so
+`find_package(cloudevents)` failed outright when nlohmann was absent - including
+for a consumer that wanted only `ce::core`, which depends on CTRE alone
+(SWR-ADOPT-0002).
+
+The defect was invisible everywhere it was looked for. On a machine with a system
+nlohmann, the lookup succeeds. On a runner without one, FetchContent stages a copy
+into the same prefix as the SDK, and the lookup succeeds against that. It appears
+only in the combination a distribution actually produces: built against the system
+copy, staging nothing, consumed by someone who does not have nlohmann.
+
+It surfaced while working the release checklist, on the item that says to consume
+the installed package "with the system copy of any dependency hidden". That step
+existed precisely to catch this, and it did, on its first honest run.
+
+The configuration now uses `find_package(... QUIET)` and reports `codec_nlohmann`
+as a component. A consumer that needs the codec asks for it by name and gets a
+failure that says which dependency is missing; a consumer that does not is
+unaffected. `SWR-ADOPT-0005` states the behaviour, and the install-and-consume job
+now reinstalls against a system nlohmann and consumes with it hidden, which is the
+only arrangement that can see the problem.

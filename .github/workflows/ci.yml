@@ -163,6 +163,48 @@ jobs:
           cmake --build build-consumer
           ctest --test-dir build-consumer --output-on-failure
 
+      # The case above cannot see a packaging defect this one can. With no system
+      # nlohmann on the runner, FetchContent stages a copy beside the SDK, so the
+      # consumer always finds one. A distro builds against the system copy, stages
+      # nothing, and its users may not have nlohmann at all.
+      #
+      # ce::core depends on CTRE alone (SWR-ADOPT-0002), so that consumer must
+      # still be able to use the package.
+      - name: Install nlohmann so the SDK builds against the system copy
+        run: sudo apt-get install -y nlohmann-json3-dev
+      - name: Re-install, staging no nlohmann of its own
+        run: |
+          rm -rf build stage-system
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage-system" -DCE_BUILD_TESTING=OFF
+          cmake --build build --target install
+          test ! -d stage-system/include/nlohmann \
+            || echo "note: nlohmann was staged after all; the check below is weaker"
+      - name: Consume it with nlohmann hidden
+        run: |
+          cmake -S test/consumer -B build-nonlohmann -G Ninja \
+            -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_PREFIX_PATH="$PWD/stage-system" \
+            -DCMAKE_IGNORE_PREFIX_PATH="/usr;/usr/local"
+          cmake --build build-nonlohmann
+          ctest --test-dir build-nonlohmann --output-on-failure
+      - name: Asking for the codec component without nlohmann fails cleanly
+        run: |
+          mkdir -p /tmp/component-probe
+          cat > /tmp/component-probe/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.25)
+          project(component_probe LANGUAGES CXX)
+          find_package(cloudevents REQUIRED COMPONENTS codec_nlohmann)
+          EOF
+          if cmake -S /tmp/component-probe -B /tmp/component-build \
+               -DCMAKE_PREFIX_PATH="$PWD/stage-system" \
+               -DCMAKE_IGNORE_PREFIX_PATH="/usr;/usr/local" > /tmp/probe.log 2>&1; then
+            echo "requesting codec_nlohmann without nlohmann should have failed"
+            exit 1
+          fi
+          grep -q "requires nlohmann_json" /tmp/probe.log || {
+            echo "the failure did not explain why; message was:"; cat /tmp/probe.log; exit 1; }
+          echo "failed with the expected explanation"
+
   reflection:
     # SPEC section 3 rule 6 wants early warning from a newer toolchain. GCC's
     # reflection is explicitly experimental and __cpp_impl_reflection tracks a

@@ -2,19 +2,46 @@
 
 include(CMakeFindDependencyMacro)
 
+# CTRE is the one hard dependency: ce::core names it and nothing else
+# (SWR-ADOPT-0002).
 find_dependency(ctre)
-if(@CE_DEFAULT_CODEC@)
-  find_dependency(nlohmann_json 3.12.0)
-endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/cloudeventsTargets.cmake")
 
-# The exported ce::codec_nlohmann deliberately carries no link to nlohmann, because
-# install(EXPORT) cannot export a dependency this project does not own. Re-attach it
-# here, where find_dependency has just supplied the imported target.
-if(@CE_DEFAULT_CODEC@ AND TARGET ce::codec_nlohmann AND TARGET nlohmann_json::nlohmann_json)
-  set_property(TARGET ce::codec_nlohmann APPEND
-    PROPERTY INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)
+# nlohmann is NOT a hard dependency of the package, even when the SDK was built
+# with the codec. find_dependency would make it one, and a consumer that wants
+# only ce::core - which depends on CTRE alone - would then be unable to use the
+# package at all.
+#
+# It is looked up softly instead, and only the codec component is reported
+# missing. A consumer that needs the codec asks for it:
+#
+#   find_package(cloudevents REQUIRED COMPONENTS codec_nlohmann)
+#
+# and gets a clear failure naming the component rather than a failure of the
+# whole package.
+set(cloudevents_codec_nlohmann_FOUND FALSE)
+
+if(@CE_DEFAULT_CODEC@)
+  find_package(nlohmann_json 3.12.0 QUIET)
+  if(nlohmann_json_FOUND AND TARGET ce::codec_nlohmann)
+    # The exported ce::codec_nlohmann deliberately carries no link to nlohmann,
+    # because install(EXPORT) cannot export a dependency this project does not
+    # own. Re-attach it here, where the imported target has just appeared.
+    set_property(TARGET ce::codec_nlohmann APPEND
+      PROPERTY INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)
+    set(cloudevents_codec_nlohmann_FOUND TRUE)
+  endif()
+endif()
+
+# check_required_components reports which component was missing but not why, and
+# "install nlohmann" is the whole of the answer here.
+if(NOT cloudevents_codec_nlohmann_FOUND
+   AND "codec_nlohmann" IN_LIST cloudevents_FIND_COMPONENTS)
+  set(cloudevents_NOT_FOUND_MESSAGE
+      "the codec_nlohmann component requires nlohmann_json 3.12.0 or newer, which \
+was not found. Install it, or use cloudevents without that component and supply \
+your own codec: ce::json::json_codec is a concept, not a class.")
 endif()
 
 check_required_components(cloudevents)

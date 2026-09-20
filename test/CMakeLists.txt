@@ -25,11 +25,11 @@ target_compile_definitions(module_test PRIVATE
   "CE_INCLUDE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../include\""
   "CE_MODULE_IN_DEFAULT_BUILD=$<BOOL:${CE_BUILD_MODULE}>")
 
-# These two name nlohmann_codec directly, and with CE_DEFAULT_CODEC=OFF the
+# These name nlohmann_codec directly, and without that codec in CE_CODECS the
 # nlohmann target does not exist. Registering them unconditionally would make the
 # no-default-codec preset fail to configure, which is the very build that proves
 # SWR-JSON-0030. base64_test above has no codec dependency, so it stays.
-if(CE_DEFAULT_CODEC)
+if(CE_CODEC_NLOHMANN)
   ce_add_test(json_codec_test
     SOURCES json_codec_test.cpp no_nlohmann_probe.cpp
     LIBS ce::codec_nlohmann)

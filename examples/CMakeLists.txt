@@ -18,7 +18,7 @@ endfunction()
 # whole point, and nothing here may include nlohmann.
 ce_add_example(custom_codec SOURCES custom_codec.cpp)
 
-if(CE_DEFAULT_CODEC)
+if(CE_CODEC_NLOHMANN)
   ce_add_example(produce SOURCES produce.cpp LIBS ce::codec_nlohmann)
   ce_add_example(consume SOURCES consume.cpp LIBS ce::codec_nlohmann)
   ce_add_example(described_payload

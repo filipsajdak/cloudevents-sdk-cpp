@@ -14,7 +14,25 @@ if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   set(CE_IS_TOP_LEVEL ON)
 endif()
 
-option(CE_DEFAULT_CODEC "Build the nlohmann/json codec target" ON)
+# The codecs to build, as a list. ce::format_json is codec-agnostic; this only
+# decides which ready-made codec targets exist.
+set(CE_CODECS "nlohmann" CACHE STRING
+    "Semicolon list of JSON codecs to build. Known: nlohmann")
+set_property(CACHE CE_CODECS PROPERTY STRINGS nlohmann)
+
+# CE_DEFAULT_CODEC predates CE_CODECS and is named by SWR-JSON-0030,
+# SWR-ADOPT-0002, SWR-ADOPT-0005, ADR-0004, the no-default-codec preset and a CI
+# job, so it keeps working exactly as it did. It SUBTRACTS: OFF removes nlohmann
+# from whatever list is in force. It does not add nlohmann back to a list that
+# did not ask for it - a user who wrote -DCE_CODECS=... said what they wanted,
+# and this option's ON is a default rather than a request.
+option(CE_DEFAULT_CODEC "Build the nlohmann/json codec (subtracts from CE_CODECS when OFF)" ON)
+if(NOT CE_DEFAULT_CODEC)
+  # A normal variable shadowing the cache entry, deliberately: writing the cache
+  # with FORCE would be a one-way door, and -DCE_DEFAULT_CODEC=ON in an existing
+  # build directory would then no longer bring nlohmann back.
+  list(REMOVE_ITEM CE_CODECS nlohmann)
+endif()
 cmake_dependent_option(CE_BUILD_TESTING "Build the test suite" ON "CE_IS_TOP_LEVEL" OFF)
 option(CE_BUILD_FUZZERS "Build the libFuzzer targets" OFF)
 option(CE_BUILD_EXAMPLES "Build the examples" OFF)
@@ -29,6 +47,7 @@ option(CE_WERROR "Treat warnings as errors" ${CE_IS_TOP_LEVEL})
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(CeWarnings)
+include(CeCodecs)
 include(CeDependencies)
 
 # ---------------------------------------------------------------------------
@@ -74,25 +93,14 @@ add_library(ce::binding_http ALIAS ce_binding_http)
 set_target_properties(ce_binding_http PROPERTIES EXPORT_NAME binding_http)
 target_link_libraries(ce_binding_http INTERFACE ce_core)
 
-# The only target permitted to see nlohmann. With CE_DEFAULT_CODEC=OFF it does not
-# exist at all, which is what makes SWR-ADOPT-0002 and SWR-JSON-0030 testable
-# rather than aspirational.
-if(CE_DEFAULT_CODEC)
-  add_library(ce_codec_nlohmann INTERFACE)
-  add_library(ce::codec_nlohmann ALIAS ce_codec_nlohmann)
-  set_target_properties(ce_codec_nlohmann PROPERTIES EXPORT_NAME codec_nlohmann)
-  # nlohmann is linked for the BUILD only. install(EXPORT) refuses a target that
-  # links something outside the export set, and FetchContent makes nlohmann a real
-  # target in our build tree rather than an imported one. Consumers get the link
-  # back from cloudeventsConfig.cmake, which find_dependency()s nlohmann and then
-  # re-attaches it.
-  #
-  # This never reproduced locally: Homebrew supplies nlohmann, so find_package wins
-  # and produces an IMPORTED target, which install(EXPORT) accepts. Only a machine
-  # without nlohmann installed takes the FetchContent path and sees the error.
-  target_link_libraries(ce_codec_nlohmann INTERFACE
-    ce_format_json
-    $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>)
+# The only target permitted to see nlohmann. With that codec absent from
+# CE_CODECS it does not exist at all, which is what makes SWR-ADOPT-0002 and
+# SWR-JSON-0030 testable rather than aspirational.
+#
+# The BUILD_INTERFACE wrapper and the reason for it now live in ce_add_codec,
+# so every codec inherits the arrangement instead of rediscovering it.
+if(CE_CODEC_NLOHMANN)
+  ce_add_codec(nlohmann DEPENDS nlohmann_json::nlohmann_json)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -147,10 +155,8 @@ endif()
 # ---------------------------------------------------------------------------
 include(CMakePackageConfigHelpers)
 
-set(CE_INSTALL_TARGETS ce_core ce_format_json ce_binding_http)
-if(CE_DEFAULT_CODEC)
-  list(APPEND CE_INSTALL_TARGETS ce_codec_nlohmann)
-endif()
+ce_codec_targets(CE_CODEC_TARGET_LIST)
+set(CE_INSTALL_TARGETS ce_core ce_format_json ce_binding_http ${CE_CODEC_TARGET_LIST})
 
 install(TARGETS ${CE_INSTALL_TARGETS} EXPORT cloudeventsTargets)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

@@ -469,9 +469,10 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             sudo apt-get update
-            sudo apt-get install -y g++-14 ninja-build nlohmann-json3-dev rapidjson-dev
+            sudo apt-get install -y g++-14 ninja-build nlohmann-json3-dev rapidjson-dev \
+              libboost-json-dev
           else
-            brew install ninja nlohmann-json rapidjson
+            brew install ninja nlohmann-json rapidjson boost
           fi
       # Every paired suite runs over every enabled codec, so this is the job that
       # exercises the new ones at all - the floor matrix builds the default list.
@@ -480,10 +481,48 @@ jobs:
           cmake -S . -B build -G Ninja
           -DCMAKE_CXX_STANDARD=${{ matrix.std }}
           -DCMAKE_CXX_STANDARD_REQUIRED=ON
-          -DCE_CODECS="nlohmann;rapidjson"
+          -DCE_CODECS="nlohmann;rapidjson;boost_json"
           -DCE_WERROR=ON
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
+
+  only-boost-json:
+    # The mirror of only-rapidjson: Boost.JSON installed and nothing else.
+    name: boost_json alone, no other JSON library installed
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y g++-14 ninja-build libboost-json-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CXX_STANDARD=20
+          -DCE_CODECS=boost_json -DCE_WERROR=ON
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+
+  boost-json-needs-exceptions:
+    # Boost requires the PROGRAM to define boost::throw_exception under
+    # -fno-exceptions, which is an application's policy and not this SDK's to
+    # choose. The combination is refused, and this asserts the refusal rather
+    # than trusting a comment.
+    name: boost_json refuses -fno-exceptions
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y g++-14 ninja-build libboost-json-dev
+      - name: Configuring it must fail, naming the option
+        run: |
+          if cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++-14 \
+               -DCE_CODECS=boost_json -DCMAKE_CXX_FLAGS=-fno-exceptions > /tmp/cfg.log 2>&1; then
+            echo "boost_json configured with -fno-exceptions; it should not have"
+            exit 1
+          fi
+          grep -q "boost::throw_exception" /tmp/cfg.log || {
+            echo "the refusal did not say why; message was:"; cat /tmp/cfg.log; exit 1; }
+          echo "refused with the expected explanation"
 
   only-rapidjson:
     # Installs RapidJSON and NOT nlohmann, which catches a codec header that

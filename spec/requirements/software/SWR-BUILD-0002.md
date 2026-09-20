@@ -14,8 +14,12 @@ derived_from: [SYS-BUILD-0001]
 satisfied_by: [code:include/cloudevents/detail/config.hpp]
 verified_by: [test:test/config_test.cpp::config-gating-single-header]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
 The header `include/cloudevents/detail/config.hpp` shall be the only header
 containing a feature-test preprocessor conditional, apart from the describe
-backend headers.
+backend headers and `result.hpp`. Where a codec header must refuse a combination
+its third-party library cannot serve, it may carry a conditional whose block
+contains nothing but `#error`: a block that only refuses selects no
+implementation, and config.hpp cannot restate the requirements of every optional
+codec.

@@ -783,3 +783,60 @@ follow the rules D-JSON-3 wrote into the concept.
 names another codec's library. It strips comments first: `rapidjson.hpp` explains
 how nlohmann's DOM differs, and saying so is the point of the comment rather than
 a dependency.
+
+## D-CODEC-2: Boost.JSON ships, needs exceptions, and is never vendored
+
+Boost.JSON is the third shipped codec: the benchmark measured it fastest on the
+64 KiB document and it is the closest fit to the concept, since a
+`boost::json::value` is self-contained and an object member is addressable.
+
+Three things had to be decided rather than copied.
+
+**`get_*`, never `as_*`.** Boost.JSON's `as_object()`, `as_array()` and the
+scalar `as_*` accessors throw; the `get_*` forms assert. The SDK supports
+`-fno-exceptions`, so the codec uses `get_*` throughout. The prototype used
+`as_object()`/`as_array()` in `set`/`push` while already using `get_*` on the
+read paths - and the difference is invisible in any build that has exceptions,
+which is every build that had run it.
+
+**It cannot be built without exceptions at all, and the refusal is deliberate.**
+Measured: `<boost/json.hpp>` *compiles* under `-fno-exceptions`, so the answer is
+not the simple one. It fails at link, on
+`boost::throw_exception(std::exception const&, boost::source_location const&)` -
+a function Boost requires the **program** to define once `BOOST_NO_EXCEPTIONS` is
+inferred. That function decides what happens when Boost reports an error:
+terminate, abort, longjmp. It is an application's policy, and defining it inside
+an SDK would make that choice for every consumer silently.
+
+So the codec refuses the combination, in the header with an `#error` and at
+configure time with a message naming the option. A CI job asserts the refusal.
+
+**No FetchContent fallback.** Boost.JSON is a compiled library, unlike every
+other dependency here. An INTERFACE target cannot supply the translation unit it
+needs; asking each consumer to add one, in exactly one TU per shared object, is
+an ODR trap; standalone header-only mode was removed upstream in 1.81; and the
+Boost superproject is gigabytes. A request that cannot be honoured fails at
+configure time naming the package to install.
+
+A related constraint worth knowing: because it is compiled, the consumer's
+compiler and standard library must match the ones Boost was built with. On macOS
+a Homebrew Boost is built against libc++, so a GCC/libstdc++ build compiles the
+header and then fails to link on mangling differences. That is an ABI mismatch,
+not a defect, and the header says so.
+
+## D-BUILD-1: A codec header may carry a conditional that only refuses
+
+`SWR-BUILD-0002` keeps capability gating in `detail/config.hpp`, because gating
+spread across headers makes the supported matrix unreadable. The Boost.JSON
+refusal is an `#if` in a codec header, and `config-gating-single-header` caught
+it immediately - the rule working as intended.
+
+The rule is now stated more precisely rather than widened. A codec header may
+carry a conditional whose block contains **nothing but `#error`**. Such a block
+selects no implementation, so there is no second path to read, and config.hpp
+cannot restate the requirements of every optional codec without knowing about
+each one.
+
+The test enforces exactly that distinction: a block containing code, or an
+`#else`, still fails. Both were checked by introducing them and watching the
+suite catch each.

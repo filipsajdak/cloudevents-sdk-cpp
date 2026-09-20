@@ -10,7 +10,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/cloudeventsTargets.cmake")
 
 # The codecs this package was built with. Empty is legal and supported.
 set(_ce_shipped_codecs "@CE_CODECS@")
-set(_ce_known_codecs nlohmann rapidjson)
+set(_ce_known_codecs nlohmann rapidjson boost_json)
 foreach(_ce_codec IN LISTS _ce_known_codecs)
   set(cloudevents_codec_${_ce_codec}_FOUND FALSE)
 endforeach()
@@ -55,6 +55,16 @@ if("rapidjson" IN_LIST _ce_shipped_codecs)
     set_property(TARGET ce::codec_rapidjson APPEND
       PROPERTY INTERFACE_LINK_LIBRARIES ce_dep::rapidjson)
     set(cloudevents_codec_rapidjson_FOUND TRUE)
+  endif()
+endif()
+
+if("boost_json" IN_LIST _ce_shipped_codecs)
+  set(_ce_why_boost_json "Boost @CE_BOOST_MINIMUM@ or newer with the compiled Boost.JSON library")
+  find_package(Boost @CE_BOOST_MINIMUM@ QUIET COMPONENTS json)
+  if(TARGET Boost::json AND TARGET ce::codec_boost_json)
+    set_property(TARGET ce::codec_boost_json APPEND
+      PROPERTY INTERFACE_LINK_LIBRARIES Boost::json)
+    set(cloudevents_codec_boost_json_FOUND TRUE)
   endif()
 endif()
 

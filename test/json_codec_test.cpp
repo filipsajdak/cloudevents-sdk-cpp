@@ -808,9 +808,10 @@ const boost::ut::suite<"codec-headers-are-mutually-isolated"> codec_isolation = 
   };
 
   // library token -> the one codec header allowed to name it
-  const std::array<std::pair<std::string_view, std::string_view>, 2> libraries{{
+  const std::array<std::pair<std::string_view, std::string_view>, 3> libraries{{
       {"nlohmann", "nlohmann.hpp"},
       {"rapidjson", "rapidjson.hpp"},
+      {"boost", "boost_json.hpp"},
   }};
 
   const std::filesystem::path codec_dir{std::string{CE_INCLUDE_DIR} + "/cloudevents/codec"};

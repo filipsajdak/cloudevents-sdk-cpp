@@ -61,6 +61,51 @@ if(CE_CODEC_RAPIDJSON)
   # SYSTEM so RapidJSON's own warnings are not ours: the project builds with
   # -Wconversion -Wold-style-cast -Werror and RapidJSON does not.
   target_include_directories(ce_dep_rapidjson SYSTEM INTERFACE ${CE_RAPIDJSON_INCLUDE_DIR})
+  # SYSTEM is not enough on its own. GenericMemberIterator derives from
+  # std::iterator, deprecated in C++17, and the diagnostic fires when the
+  # template is INSTANTIATED from our code - an instantiation context that
+  # -isystem does not cover, so Clang reports it and CE_WERROR stops the build.
+  # GCC happens not to, which is why this only appeared on the second compiler.
+  #
+  # RapidJSON's own escape hatch: the member iterator becomes a plain pointer
+  # and std::iterator is never named. Nothing in the codec depends on the
+  # iterator being a class.
+  target_compile_definitions(ce_dep_rapidjson INTERFACE RAPIDJSON_NOMEMBERITERATORCLASS)
+endif()
+
+if(CE_CODEC_BOOST_JSON)
+  # Boost.JSON is a COMPILED library, unlike every other dependency here, so
+  # there is no FetchContent fallback:
+  #
+  #   - an INTERFACE target cannot supply the translation unit it needs, and
+  #     asking every consumer to add one - in exactly one TU per shared object -
+  #     is an ODR trap rather than a convenience;
+  #   - standalone (header-only) mode was removed upstream in 1.81;
+  #   - the Boost superproject is gigabytes and pulls its whole dependency
+  #     closure into this build.
+  #
+  # A request we cannot honour should fail at configure time naming the package
+  # to install, rather than half-working.
+  # Boost requires the program to define boost::throw_exception under
+  # -fno-exceptions, which is an application's policy and not this SDK's to
+  # choose. codec/boost_json.hpp refuses that combination with an #error; saying
+  # so here as well means the failure names the option rather than arriving as a
+  # compile error deep inside a test.
+  if(CMAKE_CXX_FLAGS MATCHES "-fno-exceptions")
+    message(FATAL_ERROR
+      "ce: CE_CODECS asks for boost_json in a build with -fno-exceptions. Boost "
+      "then requires the program to define boost::throw_exception, which is an "
+      "application policy decision this SDK will not make for you. Drop "
+      "boost_json from CE_CODECS, or build with exceptions.")
+  endif()
+
+  find_package(Boost ${CE_BOOST_MINIMUM} QUIET COMPONENTS json)
+  if(NOT TARGET Boost::json)
+    message(FATAL_ERROR
+      "ce: CE_CODECS asks for boost_json, which needs Boost ${CE_BOOST_MINIMUM} or newer with "
+      "the compiled Boost.JSON library (libboost-json-dev on Debian, 'brew install boost' on "
+      "macOS). There is no bundled copy; see docs/DECISIONS.md.")
+  endif()
 endif()
 
 if(CE_BUILD_TESTING)

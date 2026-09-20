@@ -81,6 +81,7 @@ Four targets, and the dependency direction only goes downward:
 | `ce::binding_http` | the HTTP protocol binding | `ce::core` |
 | `ce::codec_nlohmann` | the nlohmann codec, the default | `ce::core`, nlohmann |
 | `ce::codec_rapidjson` | the RapidJSON codec, opt in with `-DCE_CODECS=` | `ce::core`, RapidJSON |
+| `ce::codec_boost_json` | the Boost.JSON codec, opt in; needs exceptions | `ce::core`, Boost.JSON |
 
 `ce::core` depends on no third-party library except CTRE, and a test in
 `test/consumer/` is built against the installed package to keep it that way.

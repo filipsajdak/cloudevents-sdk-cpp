@@ -70,9 +70,14 @@ void dump_into(const value& v, std::string& out) {
   }
 }
 
+// Deeply nested input must not exhaust the stack: a recursive-descent parser
+// with no limit turns one small document into a crash.
+constexpr int max_parse_depth = 100;
+
 struct reader {
   std::string_view text;
   std::size_t pos = 0;
+  int depth = 0;
 
   void skip_space() {
     while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\n' || text[pos] == '\r' ||
@@ -178,6 +183,16 @@ auto parse_number(reader& in) -> ce::result<value> {
 }
 
 auto parse_value(reader& in) -> ce::result<value> {
+  if (in.depth >= max_parse_depth) {
+    return ce::fail(ce::errc::parse_error, "JSON nested beyond the depth limit");
+  }
+  struct guard {
+    reader& in;
+    explicit guard(reader& r) : in{r} { ++in.depth; }
+    ~guard() { --in.depth; }
+    guard(const guard&) = delete;
+    auto operator=(const guard&) -> guard& = delete;
+  } depth{in};
   in.skip_space();
   if (in.done()) {
     return ce::fail(ce::errc::parse_error, "unexpected end of input");

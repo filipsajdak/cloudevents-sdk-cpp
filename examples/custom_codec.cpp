@@ -18,33 +18,31 @@
 
 namespace demo {
 
-/// A deliberately small JSON value: enough to satisfy `ce::json::json_codec`.
+/// The codec is a set of statics over its own DOM. It holds no state, which is
+/// why the SDK takes it as a template parameter rather than as an argument.
 ///
-/// `std::vector` may hold an incomplete type; `std::pair` may not, so an object
-/// member needs a forward-declared struct rather than a pair. libstdc++ 14
-/// static_asserts on the pair; several other standard libraries accept it
-/// silently, which is a good reason not to rely on them.
-struct entry;
-
-struct value {
-  ce::json::kind tag = ce::json::kind::null;
-  bool boolean = false;
-  std::int64_t integer = 0;
-  double number = 0.0;
-  std::string text{};
-  std::vector<value> elements{};
-  std::vector<entry> members{};
-};
-
-struct entry {
-  std::string key;
-  value item;
-};
-
-/// The codec is a set of statics. It holds no state, which is why the SDK takes
-/// it as a template parameter rather than as an argument.
+/// `value` and `entry` are nested deliberately. `std::vector` may hold an
+/// incomplete type, but an in-class initializer on `std::vector<entry>` at
+/// namespace scope instantiates the vector's destructor while `entry` is still
+/// incomplete, which libstdc++ 14 rejects. Inside a class, member declarations
+/// are completed at the closing brace, by which point `entry` is defined.
 struct codec {
-  using value = demo::value;
+  struct entry;
+
+  struct value {
+    ce::json::kind tag = ce::json::kind::null;
+    bool boolean = false;
+    std::int64_t integer = 0;
+    double number = 0.0;
+    std::string text{};
+    std::vector<value> elements{};
+    std::vector<entry> members{};
+  };
+
+  struct entry {
+    std::string key;
+    value item;
+  };
 
   static auto make_null() -> value { return value{}; }
   static auto make_bool(bool v) -> value {
@@ -133,6 +131,8 @@ struct codec {
   static auto dump(const value& v) -> std::string;
   static auto parse(std::string_view text) -> ce::result<value>;
 };
+
+using value = codec::value;
 
 }  // namespace demo
 

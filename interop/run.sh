@@ -41,16 +41,18 @@ else
 fi
 
 echo "==> Go: generating goldens and reading the C++ documents"
-docker run --rm -v "$root:/w" -e GOFLAGS=-mod=mod golang:1.22 \
-  sh -c "cd /w/interop/go && go mod tidy >/dev/null 2>&1; \
-         cd /w/interop/go && go run . '$go_out' /w/test/fixtures/interop/cpp"
+docker run --rm -v "$root:/w" -w /w/interop/go -e GOFLAGS=-mod=mod golang:1.22 \
+  sh -ec 'cd /w/interop/go
+          test -f go.mod || { echo "go.mod is not where run.sh expects it"; ls -la; exit 1; }
+          go mod tidy >/dev/null 2>&1 || true
+          exec go run . "$1" /w/test/fixtures/interop/cpp' sh "$go_out"
 
 echo "==> Java: generating goldens and reading the C++ documents"
-docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" \
+docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/java \
   maven:3.9-eclipse-temurin-17 \
-  sh -c "cd /w/interop/java && mvn -q -B compile \
-         org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
-         -Dexec.args='$java_out /w/test/fixtures/interop/cpp'"
+  sh -ec 'cd /w/interop/java
+          exec mvn -q -B compile org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
+               -Dexec.args="$1 /w/test/fixtures/interop/cpp"' sh "$java_out"
 
 if [ "$mode" = "verify" ]; then
   rm -rf "$root/build/interop-verify"

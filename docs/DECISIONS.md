@@ -598,3 +598,28 @@ the measurement `SWR-SEC-0007` refers to.
 The floor is enforced by `gcovr --fail-under-line`, so it fails the build rather
 than printing a number. It has not yet been demonstrated to be met; the first
 run of the coverage job is what establishes that.
+
+## D-SEC-4: The JSON parsers carry a nesting depth limit
+
+`fuzz_json_decode` reached a stack overflow after 2.37 million executions in
+CI. Deeply nested input, one small document, no memory safety violation
+anywhere: recursive descent with no limit simply runs out of stack.
+
+The shipped codec was never affected. Measured against a well-formed document
+nested 100,000 deep:
+
+| parser | before |
+|---|---|
+| `nlohmann_codec` | parses it; nlohmann is not recursive here |
+| `mini_codec` | stack overflow |
+| `examples/custom_codec` | same shape, same exposure |
+
+Both of those are demonstrations rather than shipped code - `mini_codec` is the
+second codec the format layer is tested against, and the example exists to be
+copied. That is precisely why the example needed fixing: a reader who takes it
+as a starting point inherits the defect into something that does ship.
+
+Both now refuse input nested beyond 100 levels with a `parse_error`, and the
+depth is restored by a guard object so an error path cannot leak it. The limit
+is a constant rather than an option: a caller who needs deeper nesting in a
+CloudEvent has a different problem.

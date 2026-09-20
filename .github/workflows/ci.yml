@@ -190,19 +190,24 @@ jobs:
       - name: Asking for the codec component without nlohmann fails cleanly
         run: |
           mkdir -p /tmp/component-probe
-          cat > /tmp/component-probe/CMakeLists.txt <<'EOF'
-          cmake_minimum_required(VERSION 3.25)
-          project(component_probe LANGUAGES CXX)
-          find_package(cloudevents REQUIRED COMPONENTS codec_nlohmann)
-          EOF
+          # printf, not a heredoc: an indented terminator is not recognised
+          # without <<-, and YAML wants the block indented.
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.25)' \
+            'project(component_probe LANGUAGES CXX)' \
+            'find_package(cloudevents REQUIRED COMPONENTS codec_nlohmann)' \
+            > /tmp/component-probe/CMakeLists.txt
           if cmake -S /tmp/component-probe -B /tmp/component-build \
                -DCMAKE_PREFIX_PATH="$PWD/stage-system" \
                -DCMAKE_IGNORE_PREFIX_PATH="/usr;/usr/local" > /tmp/probe.log 2>&1; then
             echo "requesting codec_nlohmann without nlohmann should have failed"
             exit 1
           fi
-          grep -q "requires nlohmann_json" /tmp/probe.log || {
-            echo "the failure did not explain why; message was:"; cat /tmp/probe.log; exit 1; }
+          if ! grep -q "requires nlohmann_json" /tmp/probe.log; then
+            echo "the failure did not explain why; message was:"
+            cat /tmp/probe.log
+            exit 1
+          fi
           echo "failed with the expected explanation"
 
   reflection:

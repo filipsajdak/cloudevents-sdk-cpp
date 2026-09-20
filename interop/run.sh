@@ -28,22 +28,33 @@ if [ "$mode" != "verify" ]; then
   "$build/produce" "$fixtures/cpp"
 fi
 
-go_out="$fixtures/go"
-java_out="$fixtures/java"
+# Container-side paths only. Verify mode writes inside the repository rather
+# than to a temporary directory, because only the repository is mounted; the
+# scratch output is removed afterwards and never committed.
 if [ "$mode" = "verify" ]; then
-  go_out="$(mktemp -d)/go"
-  java_out="$(mktemp -d)/java"
+  go_out=/w/build/interop-verify/go
+  java_out=/w/build/interop-verify/java
+  mkdir -p "$root/build/interop-verify/go" "$root/build/interop-verify/java"
+else
+  go_out=/w/test/fixtures/interop/go
+  java_out=/w/test/fixtures/interop/java
 fi
 
 echo "==> Go: generating goldens and reading the C++ documents"
-docker run --rm -v "$root:/w" -w /w/interop/go -e GOFLAGS=-mod=mod golang:1.22 \
-  sh -c "go mod tidy >/dev/null 2>&1; go run . '${go_out/#$root//w}' /w/test/fixtures/interop/cpp"
+docker run --rm -v "$root:/w" -e GOFLAGS=-mod=mod golang:1.22 \
+  sh -c "cd /w/interop/go && go mod tidy >/dev/null 2>&1; \
+         cd /w/interop/go && go run . '$go_out' /w/test/fixtures/interop/cpp"
 
 echo "==> Java: generating goldens and reading the C++ documents"
-docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/java \
+docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" \
   maven:3.9-eclipse-temurin-17 \
-  mvn -q -B compile org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
-    -Dexec.args="${java_out/#$root//w} /w/test/fixtures/interop/cpp"
+  sh -c "cd /w/interop/java && mvn -q -B compile \
+         org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
+         -Dexec.args='$java_out /w/test/fixtures/interop/cpp'"
+
+if [ "$mode" = "verify" ]; then
+  rm -rf "$root/build/interop-verify"
+fi
 
 echo
 echo "both SDKs accepted every document this SDK produced"

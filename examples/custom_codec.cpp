@@ -19,6 +19,13 @@
 namespace demo {
 
 /// A deliberately small JSON value: enough to satisfy `ce::json::json_codec`.
+///
+/// `std::vector` may hold an incomplete type; `std::pair` may not, so an object
+/// member needs a forward-declared struct rather than a pair. libstdc++ 14
+/// static_asserts on the pair; several other standard libraries accept it
+/// silently, which is a good reason not to rely on them.
+struct entry;
+
 struct value {
   ce::json::kind tag = ce::json::kind::null;
   bool boolean = false;
@@ -26,7 +33,12 @@ struct value {
   double number = 0.0;
   std::string text{};
   std::vector<value> elements{};
-  std::vector<std::pair<std::string, value>> members{};
+  std::vector<entry> members{};
+};
+
+struct entry {
+  std::string key;
+  value item;
 };
 
 /// The codec is a set of statics. It holds no state, which is why the SDK takes
@@ -57,7 +69,7 @@ struct codec {
         return;
       }
     }
-    object.members.emplace_back(std::string{key}, std::move(member));
+    object.members.push_back(entry{.key = std::string{key}, .item = std::move(member)});
   }
   static void push(value& array, value element) { array.elements.push_back(std::move(element)); }
 

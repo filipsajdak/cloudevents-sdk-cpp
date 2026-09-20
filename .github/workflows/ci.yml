@@ -294,7 +294,7 @@ jobs:
             esac
             echo "::group::$target"
             mkdir -p "/tmp/found/$target"
-            ./build/fuzz/fuzz/$target "/tmp/found/$target" "fuzz/corpus/$seeds" \
+            ./build/fuzz/$target "/tmp/found/$target" "fuzz/corpus/$seeds" \
               -max_total_time=600 -timeout=25 -rss_limit_mb=4096 \
               -print_final_stats=1 -artifact_prefix=/tmp/found/$target/
             echo "::endgroup::"

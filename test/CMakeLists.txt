@@ -109,7 +109,9 @@ set(CE_COVERAGE_FLOOR 90 CACHE STRING "Minimum line coverage percent for the hea
 # .gcda. It reports every header as 0 percent rather than failing, so the
 # executable is named explicitly and defaults to the one beside the compiler.
 set(CE_GCOV_EXECUTABLE "gcov" CACHE STRING "The gcov matching CMAKE_CXX_COMPILER")
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/coverage)
 add_custom_target(coverage-report
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
   COMMAND gcovr --root ${CMAKE_SOURCE_DIR}
           --gcov-executable ${CE_GCOV_EXECUTABLE}

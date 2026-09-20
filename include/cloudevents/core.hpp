@@ -146,8 +146,11 @@ inline constexpr std::string_view reserved_names[] = {
   return false;
 }
 
-/// \brief True when a media type denotes JSON: `*/json` or `*/*+json`,
-/// case-insensitively, parameters allowed.
+/// \brief True when a media type denotes JSON: any type whose subtype is `json`
+/// or ends in `+json`, case-insensitively, with parameters allowed.
+///
+/// The subtype is spelled out rather than shown as a wildcard pattern, because
+/// the pattern contains the two characters that end a C comment.
 [[nodiscard]] constexpr auto is_json_content_type(std::string_view content_type) noexcept -> bool {
   const auto match = ctre::match<detail::content_type_pattern>(content_type);
   if (!match) {

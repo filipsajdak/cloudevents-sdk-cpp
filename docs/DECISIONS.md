@@ -811,6 +811,18 @@ an SDK would make that choice for every consumer silently.
 So the codec refuses the combination, in the header with an `#error` and at
 configure time with a message naming the option. A CI job asserts the refusal.
 
+**Parentheses, never braces.** `boost::json::value` has an `initializer_list`
+constructor for arrays. On Boost 1.83 - the version Ubuntu 24.04 ships -
+`value{nullptr}` and `value{true}` select it and produce a one-element **array**;
+on Boost 1.92 the same spelling resolves to the scalar constructors. So the codec
+passed every local test and failed on CI, and the failure was
+`kind_of(make_null()) != null`.
+
+This is the Glaze trap from the benchmark, in a second library:
+`glz::generic_json{std::string{...}}` also compiled and yielded an array. Braces
+invite an `initializer_list` overload; parentheses cannot select one. Every value
+constructor in this codec uses parentheses, and the header says why.
+
 **No FetchContent fallback.** Boost.JSON is a compiled library, unlike every
 other dependency here. An INTERFACE target cannot supply the translation unit it
 needs; asking each consumer to add one, in exactly one TU per shared object, is

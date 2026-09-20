@@ -60,22 +60,30 @@ struct boost_json_codec {
   /// \brief The DOM node the format layer passes around.
   using value = boost::json::value;
 
-  /// \brief A JSON null.
-  [[nodiscard]] static auto make_null() -> value { return value{nullptr}; }
+  /// \par Parentheses, not braces
+/// Every value below is constructed with PARENTHESES. `boost::json::value` has
+/// an `initializer_list` constructor for arrays, and on Boost 1.83 - the version
+/// Ubuntu 24.04 ships - `value{nullptr}` and `value{true}` select it, producing
+/// a one-element ARRAY. Boost 1.92 resolves the same spelling to the scalar
+/// constructors, so the defect is invisible on a newer Boost and the tests pass
+/// there. Parentheses cannot select an initializer_list constructor at all.
+
+/// \brief A JSON null.
+  [[nodiscard]] static auto make_null() -> value { return value(nullptr); }
   /// \brief A JSON boolean.
-  [[nodiscard]] static auto make_bool(bool held) -> value { return value{held}; }
+  [[nodiscard]] static auto make_bool(bool held) -> value { return value(held); }
   /// \brief A JSON integer.
-  [[nodiscard]] static auto make_int(std::int64_t held) -> value { return value{held}; }
+  [[nodiscard]] static auto make_int(std::int64_t held) -> value { return value(held); }
   /// \brief A JSON real.
-  [[nodiscard]] static auto make_double(double held) -> value { return value{held}; }
+  [[nodiscard]] static auto make_double(double held) -> value { return value(held); }
   /// \brief A JSON string, copying the text.
   [[nodiscard]] static auto make_string(std::string_view held) -> value {
-    return value{boost::json::string{held}};
+    return value(boost::json::string(held));
   }
   /// \brief An empty JSON array.
-  [[nodiscard]] static auto make_array() -> value { return value{boost::json::array{}}; }
+  [[nodiscard]] static auto make_array() -> value { return value(boost::json::array()); }
   /// \brief An empty JSON object.
-  [[nodiscard]] static auto make_object() -> value { return value{boost::json::object{}}; }
+  [[nodiscard]] static auto make_object() -> value { return value(boost::json::object()); }
 
   /// \brief Insert or replace a member. The object must be one.
   static void set(value& object, std::string_view key, value member) {

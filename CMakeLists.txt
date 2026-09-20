@@ -22,6 +22,9 @@ option(CE_BUILD_EXAMPLES "Build the examples" OFF)
 # across the toolchains SPEC section 8 names is uneven, and a module target that
 # switched itself on would break the floor configuration (SWR-BUILD-0010).
 option(CE_BUILD_MODULE "Build the optional cloudevents.cppm module interface" OFF)
+# The JSON codec comparison. Off by default: it needs four third-party JSON
+# libraries that are not dependencies of the SDK.
+option(CE_BUILD_BENCHMARKS "Build the JSON codec benchmark" OFF)
 option(CE_WERROR "Treat warnings as errors" ${CE_IS_TOP_LEVEL})
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
@@ -99,6 +102,10 @@ endif()
 
 if(CE_BUILD_EXAMPLES)
   add_subdirectory(examples)
+endif()
+
+if(CE_BUILD_BENCHMARKS)
+  add_subdirectory(bench)
 endif()
 
 if(CE_BUILD_MODULE)

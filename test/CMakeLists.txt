@@ -16,6 +16,14 @@ ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
 
+ce_add_test(module_test SOURCES module_test.cpp)
+# CE_MODULE_IN_DEFAULT_BUILD carries the option's value rather than a constant,
+# so the assertion reads the real configuration: switching CE_BUILD_MODULE on
+# makes the test fail, which is what proves it is off by default.
+target_compile_definitions(module_test PRIVATE
+  "CE_MODULE_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/../include/cloudevents/cloudevents.cppm\""
+  "CE_INCLUDE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../include\""
+  "CE_MODULE_IN_DEFAULT_BUILD=$<BOOL:${CE_BUILD_MODULE}>")
 
 # These two name nlohmann_codec directly, and with CE_DEFAULT_CODEC=OFF the
 # nlohmann target does not exist. Registering them unconditionally would make the

@@ -77,3 +77,6 @@ Testing/
 
 # Local spec-gate virtualenv
 .venv/
+
+# Doxygen output
+docs/doxygen/

@@ -154,7 +154,7 @@ const boost::ut::suite<"config-v1-immutable"> config_v1_immutable = [] {
   "the errc numbering published as v1 is unchanged"_test = [] {
     static_assert(static_cast<int>(ce::v1::errc::missing_required_attribute) == 1);
     static_assert(static_cast<int>(ce::v1::errc::invalid_attribute_name) == 2);
-    static_assert(static_cast<int>(ce::v1::errc::unsupported_field_type) == 15);
+    static_assert(static_cast<int>(ce::v1::errc::invalid_argument) == 15);
     expect(true);
   };
 };

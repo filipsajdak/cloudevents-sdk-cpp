@@ -119,25 +119,56 @@ auto parse_string_body(reader& in) -> ce::result<std::string> {
       case 'b': out.push_back('\b'); break;
       case 'f': out.push_back('\f'); break;
       case 'u': {
-        if (in.pos + 4 > in.text.size()) {
-          return ce::fail(ce::errc::parse_error, "truncated \\u escape");
-        }
+        auto read_four = [&in](unsigned& value) -> bool {
+          if (in.pos + 4 > in.text.size()) { return false; }
+          value = 0;
+          for (int i = 0; i < 4; ++i) {
+            const char digit = in.text[in.pos++];
+            value <<= 4U;
+            if (digit >= '0' && digit <= '9') { value |= static_cast<unsigned>(digit - '0'); }
+            else if (digit >= 'a' && digit <= 'f') { value |= static_cast<unsigned>(digit - 'a' + 10); }
+            else if (digit >= 'A' && digit <= 'F') { value |= static_cast<unsigned>(digit - 'A' + 10); }
+            else { return false; }
+          }
+          return true;
+        };
+
         unsigned code = 0;
-        for (int i = 0; i < 4; ++i) {
-          const char digit = in.text[in.pos++];
-          code <<= 4U;
-          if (digit >= '0' && digit <= '9') { code |= static_cast<unsigned>(digit - '0'); }
-          else if (digit >= 'a' && digit <= 'f') { code |= static_cast<unsigned>(digit - 'a' + 10); }
-          else if (digit >= 'A' && digit <= 'F') { code |= static_cast<unsigned>(digit - 'A' + 10); }
-          else { return ce::fail(ce::errc::parse_error, "bad \\u escape"); }
+        if (!read_four(code)) {
+          return ce::fail(ce::errc::parse_error, "bad \\u escape");
         }
+
+        // A character outside the BMP arrives as a surrogate PAIR, and the Java
+        // CloudEvents SDK writes one for every emoji. Encoding each half on its
+        // own produces CESU-8, which is not valid UTF-8 - and the HTTP binding
+        // rejects it, so the corruption surfaces far from its cause.
+        if (code >= 0xD800 && code <= 0xDBFF) {
+          if (in.pos + 6 > in.text.size() || in.text[in.pos] != '\\' ||
+              in.text[in.pos + 1] != 'u') {
+            return ce::fail(ce::errc::parse_error, "high surrogate with no low surrogate");
+          }
+          in.pos += 2;
+          unsigned low = 0;
+          if (!read_four(low) || low < 0xDC00 || low > 0xDFFF) {
+            return ce::fail(ce::errc::parse_error, "high surrogate not followed by a low one");
+          }
+          code = 0x10000U + ((code - 0xD800U) << 10U) + (low - 0xDC00U);
+        } else if (code >= 0xDC00 && code <= 0xDFFF) {
+          return ce::fail(ce::errc::parse_error, "low surrogate with no high surrogate");
+        }
+
         if (code < 0x80) {
           out.push_back(static_cast<char>(code));
         } else if (code < 0x800) {
           out.push_back(static_cast<char>(0xC0U | (code >> 6U)));
           out.push_back(static_cast<char>(0x80U | (code & 0x3FU)));
-        } else {
+        } else if (code < 0x10000) {
           out.push_back(static_cast<char>(0xE0U | (code >> 12U)));
+          out.push_back(static_cast<char>(0x80U | ((code >> 6U) & 0x3FU)));
+          out.push_back(static_cast<char>(0x80U | (code & 0x3FU)));
+        } else {
+          out.push_back(static_cast<char>(0xF0U | (code >> 18U)));
+          out.push_back(static_cast<char>(0x80U | ((code >> 12U) & 0x3FU)));
           out.push_back(static_cast<char>(0x80U | ((code >> 6U) & 0x3FU)));
           out.push_back(static_cast<char>(0x80U | (code & 0x3FU)));
         }

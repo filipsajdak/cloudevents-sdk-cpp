@@ -79,6 +79,55 @@ public final class Generate {
             .withData(BytesCloudEventData.wrap(new byte[] {0x00, 0x01, 0x02, (byte) 0xFF}))
             .build());
 
+    // --- edge cases: where SDKs are most likely to disagree -----------------
+
+    write(outDir, "time_nanoseconds",
+        CloudEventBuilder.v1()
+            .withId("id-nanos")
+            .withSource(URI.create("/interop/java"))
+            .withType("com.example.nanos")
+            .withTime(OffsetDateTime.parse("2026-09-20T12:34:56.123456789+02:00"))
+            .build());
+
+    write(outDir, "extension_types",
+        CloudEventBuilder.v1()
+            .withId("id-types")
+            .withSource(URI.create("/interop/java"))
+            .withType("com.example.types")
+            .withExtension("astring", "text")
+            .withExtension("aninteger", 42)
+            .withExtension("aboolean", true)
+            .withExtension("negative", -7)
+            .withExtension("zero", 0)
+            .build());
+
+    write(outDir, "unicode",
+        CloudEventBuilder.v1()
+            .withId("id-unicode-\u00e9\u6587")
+            .withSource(URI.create("/interop/java/%C3%A9v%C3%A9nement"))
+            .withType("com.example.unicode")
+            .withSubject("\u65e5\u672c\u8a9e \uD83D\uDE00")
+            .withDataContentType("application/json")
+            .withData("{\"text\":\"\u00e9\u6587 \uD83D\uDE00\"}"
+                .getBytes(StandardCharsets.UTF_8))
+            .build());
+
+    write(outDir, "data_array",
+        CloudEventBuilder.v1()
+            .withId("id-scalar")
+            .withSource(URI.create("/interop/java"))
+            .withType("com.example.scalar")
+            .withDataContentType("application/json")
+            .withData("[1,2,3]".getBytes(StandardCharsets.UTF_8))
+            .build());
+
+    write(outDir, "minimal_relative",
+        CloudEventBuilder.v1()
+            .withId("id-relative")
+            .withSource(URI.create("/"))
+            .withType("t")
+            .build());
+
     // --- the other direction: what the C++ SDK produced must decode here ----
     File[] entries = ourDir.toFile().listFiles((d, name) -> name.endsWith(".json"));
     if (entries == null || entries.length == 0) {
@@ -88,6 +137,22 @@ public final class Generate {
     int checked = 0;
     for (File entry : entries) {
       byte[] raw = Files.readAllBytes(entry.toPath());
+      // A batch is an array of events, not an event.
+      if (entry.getName().equals("batch.json")) {
+        try {
+          io.cloudevents.core.data.BytesCloudEventData.wrap(raw);
+          java.util.List<CloudEvent> events = new com.fasterxml.jackson.databind.ObjectMapper()
+              .registerModule(io.cloudevents.jackson.JsonFormat.getCloudEventJacksonModule())
+              .readValue(raw,
+                  new com.fasterxml.jackson.core.type.TypeReference<java.util.List<CloudEvent>>() {});
+          System.out.println("java accepted batch.json (" + events.size() + " events)");
+          checked++;
+        } catch (Exception failure) {
+          System.err.println("FAIL batch.json: " + failure);
+          System.exit(1);
+        }
+        continue;
+      }
       try {
         CloudEvent decoded = FORMAT.deserialize(raw);
         System.out.println(

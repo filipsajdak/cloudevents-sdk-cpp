@@ -572,6 +572,84 @@ const boost::ut::suite<"mini-codec-number-parsing-never-throws"> mini_codec_numb
   };
 };
 
+// A character outside the BMP is written as a surrogate PAIR, and the Java
+// CloudEvents SDK writes one for every emoji. Both in-tree codecs got this
+// wrong until the interop corpus carried a Java document with one.
+const boost::ut::suite<"codecs-decode-surrogate-pairs"> surrogate_pairs = [] {
+  using namespace boost::ut;
+
+  // Built at run time: a compiler may reinterpret an escape in a source
+  // literal, which hid this for one whole debugging round.
+  const auto escaped = [](std::string_view hex) {
+    std::string out;
+    out += static_cast<char>(92);
+    out += 'u';
+    out += hex;
+    return out;
+  };
+
+  "a surrogate pair becomes one code point"_test = [&escaped] {
+    const std::string document =
+        "{\"s\":\"" + escaped("D83D") + escaped("DE00") + "\"}";
+
+    for (auto parsed : {mini_codec::parse(document)}) {
+      expect(parsed.has_value());
+      if (!parsed) {
+        continue;
+      }
+      const auto* member = mini_codec::find(*parsed, "s");
+      expect(member != nullptr);
+      if (member == nullptr) {
+        continue;
+      }
+      auto text = mini_codec::as_string(*member);
+      expect(text.has_value());
+      if (text) {
+        // Named as BYTES, not as a character literal. This test is about the
+        // byte sequence, and a universal-character-name is the thing a
+        // compiler may reinterpret - which is what hid the defect twice. MSVC
+        // additionally cannot represent this one in its default code page.
+        const std::string expected{"\xF0\x9F\x98\x80"};
+        expect(text->size() == 4_ul) << "expected 4 bytes, got " << text->size();
+        expect(std::string{*text} == expected);
+      }
+    }
+  };
+
+  "both codecs agree with each other"_test = [&escaped] {
+    const std::string document =
+        "{\"s\":\"" + escaped("D83D") + escaped("DE00") + escaped("00E9") + "\"}";
+
+    auto a = nlohmann_codec::parse(document);
+    auto b = mini_codec::parse(document);
+    expect(a.has_value());
+    expect(b.has_value());
+    if (!a || !b) {
+      return;
+    }
+    auto left = nlohmann_codec::as_string(*nlohmann_codec::find(*a, "s"));
+    auto right = mini_codec::as_string(*mini_codec::find(*b, "s"));
+    expect(left.has_value());
+    expect(right.has_value());
+    if (left && right) {
+      expect(std::string{*left} == std::string{*right});
+    }
+  };
+
+  "a lone surrogate is refused rather than encoded"_test = [&escaped] {
+    // Encoding one on its own is how CESU-8 gets produced, and the result is
+    // not valid UTF-8.
+    for (const auto hex : {"D83D"sv, "DE00"sv}) {
+      const std::string document = "{\"s\":\"" + escaped(hex) + "\"}";
+      auto parsed = mini_codec::parse(document);
+      expect(!parsed.has_value()) << "should reject a lone " << hex;
+      if (!parsed) {
+        expect(parsed.error().code == ce::errc::parse_error);
+      }
+    }
+  };
+};
+
 }  // namespace
 
 int main() {}

@@ -36,6 +36,13 @@ include(CeDependencies)
 # core never sees them. CMake enforces it here, so a stray include in the core
 # fails to configure rather than surviving on convention (SWR-ADOPT-0001).
 
+# MSVC decodes a source file using the system code page unless told otherwise,
+# so what a string literal means would depend on the runner's locale. The
+# sources are UTF-8; say so, and keep the execution character set UTF-8 too.
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 add_library(ce_core INTERFACE)
 add_library(ce::core ALIAS ce_core)
 # EXPORT_NAME is not cosmetic. install(EXPORT ... NAMESPACE ce::) prepends the

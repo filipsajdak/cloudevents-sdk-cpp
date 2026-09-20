@@ -1,0 +1,1 @@
+{"specversion":"1.0","id":"id-unicode-é文","source":"/interop/java/%C3%A9v%C3%A9nement","type":"com.example.unicode","datacontenttype":"application/json","subject":"日本語 \uD83D\uDE00","data":{"text":"é文 😀"}}

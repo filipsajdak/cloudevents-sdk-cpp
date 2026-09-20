@@ -171,6 +171,33 @@ struct reader {
 
 auto parse_value(reader& input) -> ce::result<mini_codec::value>;
 
+inline auto hex_value(char character) noexcept -> int {
+  if (character >= '0' && character <= '9') return character - '0';
+  if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+  if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+  return -1;
+}
+
+/// \brief Append one code point as UTF-8.
+/// \brief Append one code point as UTF-8.
+inline void append_utf8(std::uint32_t code, std::string& out) {
+  if (code < 0x80) {
+    out.push_back(static_cast<char>(code));
+  } else if (code < 0x800) {
+    out.push_back(static_cast<char>(0xC0U | (code >> 6U)));
+    out.push_back(static_cast<char>(0x80U | (code & 0x3FU)));
+  } else if (code < 0x10000) {
+    out.push_back(static_cast<char>(0xE0U | (code >> 12U)));
+    out.push_back(static_cast<char>(0x80U | ((code >> 6U) & 0x3FU)));
+    out.push_back(static_cast<char>(0x80U | (code & 0x3FU)));
+  } else {
+    out.push_back(static_cast<char>(0xF0U | (code >> 18U)));
+    out.push_back(static_cast<char>(0x80U | ((code >> 12U) & 0x3FU)));
+    out.push_back(static_cast<char>(0x80U | ((code >> 6U) & 0x3FU)));
+    out.push_back(static_cast<char>(0x80U | (code & 0x3FU)));
+  }
+}
+
 inline auto parse_string_body(reader& input) -> ce::result<std::string> {
   if (input.peek() != '"') {
     return ce::fail(ce::errc::parse_error, "expected a string");
@@ -214,13 +241,33 @@ inline auto parse_string_body(reader& input) -> ce::result<std::string> {
               return ce::fail(ce::errc::parse_error, "bad hex in \\u escape");
             }
           }
-          // Enough for the ASCII the conformance corpus uses; this codec exists to
-          // exercise the concept, not to be a general JSON implementation.
-          if (code < 0x80) {
-            out.push_back(static_cast<char>(code));
-          } else {
-            out.push_back('?');
+          // A character outside the BMP arrives as a surrogate PAIR, and the
+          // Java SDK writes one for every emoji. Encoding each half on its own
+          // produces CESU-8, which is not valid UTF-8; substituting a character
+          // loses the data silently. Both were wrong here, and the interop
+          // corpus is what found it.
+          if (code >= 0xD800 && code <= 0xDBFF) {
+            if (input.pos + 6 > input.text.size() || input.text[input.pos] != '\\' ||
+                input.text[input.pos + 1] != 'u') {
+              return ce::fail(ce::errc::parse_error, "high surrogate with no low surrogate");
+            }
+            input.pos += 2;
+            std::uint32_t low = 0;
+            for (int i = 0; i < 4; ++i) {
+              const int digit = hex_value(input.text[input.pos++]);
+              if (digit < 0) {
+                return ce::fail(ce::errc::parse_error, "bad hex in \\u escape");
+              }
+              low = (low * 16) + static_cast<std::uint32_t>(digit);
+            }
+            if (low < 0xDC00 || low > 0xDFFF) {
+              return ce::fail(ce::errc::parse_error, "high surrogate not followed by a low one");
+            }
+            code = 0x10000U + ((code - 0xD800U) << 10U) + (low - 0xDC00U);
+          } else if (code >= 0xDC00 && code <= 0xDFFF) {
+            return ce::fail(ce::errc::parse_error, "low surrogate with no high surrogate");
           }
+          append_utf8(code, out);
           break;
         }
         default: return ce::fail(ce::errc::parse_error, "unknown escape");

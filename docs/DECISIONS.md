@@ -649,3 +649,71 @@ failure that says which dependency is missing; a consumer that does not is
 unaffected. `SWR-ADOPT-0005` states the behaviour, and the install-and-consume job
 now reinstalls against a system nlohmann and consumes with it hidden, which is the
 only arrangement that can see the problem.
+
+## D-INTEROP-2: Both in-tree codecs mishandled a surrogate pair
+
+A character outside the Basic Multilingual Plane is written in JSON as a
+surrogate PAIR of `\uXXXX` escapes, and the Java CloudEvents SDK writes one for
+every emoji. Given `😀`:
+
+| codec | produced | |
+|---|---|---|
+| `mini_codec` | `3F 3F` | two question marks, silent loss |
+| `examples/custom_codec` | `ED A0 BD ED B8 80` | CESU-8, not valid UTF-8 |
+| `nlohmann_codec` | `F0 9F 98 80` | correct |
+
+`mini_codec` said so in a comment - "enough for the ASCII the conformance corpus
+uses" - which was true until the interop corpus carried a Java document with an
+emoji in the subject. The example said nothing, and it is the one people copy.
+
+The CESU-8 case is the worse of the two. It is not a corrupted character that a
+reader would notice; it is a byte sequence the HTTP binding's own
+`is_valid_utf8` rejects, because encoded surrogates are exactly what that check
+exists to refuse. The failure would surface on an unrelated request, far from
+the codec that caused it.
+
+Both now combine the pair into one code point, and refuse a lone surrogate
+rather than encoding it. `codecs-decode-surrogate-pairs` covers it.
+
+**A note on how this hid.** The first two attempts to reproduce it in a test
+appeared to show both codecs working, because the escape was written in a C++
+source literal and the compiler reinterpreted it before the codec ever saw it.
+The regression test builds the escape at run time from a backslash and the
+characters `u`, `D`, `8`, `3`, `D`, for that reason.
+
+## D-INTEROP-3: Timestamp equality is textual, and that is visible across SDKs
+
+`ce::timestamp` stores the instant, the offset, how the offset was written and
+the number of fractional digits, and compares all four. That is what
+`SWR-CORE-0009` requires: re-emitting a received event must not alter a `time`
+value a peer may have signed or compared as text.
+
+The consequence appears the moment two SDKs describe the same moment
+differently. Given `2026-09-20T12:34:56.123456789+02:00`:
+
+| producer | emits |
+|---|---|
+| Go | `2026-09-20T10:34:56.123456789Z` |
+| Java | `2026-09-20T12:34:56.123456789+02:00` |
+| this SDK | `2026-09-20T12:34:56.123456789+02:00` |
+
+Go marshals a `time.Time`, which carries no offset. The instants are identical.
+`operator==` reports the timestamps unequal, and therefore the events unequal,
+where Go and Java would both say the times match.
+
+A caller comparing events across producers has to compare `time->utc`. That
+member is public and documented as "the instant, normalised to UTC", so the
+capability is there, but nothing names it. Whether to add a `same_instant`
+helper is an API decision and is recorded as open rather than taken here.
+
+## D-INTEROP-4: This SDK does not escape a non-ASCII source; Go and Java do
+
+Given a source containing `événement`, Go and Java both emit
+`%C3%A9v%C3%A9nement`, because each holds the value in a URI type that escapes
+on serialization. This SDK emits the characters as given, because SPEC 5.1
+checks `source` for non-emptiness only and the SDK does not parse URIs.
+
+All three accept both spellings, so this is not an interoperability failure.
+It is a difference a producer should know about: a value that must be a strict
+RFC 3986 URI-reference has to be escaped before it is handed over, because
+nothing downstream will do it.

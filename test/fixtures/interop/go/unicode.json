@@ -1,0 +1,1 @@
+{"specversion":"1.0","id":"id-unicode-é文","source":"/interop/go/%C3%A9v%C3%A9nement","type":"com.example.unicode","subject":"日本語 😀","datacontenttype":"application/json","data":{"text":"é文 😀"}}

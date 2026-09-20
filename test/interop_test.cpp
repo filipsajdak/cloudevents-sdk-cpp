@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <chrono>
 #include <variant>
 #include <vector>
 
@@ -75,8 +76,14 @@ constexpr std::array producers{"go"sv, "java"sv, "cpp"sv};
   }
   return {};
 }
-constexpr std::array documents{"minimal"sv, "full"sv, "extensions"sv, "text_data"sv,
-                               "binary_data"sv};
+constexpr std::array documents{
+    "minimal"sv,          "full"sv,            "extensions"sv,      "text_data"sv,
+    "binary_data"sv,      "time_nanoseconds"sv, "extension_types"sv, "unicode"sv,
+    "data_array"sv,       "minimal_relative"sv,
+};
+
+/// Only the Go and C++ generators emit a batch; the Java SDK reads ours.
+constexpr std::array batch_producers{"go"sv, "cpp"sv};
 
 template <class C>
 void check_goldens_decode(std::string_view label) {
@@ -139,7 +146,15 @@ void check_cross_sdk_agreement(std::string_view label) {
       expect(decoded[i].id == decoded[0].id) << label << ": " << name << " id";
       expect(decoded[i].type == decoded[0].type) << label << ": " << name << " type";
       expect(bool{decoded[i].subject == decoded[0].subject}) << label << ": " << name << " subject";
-      expect(bool{decoded[i].time == decoded[0].time}) << label << ": " << name << " time";
+      // The INSTANT, not the text. Go normalises an offset to UTC while Java
+      // and this SDK keep it, so the same moment has two spellings and the
+      // default comparison would report a disagreement that is not one.
+      expect(decoded[i].time.has_value() == decoded[0].time.has_value())
+          << label << ": " << name << " time presence";
+      if (decoded[i].time && decoded[0].time) {
+        expect(bool{decoded[i].time->utc == decoded[0].time->utc})
+            << label << ": " << name << " time instant";
+      }
       expect(bool{decoded[i].dataschema == decoded[0].dataschema})
           << label << ": " << name << " dataschema";
       expect(bool{decoded[i].datacontenttype == decoded[0].datacontenttype})
@@ -255,19 +270,57 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
         }
       }
     }
-    expect(present == 15_ul) << "expected 15 golden documents, found " << present;
+    expect(present == 30_ul) << "expected 30 golden documents, found " << present;
   };
 
   "the producers really did produce different documents"_test = [] {
-    // If the Go and Java goldens were copies of ours, agreement would be
-    // vacuous. Each names its own source, so the bytes must differ.
+    // If the goldens were copies of ours, agreement would be vacuous. Every
+    // document names its own producer in the source, so ours must differ from
+    // both of theirs.
     for (const auto name : documents) {
       const std::string go = read_golden("go", name);
       const std::string java = read_golden("java", name);
       const std::string cpp = read_golden("cpp", name);
       expect(go != cpp) << name << ": the Go golden is byte-identical to ours";
       expect(java != cpp) << name << ": the Java golden is byte-identical to ours";
-      expect(go != java) << name << ": the Go and Java goldens are byte-identical";
+    }
+
+    // Go and Java differ on nearly everything, but not on all of it, so the
+    // check is on the corpus rather than on each document.
+    std::size_t differing = 0;
+    for (const auto name : documents) {
+      if (read_golden("go", name) != read_golden("java", name)) {
+        ++differing;
+      }
+    }
+    expect(differing >= documents.size() - 1)
+        << "the Go and Java goldens agree too often to be independent";
+  };
+
+  "three SDKs emit the same bytes for a minimal event, bar key order"_test = [] {
+    // minimal_relative carries only the four required attributes and a source
+    // that names no producer, so there is nothing left to disagree about.
+    //
+    // Go and Java are byte-identical. Ours differs only in key order - the
+    // nlohmann codec keeps an object sorted, and JSON does not order members.
+    const std::string go = read_golden("go", "minimal_relative");
+    const std::string java = read_golden("java", "minimal_relative");
+    const std::string cpp = read_golden("cpp", "minimal_relative");
+
+    expect(go == java) << "Go and Java stopped agreeing on the minimal document";
+    expect(cpp != go) << "ours now matches theirs byte for byte, which is new";
+
+    // And all three decode to the same event, which is the part that matters.
+    using format = ce::json_format<nlohmann_codec>;
+    auto a = format::decode(go);
+    auto b = format::decode(java);
+    auto c = format::decode(cpp);
+    expect(a.has_value());
+    expect(b.has_value());
+    expect(c.has_value());
+    if (a && b && c) {
+      expect(bool{*a == *b});
+      expect(bool{*a == *c});
     }
   };
 
@@ -297,6 +350,92 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
   };
   "payload bytes agree mini_codec"_test = [] {
     check_payload_bytes_agree<mini_codec>("mini_codec");
+  };
+
+  "every producer's batch decodes here"_test = [] {
+    using format = ce::json_format<nlohmann_codec>;
+    for (const auto sdk : batch_producers) {
+      const std::string golden = read_golden(sdk, "batch");
+      expect(!golden.empty()) << sdk << ": batch is missing";
+      auto events = format::decode_batch(golden);
+      expect(events.has_value()) << sdk << ": batch did not decode";
+      if (events) {
+        expect(events->size() == 3_ul) << sdk << ": expected 3 events";
+        for (const auto& subject : *events) {
+          expect(subject.validate().has_value()) << sdk;
+        }
+      }
+    }
+  };
+
+  "the SDKs disagree about the offset in a timestamp"_test = [] {
+    using format = ce::json_format<nlohmann_codec>;
+
+    // All three were given 2026-09-20T12:34:56.123456789+02:00. Go marshals a
+    // time.Time, which carries no offset, so it emits the UTC spelling. Java
+    // and this SDK keep what they were given.
+    //
+    // The instant is identical, and that is what interoperability means here.
+    // But ce::timestamp compares its TEXT, because SWR-CORE-0009 requires a
+    // byte-for-byte round trip - re-emitting an event must not alter a value a
+    // peer may have signed. The consequence is that the same moment from two
+    // producers is not operator==, and a consumer comparing events across SDKs
+    // has to compare .utc.
+    auto from_go = format::decode(read_golden("go", "time_nanoseconds"));
+    auto from_java = format::decode(read_golden("java", "time_nanoseconds"));
+    auto from_cpp = format::decode(read_golden("cpp", "time_nanoseconds"));
+    expect(from_go.has_value());
+    expect(from_java.has_value());
+    expect(from_cpp.has_value());
+    if (!from_go || !from_java || !from_cpp) {
+      return;
+    }
+    expect(from_go->time.has_value());
+    expect(from_java->time.has_value());
+    if (!from_go->time || !from_java->time || !from_cpp->time) {
+      return;
+    }
+
+    expect(bool{from_go->time->utc == from_java->time->utc}) << "the instants must agree";
+    expect(bool{from_cpp->time->utc == from_java->time->utc}) << "the instants must agree";
+
+    // Go dropped the offset; Java and this SDK kept it.
+    expect(from_go->time->offset == std::chrono::minutes{0});
+    expect(from_java->time->offset == std::chrono::minutes{120});
+    expect(from_cpp->time->offset == std::chrono::minutes{120});
+
+    // Nanosecond precision survives everywhere.
+    expect(from_go->time->fractional_digits == 9_u);
+    expect(from_java->time->fractional_digits == 9_u);
+
+    // And the pinned consequence: same instant, not equal.
+    expect(!(*from_go->time == *from_java->time))
+        << "timestamp equality is textual; if this changes, say so in the release notes";
+  };
+
+  "non-ASCII in a source is written differently and read the same"_test = [] {
+    using format = ce::json_format<nlohmann_codec>;
+
+    // Go and Java percent-encode a non-ASCII source, because each holds it in a
+    // URI type. This SDK carries the text it was given, because SPEC 5.1 checks
+    // source for non-emptiness only and does not parse URIs.
+    //
+    // Both forms are accepted by all three, which is what matters. A producer
+    // that needs RFC 3986 escaping has to do it before handing the value over.
+    auto from_go = format::decode(read_golden("go", "unicode"));
+    auto from_cpp = format::decode(read_golden("cpp", "unicode"));
+    expect(from_go.has_value());
+    expect(from_cpp.has_value());
+    if (!from_go || !from_cpp) {
+      return;
+    }
+    expect(from_go->source.view().find('%') != std::string_view::npos)
+        << "Go stopped percent-encoding the source";
+    expect(from_cpp->source.view().find('%') == std::string_view::npos)
+        << "this SDK started escaping the source";
+
+    // The subject is not a URI, so every producer carries it verbatim.
+    expect(bool{from_go->subject == from_cpp->subject});
   };
 
   "the SDKs disagree about how to carry a non-JSON payload"_test = [] {

@@ -33,6 +33,36 @@ if(CE_CODEC_NLOHMANN)
   endif()
 endif()
 
+if(CE_CODEC_RAPIDJSON)
+  # Found by header, never by find_package(RapidJSON). The config module
+  # RapidJSON installs reports the include directory of the tree it was
+  # CONFIGURED in, which on any other machine is a path that does not exist, and
+  # it defines no imported target at all.
+  find_path(CE_RAPIDJSON_INCLUDE_DIR rapidjson/document.h)
+  if(NOT CE_RAPIDJSON_INCLUDE_DIR)
+    # SOURCE_SUBDIR names a directory with no CMakeLists.txt deliberately:
+    # RapidJSON is header-only, and configuring its own build would add its
+    # tests, docs and install rules to this tree.
+    #
+    # A master commit rather than the v1.1.0 tag: that tag is from 2016, trips
+    # -Wclass-memaccess on any current GCC, and predates the Parse(ptr, len)
+    # overload this codec needs for a string_view that is not null-terminated.
+    FetchContent_Declare(rapidjson
+      GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
+      GIT_TAG 24b5e7a8b27f42fa16b96fc70aade9106cf7102f
+      GIT_SHALLOW FALSE
+      SOURCE_SUBDIR ce-does-not-configure-rapidjson)
+    FetchContent_MakeAvailable(rapidjson)
+    set(CE_RAPIDJSON_INCLUDE_DIR "${rapidjson_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+  endif()
+
+  add_library(ce_dep_rapidjson INTERFACE)
+  add_library(ce_dep::rapidjson ALIAS ce_dep_rapidjson)
+  # SYSTEM so RapidJSON's own warnings are not ours: the project builds with
+  # -Wconversion -Wold-style-cast -Werror and RapidJSON does not.
+  target_include_directories(ce_dep_rapidjson SYSTEM INTERFACE ${CE_RAPIDJSON_INCLUDE_DIR})
+endif()
+
 if(CE_BUILD_TESTING)
   find_package(ut QUIET)
   if(NOT ut_FOUND)

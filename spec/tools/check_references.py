@@ -136,7 +136,16 @@ def check_forward(reqs, ut_index) -> tuple[list[str], list[str]]:
                 warnings.append(f"{rel}: verified_by '{ref}' path does not exist yet")
                 continue
             # A CMake file names a build-level check rather than a ut suite.
+            # The name still has to exist: skipping the check outright let a
+            # requirement point at a target nobody had written, and the gate
+            # reported nothing.
             if path.endswith("CMakeLists.txt"):
+                text = (REPO_ROOT / path).read_text(encoding="utf-8")
+                if name not in text:
+                    errors.append(
+                        f"{rel}: verified_by '{ref}' names nothing in {path}. "
+                        f"A build-level check must appear there by that exact name."
+                    )
                 continue
             known = ut_index.get(path, set())
             if known and name not in known:

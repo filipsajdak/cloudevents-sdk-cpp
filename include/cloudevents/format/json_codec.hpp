@@ -38,6 +38,25 @@ struct element_probe {
 ///
 /// `as_int` is separate from `as_double` because the CloudEvents `Integer` type is
 /// 32-bit signed, and `1.0` must not satisfy it.
+///
+/// Three rules the in-tree codecs disagreed about until they were written down:
+///
+/// `kind_of` reports `kind::integer` when the JSON text carried no fractional
+/// part and no exponent, whatever the magnitude. A value too large for
+/// `std::int64_t` is still an integer; refusing it is `as_int`'s job, and
+/// reporting it as `floating` would make the format layer diagnose it as a
+/// fractional extension value, which is a different and wrong complaint.
+///
+/// `as_int` returns `errc::out_of_range` for an integer it cannot represent. Not
+/// `type_mismatch`: the value is an integer, and one that merely exceeds the
+/// 32-bit `Integer` type already reports `out_of_range`. A codec may instead
+/// refuse such a document at `parse`, which is equally conformant - what is
+/// forbidden is returning a value that is not the one on the wire.
+///
+/// `size_of` is the element count of an array or the member count of an object.
+/// It is not defined for any other kind, and `json_format` never calls it on one.
+/// The shipped nlohmann codec returns 1 for a scalar where others return 0; do
+/// not depend on either.
 template <class C>
 concept json_codec = requires(typename C::value value, const typename C::value& const_value,
                               std::string_view text, std::int64_t integer, double number,

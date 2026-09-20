@@ -6,6 +6,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -648,6 +650,113 @@ const boost::ut::suite<"codecs-decode-surrogate-pairs"> surrogate_pairs = [] {
       }
     }
   };
+};
+
+/// \brief An integer a codec cannot represent must never become a value.
+///
+/// A codec may refuse the document at parse or refuse it at as_int; both are
+/// conformant. Returning a number that is not the one on the wire is not.
+template <class C>
+void check_integer_range(std::string_view label) {
+  using namespace boost::ut;
+
+  // 2^63 reinterprets as INT64_MIN; 2^64-1 reinterprets as -1, which is inside
+  // the CloudEvents Integer range and so is NOT caught by the format layer's
+  // own bounds check. That second one is the case that corrupted silently.
+  for (const auto document : {R"({"n":9223372036854775808})"sv,
+                              R"({"n":18446744073709551615})"sv}) {
+    auto parsed = C::parse(document);
+    if (!parsed) {
+      expect(parsed.error().code == ce::errc::parse_error) << label << ": " << document;
+      continue;
+    }
+    const auto* member = C::find(*parsed, "n");
+    expect(member != nullptr) << label << ": " << document;
+    if (member == nullptr) {
+      continue;
+    }
+    // It is an integer, whatever its magnitude.
+    expect(C::kind_of(*member) == ce::json::kind::integer) << label << ": " << document;
+
+    auto held = C::as_int(*member);
+    expect(!held.has_value()) << label << ": " << document << " must not yield a value";
+    if (!held) {
+      expect(held.error().code == ce::errc::out_of_range) << label << ": " << document;
+    }
+  }
+
+  // The largest value that DOES fit is still accepted, so the refusal is about
+  // the range rather than about large numbers.
+  auto fits = C::parse(R"({"n":9223372036854775807})");
+  if (fits) {
+    const auto* member = C::find(*fits, "n");
+    expect(member != nullptr) << label;
+    if (member != nullptr) {
+      auto held = C::as_int(*member);
+      expect(held.has_value()) << label;
+      if (held) {
+        expect(*held == std::numeric_limits<std::int64_t>::max()) << label;
+      }
+    }
+  }
+}
+
+/// \brief kind_of separates integers from reals by the TEXT, not the magnitude.
+template <class C>
+void check_number_kinds(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto kind_of_member = [&label](std::string_view document) -> std::optional<ce::json::kind> {
+    auto parsed = C::parse(document);
+    if (!parsed) {
+      return std::nullopt;
+    }
+    const auto* member = C::find(*parsed, "n");
+    expect(member != nullptr) << label << ": " << document;
+    return member == nullptr ? std::nullopt : std::optional{C::kind_of(*member)};
+  };
+
+  for (const auto document : {R"({"n":1})"sv, R"({"n":-1})"sv, R"({"n":0})"sv}) {
+    auto kind = kind_of_member(document);
+    expect(kind.has_value()) << label << ": " << document;
+    if (kind) {
+      expect(*kind == ce::json::kind::integer) << label << ": " << document;
+    }
+  }
+
+  for (const auto document : {R"({"n":1.0})"sv, R"({"n":1.5})"sv, R"({"n":1e3})"sv}) {
+    auto kind = kind_of_member(document);
+    expect(kind.has_value()) << label << ": " << document;
+    if (kind) {
+      // 1.0 is a real, not an integer: SWR-JSON-0024 turns on exactly this.
+      expect(*kind == ce::json::kind::floating) << label << ": " << document;
+    }
+  }
+
+  // Past int64 in both directions, it is STILL an integer. A codec that said
+  // floating here would make the format layer report a fractional value.
+  for (const auto document : {R"({"n":9223372036854775808})"sv,
+                              R"({"n":18446744073709551615})"sv}) {
+    if (auto kind = kind_of_member(document)) {
+      expect(*kind == ce::json::kind::integer) << label << ": " << document;
+    }
+  }
+}
+
+// spec: SWR-JSON-0033
+const boost::ut::suite<"integer-out-of-range-never-yields-a-value"> integer_range = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_integer_range<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_integer_range<mini_codec>("mini_codec"); };
+};
+
+// spec: SWR-JSON-0034
+const boost::ut::suite<"number-kind-follows-the-text-not-the-magnitude"> number_kinds = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_number_kinds<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_number_kinds<mini_codec>("mini_codec"); };
 };
 
 }  // namespace

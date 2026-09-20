@@ -37,6 +37,12 @@ if(CE_DEFAULT_CODEC)
   ce_add_test(typed_payload_test
     SOURCES typed_payload_test.cpp no_nlohmann_probe.cpp
     LIBS ce::codec_nlohmann)
+  ce_add_test(roundtrip_test
+    SOURCES roundtrip_test.cpp
+    LIBS ce::codec_nlohmann)
+  ce_add_test(errors_test
+    SOURCES errors_test.cpp
+    LIBS ce::codec_nlohmann)
   ce_add_test(conformance_test
     SOURCES conformance_test.cpp
     LIBS ce::codec_nlohmann)

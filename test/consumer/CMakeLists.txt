@@ -27,7 +27,9 @@ endif()
 # stays green: install(EXPORT) cannot carry a link to nlohmann, so the config file
 # re-attaches it. Nothing catches a mistake there unless a consumer actually links
 # ce::codec_nlohmann and includes a header that needs nlohmann's own headers.
-if(TARGET ce::codec_nlohmann)
+# The component, not the target: the target exists whenever the SDK was built
+# with the codec, but it is only usable once nlohmann has actually been found.
+if(cloudevents_codec_nlohmann_FOUND)
   add_executable(consumer_codec codec_main.cpp)
   target_link_libraries(consumer_codec PRIVATE ce::codec_nlohmann)
   target_compile_features(consumer_codec PRIVATE cxx_std_20)

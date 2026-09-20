@@ -163,6 +163,76 @@ jobs:
           cmake --build build-consumer
           ctest --test-dir build-consumer --output-on-failure
 
+      # The case above cannot see a packaging defect this one can: it always
+      # finds an nlohmann, either the system copy or the one FetchContent stages
+      # beside the SDK. A distribution ships neither, and its users may not have
+      # nlohmann at all. ce::core depends on CTRE alone (SWR-ADOPT-0002), so
+      # that consumer must still be able to use the package.
+      #
+      # Installing the system package does not produce that arrangement - it is
+      # older than the 3.12.0 the SDK asks for, so FetchContent stages a copy
+      # anyway. The stage is stripped instead, which is exactly what a distro
+      # package that does not vendor its dependency looks like.
+      - name: Install to a second prefix and strip nlohmann from it
+        run: |
+          rm -rf build stage-system
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage-system" -DCE_BUILD_TESTING=OFF
+          cmake --build build --target install
+          find stage-system -depth -name 'nlohmann*' -exec rm -rf {} +
+          test -z "$(find stage-system -name 'nlohmann*' -print -quit)" \
+            || { echo "nlohmann survived the strip"; exit 1; }
+          echo "stage-system carries no nlohmann"
+
+      - name: The package works without nlohmann, and says the codec is absent
+        run: |
+          mkdir -p /tmp/probe-core
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.25)' \
+            'project(probe_core LANGUAGES CXX)' \
+            'find_package(cloudevents REQUIRED)' \
+            'if(cloudevents_codec_nlohmann_FOUND)' \
+            '  message(FATAL_ERROR "nlohmann was not hidden; this check proves nothing")' \
+            'endif()' \
+            'foreach(t ce::core ce::format_json ce::binding_http)' \
+            '  if(NOT TARGET ${t})' \
+            '    message(FATAL_ERROR "${t} is missing without nlohmann")' \
+            '  endif()' \
+            'endforeach()' \
+            > /tmp/probe-core/CMakeLists.txt
+          cmake -S /tmp/probe-core -B /tmp/probe-core-build \
+            -DCMAKE_PREFIX_PATH="$PWD/stage-system" \
+            -DCMAKE_IGNORE_PREFIX_PATH="/usr;/usr/local"
+
+      - name: Asking for the codec component without nlohmann fails cleanly
+        run: |
+          mkdir -p /tmp/component-probe
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.25)' \
+            'project(component_probe LANGUAGES CXX)' \
+            'find_package(cloudevents REQUIRED COMPONENTS codec_nlohmann)' \
+            > /tmp/component-probe/CMakeLists.txt
+          if cmake -S /tmp/component-probe -B /tmp/component-build \
+               -DCMAKE_PREFIX_PATH="$PWD/stage-system" \
+               -DCMAKE_IGNORE_PREFIX_PATH="/usr;/usr/local" > /tmp/probe.log 2>&1; then
+            echo "requesting codec_nlohmann without nlohmann should have failed"
+            exit 1
+          fi
+          if ! grep -q "requires nlohmann_json" /tmp/probe.log; then
+            echo "the failure did not explain why; message was:"
+            cat /tmp/probe.log
+            exit 1
+          fi
+          echo "failed with the expected explanation"
+
+      - name: The real consumer builds against that prefix too
+        run: |
+          cmake -S test/consumer -B build-nonlohmann -G Ninja \
+            -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_PREFIX_PATH="$PWD/stage-system" \
+            -DCMAKE_IGNORE_PREFIX_PATH="/usr;/usr/local"
+          cmake --build build-nonlohmann
+          ctest --test-dir build-nonlohmann --output-on-failure
+
   reflection:
     # SPEC section 3 rule 6 wants early warning from a newer toolchain. GCC's
     # reflection is explicitly experimental and __cpp_impl_reflection tracks a

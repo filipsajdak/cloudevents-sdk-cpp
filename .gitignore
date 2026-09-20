@@ -27,6 +27,13 @@
 # Fortran module files
 *.mod
 *.smod
+# ... which silently swallowed Go's go.mod, so the interop generator shipped
+# without the file that makes it a module and only CI noticed.
+!interop/go/go.mod
+
+# Maven build output. The generator sources are committed; its .class files are
+# not.
+interop/java/target/
 
 # Compiled Static libraries
 *.lai

@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "codecs_under_test.hpp"
 #include "mini_codec.hpp"
 #include "no_nlohmann_probe.hpp"
 
@@ -342,24 +343,27 @@ const boost::ut::suite<"json-codec-parse-dump-roundtrip"> codec_parse_dump_round
     expect(true);
   };
 
-  "nlohmann_codec"_test = [] { check_parse_dump_roundtrip<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_parse_dump_roundtrip<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_parse_dump_roundtrip<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0003
 const boost::ut::suite<"json-codec-value-constructors"> codec_value_constructors = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_value_constructors<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_value_constructors<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_value_constructors<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0004
 const boost::ut::suite<"json-codec-set-and-push"> codec_set_and_push = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_set_and_push<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_set_and_push<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_set_and_push<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0005
@@ -375,8 +379,9 @@ const boost::ut::suite<"json-codec-find-and-traversal"> codec_find_and_traversal
     expect(true);
   };
 
-  "nlohmann_codec"_test = [] { check_find_and_traversal<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_find_and_traversal<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_find_and_traversal<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0006
@@ -391,8 +396,9 @@ const boost::ut::suite<"json-codec-kind-and-as-accessors"> codec_kind_and_as_acc
     expect(true);
   };
 
-  "nlohmann_codec"_test = [] { check_kind_and_as_accessors<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_kind_and_as_accessors<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_kind_and_as_accessors<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0007
@@ -747,16 +753,18 @@ void check_number_kinds(std::string_view label) {
 const boost::ut::suite<"integer-out-of-range-never-yields-a-value"> integer_range = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_integer_range<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_integer_range<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_integer_range<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0034
 const boost::ut::suite<"number-kind-follows-the-text-not-the-magnitude"> number_kinds = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_number_kinds<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_number_kinds<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_number_kinds<C>(codec); };
+  });
 };
 
 }  // namespace

@@ -3,11 +3,36 @@
 # ce_add_test keeps the per-suite boilerplate in one place so adding a suite is a
 # single line and every suite gets the same warning set and the same ut linkage.
 
+# The codec list, as a header every suite includes. Adding a codec to CE_CODECS
+# adds it to every paired suite without editing one of them.
+set(CE_CODEC_INCLUDES "")
+set(CE_CODEC_VISITS "")
+foreach(codec IN LISTS CE_CODECS)
+  string(APPEND CE_CODEC_INCLUDES "#include <cloudevents/codec/${codec}.hpp>\n")
+  string(APPEND CE_CODEC_VISITS
+         "  visit.template operator()<::ce::codec::${codec}_codec>(std::string_view{\"${codec}_codec\"});\n")
+endforeach()
+configure_file(codecs_under_test.hpp.in
+               "${CMAKE_CURRENT_BINARY_DIR}/gen/codecs_under_test.hpp" @ONLY)
+
 function(ce_add_test name)
   cmake_parse_arguments(ARG "" "" "SOURCES;LIBS" ${ARGN})
   add_executable(${name} ${ARG_SOURCES})
   target_link_libraries(${name} PRIVATE ce::core ce::warnings Boost::ut ${ARG_LIBS})
   add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+# A suite that runs over every enabled codec, rather than over one named codec.
+# The link line follows CE_CODECS, so the list and the binary cannot drift.
+function(ce_add_codec_test name)
+  ce_add_test(${name} ${ARGN})
+  # The generated header names mini_codec.hpp, which lives beside the suites in
+  # the source tree rather than next to the generated copy.
+  target_include_directories(${name} PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/gen"
+    "${CMAKE_CURRENT_SOURCE_DIR}")
+  ce_codec_targets(codec_targets)
+  target_link_libraries(${name} PRIVATE ${codec_targets})
 endfunction()
 
 ce_add_test(config_test SOURCES config_test.cpp)
@@ -30,13 +55,13 @@ target_compile_definitions(module_test PRIVATE
 # no-default-codec preset fail to configure, which is the very build that proves
 # SWR-JSON-0030. base64_test above has no codec dependency, so it stays.
 if(CE_CODEC_NLOHMANN)
-  ce_add_test(json_codec_test
+  ce_add_codec_test(json_codec_test
     SOURCES json_codec_test.cpp no_nlohmann_probe.cpp
     LIBS ce::codec_nlohmann)
-  ce_add_test(json_format_test
+  ce_add_codec_test(json_format_test
     SOURCES json_format_test.cpp
     LIBS ce::codec_nlohmann)
-  ce_add_test(http_binding_test
+  ce_add_codec_test(http_binding_test
     SOURCES http_binding_test.cpp
     LIBS ce::codec_nlohmann)
   ce_add_test(extensions_test

@@ -19,6 +19,7 @@
 #include <variant>
 #include <vector>
 
+#include "codecs_under_test.hpp"
 #include "mini_codec.hpp"
 
 // json_format owns every CloudEvents JSON rule, over whatever codec it is given.
@@ -934,8 +935,9 @@ const boost::ut::suite<"json-format-entry-points"> format_entry_points = [] {
     expect(true);
   };
 
-  "nlohmann_codec"_test = [] { check_entry_points<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_entry_points<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_entry_points<C>(codec); };
+  });
 
   "the spec's example event, single and batched, with nlohmann_codec"_test = [] {
     check_spec_examples<nlohmann_codec>("nlohmann_codec");
@@ -949,8 +951,9 @@ const boost::ut::suite<"json-format-entry-points"> format_entry_points = [] {
 const boost::ut::suite<"integer-attribute-as-json-number"> integer_attribute_as_number = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_integer_attribute<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_integer_attribute<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_integer_attribute<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0012
@@ -958,64 +961,72 @@ const boost::ut::suite<"integer-attribute-out-of-range-or-fractional-is-error">
     integer_attribute_rejections = [] {
       using namespace boost::ut;
 
-      "nlohmann_codec"_test = [] { check_integer_rejections<nlohmann_codec>("nlohmann_codec"); };
-      "mini_codec"_test = [] { check_integer_rejections<mini_codec>("mini_codec"); };
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] { check_integer_rejections<C>(codec); };
+      });
     };
 
 // spec: SWR-JSON-0013
 const boost::ut::suite<"binary-attribute-as-base64-string"> binary_attribute_as_base64 = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_binary_attribute<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_binary_attribute<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_binary_attribute<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0014
 const boost::ut::suite<"uri-uriref-timestamp-as-json-string"> textual_attributes = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_textual_attributes<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_textual_attributes<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_textual_attributes<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0015
 const boost::ut::suite<"json-text-data-under-data-member"> json_text_data = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_json_text_data<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_json_text_data<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_json_text_data<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0016
 const boost::ut::suite<"binary-data-under-data-base64-member"> binary_data = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_binary_data<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_binary_data<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_binary_data<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0017
 const boost::ut::suite<"string-data-under-data-member-as-json-string"> string_data = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_string_data<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_string_data<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_string_data<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0018
 const boost::ut::suite<"decode-data-base64-yields-binary"> decode_data_base64 = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_decode_data_base64<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_decode_data_base64<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_decode_data_base64<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0019
 const boost::ut::suite<"decode-data-yields-json-text"> decode_data_json_text = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_decode_data_as_json_text<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_decode_data_as_json_text<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_decode_data_as_json_text<C>(codec); };
+  });
 };
 
 template <class C>
@@ -1064,42 +1075,45 @@ const boost::ut::suite<"decode-data-string-with-non-json-content-type-yields-str
     decode_string_data = [] {
       using namespace boost::ut;
 
-      "nlohmann_codec"_test = [] { check_decode_string_data<nlohmann_codec>("nlohmann_codec"); };
-      "mini_codec"_test = [] { check_decode_string_data<mini_codec>("mini_codec"); };
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] { check_decode_string_data<C>(codec); };
+      });
     };
 
 // spec: SWR-JSON-0021
 const boost::ut::suite<"decode-both-data-members-is-error"> both_data_members = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_data_conflict<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_data_conflict<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_data_conflict<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0022
 const boost::ut::suite<"unknown-top-level-members-become-extensions"> unknown_members = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] {
-    check_unknown_members_are_extensions<nlohmann_codec>("nlohmann_codec");
-  };
-  "mini_codec"_test = [] { check_unknown_members_are_extensions<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_unknown_members_are_extensions<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0023
 const boost::ut::suite<"extension-decode-type-mapping"> extension_type_mapping = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_extension_type_mapping<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_extension_type_mapping<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_extension_type_mapping<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0024
 const boost::ut::suite<"floating-point-extension-value-is-type-mismatch"> floating_extension = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_floating_extension_rejected<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_floating_extension_rejected<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_floating_extension_rejected<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0025
@@ -1132,16 +1146,18 @@ const boost::ut::suite<"json-format-media-types"> media_types = [] {
 const boost::ut::suite<"empty-batch-decodes-to-no-events"> empty_batch = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_empty_batch<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_empty_batch<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_empty_batch<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0031
 const boost::ut::suite<"decoded-event-always-validates"> extension_name_grammar = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_extension_name_grammar<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_extension_name_grammar<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_extension_name_grammar<C>(codec); };
+  });
 };
 
 template <class C>
@@ -1194,8 +1210,9 @@ void check_null_is_unset(std::string_view label) {
 const boost::ut::suite<"null-attribute-decodes-as-unset"> null_is_unset = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] { check_null_is_unset<nlohmann_codec>("nlohmann_codec"); };
-  "mini_codec"_test = [] { check_null_is_unset<mini_codec>("mini_codec"); };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_null_is_unset<C>(codec); };
+  });
 };
 
 /// \brief An extension integer beyond int64 must not decode to some other number.
@@ -1249,12 +1266,9 @@ void check_out_of_range_integer_extension(std::string_view label) {
 const boost::ut::suite<"extension-integer-beyond-int64-is-refused"> beyond_int64 = [] {
   using namespace boost::ut;
 
-  "nlohmann_codec"_test = [] {
-    check_out_of_range_integer_extension<nlohmann_codec>("nlohmann_codec");
-  };
-  "mini_codec"_test = [] {
-    check_out_of_range_integer_extension<mini_codec>("mini_codec");
-  };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_out_of_range_integer_extension<C>(codec); };
+  });
 };
 
 }  // namespace

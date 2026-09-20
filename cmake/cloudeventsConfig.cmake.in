@@ -8,24 +8,28 @@ find_dependency(ctre)
 
 include("${CMAKE_CURRENT_LIST_DIR}/cloudeventsTargets.cmake")
 
-# nlohmann is NOT a hard dependency of the package, even when the SDK was built
-# with the codec. find_dependency would make it one, and a consumer that wants
-# only ce::core - which depends on CTRE alone - would then be unable to use the
-# package at all.
+# The codecs this package was built with. Empty is legal and supported.
+set(_ce_shipped_codecs "@CE_CODECS@")
+set(_ce_known_codecs nlohmann)
+foreach(_ce_codec IN LISTS _ce_known_codecs)
+  set(cloudevents_codec_${_ce_codec}_FOUND FALSE)
+endforeach()
+
+# No codec is a hard dependency, even when the SDK was built with one.
+# find_dependency would make it one, and a consumer that wants only ce::core -
+# which depends on CTRE alone - would then be unable to use the package at all.
 #
-# It is looked up softly instead, and only the codec component is reported
-# missing. A consumer that needs the codec asks for it:
+# Each is looked up softly instead, and only its own component is reported
+# missing. A consumer that needs one asks for it:
 #
 #   find_package(cloudevents REQUIRED COMPONENTS codec_nlohmann)
 #
-# and gets a clear failure naming the component rather than a failure of the
-# whole package.
-set(cloudevents_codec_nlohmann_FOUND FALSE)
-
-if(@CE_DEFAULT_CODEC@)
+# and gets a failure naming the component rather than a failure of the package.
+if("nlohmann" IN_LIST _ce_shipped_codecs)
+  set(_ce_why_nlohmann "nlohmann_json 3.12.0 or newer")
   find_package(nlohmann_json 3.12.0 QUIET)
   if(nlohmann_json_FOUND AND TARGET ce::codec_nlohmann)
-    # The exported ce::codec_nlohmann deliberately carries no link to nlohmann,
+    # The exported target deliberately carries no link to its JSON library,
     # because install(EXPORT) cannot export a dependency this project does not
     # own. Re-attach it here, where the imported target has just appeared.
     set_property(TARGET ce::codec_nlohmann APPEND
@@ -34,14 +38,28 @@ if(@CE_DEFAULT_CODEC@)
   endif()
 endif()
 
-# check_required_components reports which component was missing but not why, and
-# "install nlohmann" is the whole of the answer here.
-if(NOT cloudevents_codec_nlohmann_FOUND
-   AND "codec_nlohmann" IN_LIST cloudevents_FIND_COMPONENTS)
-  set(cloudevents_NOT_FOUND_MESSAGE
-      "the codec_nlohmann component requires nlohmann_json 3.12.0 or newer, which \
-was not found. Install it, or use cloudevents without that component and supply \
-your own codec: ce::json::json_codec is a concept, not a class.")
-endif()
+# check_required_components reports WHICH component was missing but not why, and
+# "install the library" is the whole of the answer here. The two failures read
+# differently on purpose: a codec this package never built is not the same
+# problem as a codec whose library is absent.
+foreach(_ce_codec IN LISTS _ce_known_codecs)
+  if(NOT cloudevents_codec_${_ce_codec}_FOUND
+     AND "codec_${_ce_codec}" IN_LIST cloudevents_FIND_COMPONENTS)
+    if(NOT "${_ce_codec}" IN_LIST _ce_shipped_codecs)
+      set(cloudevents_NOT_FOUND_MESSAGE
+          "the codec_${_ce_codec} component was not built into this cloudevents \
+package, which shipped: ${_ce_shipped_codecs}. Rebuild with \
+-DCE_CODECS=${_ce_codec}, or supply your own codec: ce::json::json_codec is a \
+concept, not a class.")
+    else()
+      # The nested dereference is deliberate: one loop, one explanation per
+      # codec. It looks like a typo and is not.
+      set(cloudevents_NOT_FOUND_MESSAGE
+          "the codec_${_ce_codec} component requires ${_ce_why_${_ce_codec}}, \
+which was not found. Install it, or use cloudevents without that component and \
+supply your own codec: ce::json::json_codec is a concept, not a class.")
+    endif()
+  endif()
+endforeach()
 
 check_required_components(cloudevents)

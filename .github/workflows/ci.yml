@@ -142,6 +142,24 @@ jobs:
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
 
+  no-codecs-plural:
+    # The same end state as no-default-codec, reached the other way through
+    # CeCodecs.cmake: that job subtracts nlohmann from the list, this one never
+    # puts anything in it. Both spellings are supported, so both are run.
+    name: the plural spelling of no codecs
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y g++-14 ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CXX_STANDARD=20
+          -DCE_WERROR=ON "-DCE_CODECS="
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+
   install-consumer:
     # SWR-ADOPT-0004: install the package, then find_package it from a separate
     # project that names no include path of its own.

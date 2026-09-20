@@ -38,7 +38,7 @@ endfunction()
 ce_add_fuzzer(fuzz_timestamp SOURCES fuzz_timestamp.cpp CORPUS corpus/timestamp)
 ce_add_fuzzer(fuzz_base64 SOURCES fuzz_base64.cpp CORPUS corpus/base64)
 
-if(CE_DEFAULT_CODEC)
+if(CE_CODEC_NLOHMANN)
   ce_add_fuzzer(fuzz_json_decode SOURCES fuzz_json_decode.cpp
     LIBS ce::codec_nlohmann CORPUS corpus/json)
   ce_add_fuzzer(fuzz_http_message SOURCES fuzz_http_message.cpp

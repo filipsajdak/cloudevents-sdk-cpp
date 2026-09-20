@@ -19,7 +19,7 @@ endif()
 
 
 # Pinned to the version the first consuming platform vendors.
-if(CE_DEFAULT_CODEC)
+if(CE_CODEC_NLOHMANN)
   find_package(nlohmann_json 3.12.0 QUIET)
   if(NOT nlohmann_json_FOUND)
     FetchContent_Declare(nlohmann_json

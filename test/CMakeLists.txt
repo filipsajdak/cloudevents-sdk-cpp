@@ -45,6 +45,11 @@ if(CE_DEFAULT_CODEC)
   # holds.
   target_compile_definitions(conformance_test
     PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conformance\"")
+  ce_add_test(interop_test
+    SOURCES interop_test.cpp
+    LIBS ce::codec_nlohmann)
+  target_compile_definitions(interop_test
+    PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 endif()
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and

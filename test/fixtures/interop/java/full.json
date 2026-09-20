@@ -1,0 +1,1 @@
+{"specversion":"1.0","id":"id-full","source":"https://example.test/interop/java","type":"com.example.full","datacontenttype":"application/json","dataschema":"https://example.test/schema/1","subject":"the-subject","time":"2026-09-20T12:34:56Z","data":{"count":3,"label":"java"}}

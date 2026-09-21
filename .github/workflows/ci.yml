@@ -453,3 +453,126 @@ jobs:
         with:
           name: api-reference
           path: docs/doxygen/html/
+
+  all-codecs:
+    name: every codec, ${{ matrix.os }} c++${{ matrix.std }}
+    needs: gate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+        std: [20, 23]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the JSON libraries
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+            sudo apt-get update
+            sudo apt-get install -y g++-14 ninja-build nlohmann-json3-dev rapidjson-dev \
+              libboost-json-dev
+          else
+            brew install ninja nlohmann-json rapidjson boost
+          fi
+      # Every paired suite runs over every enabled codec, so this is the job that
+      # exercises the new ones at all - the floor matrix builds the default list.
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DCE_CODECS="nlohmann;rapidjson;boost_json"
+          -DCE_WERROR=ON
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+
+  only-boost-json:
+    # The mirror of only-rapidjson: Boost.JSON installed and nothing else.
+    name: boost_json alone, no other JSON library installed
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain
+        run: |
+          # The runner image carries third-party apt sources this project does
+          # not use. When one is down, apt-get update fails and takes the job
+          # with it - packages.microsoft.com returned 403 on the first run.
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          sudo apt-get install -y g++-14 ninja-build libboost-json-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CXX_STANDARD=20
+          -DCE_CODECS=boost_json -DCE_WERROR=ON
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+
+  boost-json-needs-exceptions:
+    # Boost requires the PROGRAM to define boost::throw_exception under
+    # -fno-exceptions, which is an application's policy and not this SDK's to
+    # choose. The combination is refused, and this asserts the refusal rather
+    # than trusting a comment.
+    name: boost_json refuses -fno-exceptions
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain
+        run: |
+          # The runner image carries third-party apt sources this project does
+          # not use. When one is down, apt-get update fails and takes the job
+          # with it - packages.microsoft.com returned 403 on the first run.
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          sudo apt-get install -y g++-14 ninja-build libboost-json-dev
+      - name: Configuring it must fail, naming the option
+        run: |
+          if cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++-14 \
+               -DCE_CODECS=boost_json -DCMAKE_CXX_FLAGS=-fno-exceptions > /tmp/cfg.log 2>&1; then
+            echo "boost_json configured with -fno-exceptions; it should not have"
+            exit 1
+          fi
+          grep -q "boost::throw_exception" /tmp/cfg.log || {
+            echo "the refusal did not say why; message was:"; cat /tmp/cfg.log; exit 1; }
+          echo "refused with the expected explanation"
+
+  only-rapidjson:
+    # Installs RapidJSON and NOT nlohmann, which catches a codec header that
+    # reaches for another codec's library: on any machine with both, such a
+    # header compiles and nothing notices.
+    #
+    # It does NOT exercise the codec through the suites. json_codec_test and
+    # json_format_test still sit behind the nlohmann guard because they hold
+    # direct references to nlohmann_codec outside the generated pairs, so this
+    # job runs seven tests. all-codecs is what puts rapidjson through the format
+    # rules; this job proves the build and the packaging stand without nlohmann.
+    name: rapidjson alone, no nlohmann installed
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain
+        run: |
+          # The runner image carries third-party apt sources this project does
+          # not use. When one is down, apt-get update fails and takes the job
+          # with it - packages.microsoft.com returned 403 on the first run.
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          sudo apt-get install -y g++-14 ninja-build rapidjson-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CXX_STANDARD=20
+          -DCE_CODECS=rapidjson -DCE_WERROR=ON
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+      - name: The nlohmann target must not exist
+        run: |
+          if grep -q "ce::codec_nlohmann" build/CMakeCache.txt 2>/dev/null; then
+            echo "the nlohmann codec target leaked into a rapidjson-only build"
+            exit 1
+          fi
+          echo "no nlohmann target, as asked"

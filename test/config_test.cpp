@@ -197,6 +197,64 @@ struct source_line {
          relative.starts_with("detail/describe") || relative.starts_with("describe");
 }
 
+/// \brief True when every conditional in the file contains nothing but `#error`.
+///
+/// SWR-BUILD-0002 keeps capability GATING in one header, because gating spread
+/// across headers makes the supported matrix unreadable. A block that only
+/// refuses is not gating: no branch selects an implementation, and there is
+/// nothing to read but the refusal.
+///
+/// A codec header needs this, because it wraps a third-party library whose own
+/// requirements config.hpp cannot restate - it would have to know about every
+/// optional codec. Boost requires the program to define boost::throw_exception
+/// under -fno-exceptions, and the honest answer is to refuse rather than to
+/// choose an application's policy on its behalf.
+[[nodiscard]] auto conditionals_only_refuse(const std::vector<source_line>& lines) -> bool {
+  const auto directive = [](std::string_view text) -> std::string_view {
+    auto at = text.find_first_not_of(" \t");
+    if (at == std::string_view::npos || text[at] != '#') {
+      return {};
+    }
+    at = text.find_first_not_of(" \t", at + 1);
+    return at == std::string_view::npos ? std::string_view{} : text.substr(at);
+  };
+
+  int depth = 0;
+  bool saw_error = false;
+  for (const auto& line : lines) {
+    const auto name = directive(line.text);
+
+    if (name.starts_with("if")) {
+      ++depth;
+      saw_error = false;
+      continue;
+    }
+    if (name.starts_with("else") || name.starts_with("elif")) {
+      // An alternative branch is a choice, which is what the rule forbids.
+      return false;
+    }
+    if (name.starts_with("endif")) {
+      if (depth == 0 || !saw_error) {
+        return false;
+      }
+      --depth;
+      continue;
+    }
+    if (depth > 0) {
+      if (name.starts_with("error")) {
+        saw_error = true;
+      } else if (!line.text.empty() &&
+                 line.text.find_first_not_of(" \t") != std::string::npos) {
+        // Anything else inside the block is content one branch has and the
+        // other does not, which is gating.
+        return false;
+      }
+    }
+  }
+  return depth == 0;
+}
+
+
 
 // spec: SWR-BUILD-0003
 const boost::ut::suite<"config-ce-has-constants"> config_ce_has_constants = [] {
@@ -295,6 +353,12 @@ const boost::ut::suite<"config-gating-single-header"> config_gating_single_heade
     for (const auto& header : headers) {
       const auto relative = fs::relative(header, root).generic_string();
       if (may_carry_feature_gate(relative)) {
+        continue;
+      }
+      // A codec wraps a third-party library, and refusing a combination that
+      // library cannot serve is not gating. Permitted only when the block holds
+      // nothing but the refusal.
+      if (relative.starts_with("codec/") && conditionals_only_refuse(code_lines(header))) {
         continue;
       }
       for (const auto& line : code_lines(header)) {

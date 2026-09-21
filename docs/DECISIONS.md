@@ -749,3 +749,106 @@ The concept now states three rules the in-tree codecs disagreed about:
 `size_of` is documented rather than changed: the SDK never calls it, nlohmann
 returns 1 for a scalar where the others return 0, and narrowing that under a
 frozen `v1` would buy nothing.
+
+## D-CODEC-1: RapidJSON ships with a stateless allocator and a stated hazard
+
+The benchmark (PR #14) measured RapidJSON fastest on every event-sized document,
+smallest binary and shortest compile, so it is the second shipped codec. Three
+things about it needed deciding rather than copying.
+
+**The allocator.** RapidJSON wants one at every mutation and the concept passes
+none. The codec uses a shared `rapidjson::CrtAllocator`, not the default
+`MemoryPoolAllocator`: a pool does not return memory until it is destroyed, so a
+pooled codec would be a process-wide arena that only grows - faster in a
+benchmark, unbounded in a service. `CrtAllocator` is stateless and forwards to
+`malloc`/`free`, which the C standard requires to be thread-safe, so the shared
+instance is not shared state. A `static_assert` pins the choice, because `parse`
+moves the root out of the document and that is sound only while the allocator
+holds nothing.
+
+**Pointer invalidation.** `find` returns a pointer into a contiguous member
+array, so a later `set` on the same object may invalidate it. nlohmann's DOM is
+node-stable and does not behave this way, so code that is correct against one is
+wrong against the other. `json_format` never mutates a document it is reading, so
+the SDK cannot observe it - but a caller using the codec directly can, and the
+header says so.
+
+**Two defects in the prototype, both fixed here.** `kind_of` reported an integer
+above `INT64_MAX` as `kind::floating`, which would make the format layer diagnose
+it as a fractional extension value - a different and wrong complaint. And `as_int`
+refused the same value with `type_mismatch` rather than `out_of_range`. Both now
+follow the rules D-JSON-3 wrote into the concept.
+
+`codec-headers-are-mutually-isolated` reads the headers and refuses a codec that
+names another codec's library. It strips comments first: `rapidjson.hpp` explains
+how nlohmann's DOM differs, and saying so is the point of the comment rather than
+a dependency.
+
+## D-CODEC-2: Boost.JSON ships, needs exceptions, and is never vendored
+
+Boost.JSON is the third shipped codec: the benchmark measured it fastest on the
+64 KiB document and it is the closest fit to the concept, since a
+`boost::json::value` is self-contained and an object member is addressable.
+
+Three things had to be decided rather than copied.
+
+**`get_*`, never `as_*`.** Boost.JSON's `as_object()`, `as_array()` and the
+scalar `as_*` accessors throw; the `get_*` forms assert. The SDK supports
+`-fno-exceptions`, so the codec uses `get_*` throughout. The prototype used
+`as_object()`/`as_array()` in `set`/`push` while already using `get_*` on the
+read paths - and the difference is invisible in any build that has exceptions,
+which is every build that had run it.
+
+**It cannot be built without exceptions at all, and the refusal is deliberate.**
+Measured: `<boost/json.hpp>` *compiles* under `-fno-exceptions`, so the answer is
+not the simple one. It fails at link, on
+`boost::throw_exception(std::exception const&, boost::source_location const&)` -
+a function Boost requires the **program** to define once `BOOST_NO_EXCEPTIONS` is
+inferred. That function decides what happens when Boost reports an error:
+terminate, abort, longjmp. It is an application's policy, and defining it inside
+an SDK would make that choice for every consumer silently.
+
+So the codec refuses the combination, in the header with an `#error` and at
+configure time with a message naming the option. A CI job asserts the refusal.
+
+**Parentheses, never braces.** `boost::json::value` has an `initializer_list`
+constructor for arrays. On Boost 1.83 - the version Ubuntu 24.04 ships -
+`value{nullptr}` and `value{true}` select it and produce a one-element **array**;
+on Boost 1.92 the same spelling resolves to the scalar constructors. So the codec
+passed every local test and failed on CI, and the failure was
+`kind_of(make_null()) != null`.
+
+This is the Glaze trap from the benchmark, in a second library:
+`glz::generic_json{std::string{...}}` also compiled and yielded an array. Braces
+invite an `initializer_list` overload; parentheses cannot select one. Every value
+constructor in this codec uses parentheses, and the header says why.
+
+**No FetchContent fallback.** Boost.JSON is a compiled library, unlike every
+other dependency here. An INTERFACE target cannot supply the translation unit it
+needs; asking each consumer to add one, in exactly one TU per shared object, is
+an ODR trap; standalone header-only mode was removed upstream in 1.81; and the
+Boost superproject is gigabytes. A request that cannot be honoured fails at
+configure time naming the package to install.
+
+A related constraint worth knowing: because it is compiled, the consumer's
+compiler and standard library must match the ones Boost was built with. On macOS
+a Homebrew Boost is built against libc++, so a GCC/libstdc++ build compiles the
+header and then fails to link on mangling differences. That is an ABI mismatch,
+not a defect, and the header says so.
+
+## D-BUILD-1: A codec header may carry a conditional that only refuses
+
+`SWR-BUILD-0002` keeps capability gating in `detail/config.hpp`, because gating
+spread across headers makes the supported matrix unreadable. The Boost.JSON
+refusal is an `#if` in a codec header, and `config-gating-single-header` caught
+it immediately - the rule working as intended.
+
+The rule is now stated more precisely rather than widened. A codec header may
+carry a conditional whose block contains **nothing but `#error`**. Such a block
+selects no implementation, so there is no second path to read, and config.hpp
+cannot restate the requirements of every optional codec without knowing about
+each one.
+
+The test enforces exactly that distinction: a block containing code, or an
+`#else`, still fails. Both were checked by introducing them and watching the
+suite catch each.

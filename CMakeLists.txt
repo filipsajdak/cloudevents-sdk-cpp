@@ -16,9 +16,11 @@ endif()
 
 # The codecs to build, as a list. ce::format_json is codec-agnostic; this only
 # decides which ready-made codec targets exist.
+set(CE_BOOST_MINIMUM 1.81)
+
 set(CE_CODECS "nlohmann" CACHE STRING
-    "Semicolon list of JSON codecs to build. Known: nlohmann")
-set_property(CACHE CE_CODECS PROPERTY STRINGS nlohmann)
+    "Semicolon list of JSON codecs to build. Known: nlohmann;rapidjson;boost_json")
+set_property(CACHE CE_CODECS PROPERTY STRINGS nlohmann rapidjson boost_json)
 
 # CE_DEFAULT_CODEC predates CE_CODECS and is named by SWR-JSON-0030,
 # SWR-ADOPT-0002, SWR-ADOPT-0005, ADR-0004, the no-default-codec preset and a CI
@@ -101,6 +103,12 @@ target_link_libraries(ce_binding_http INTERFACE ce_core)
 # so every codec inherits the arrangement instead of rediscovering it.
 if(CE_CODEC_NLOHMANN)
   ce_add_codec(nlohmann DEPENDS nlohmann_json::nlohmann_json)
+endif()
+if(CE_CODEC_RAPIDJSON)
+  ce_add_codec(rapidjson DEPENDS ce_dep::rapidjson)
+endif()
+if(CE_CODEC_BOOST_JSON)
+  ce_add_codec(boost_json DEPENDS Boost::json)
 endif()
 
 # ---------------------------------------------------------------------------

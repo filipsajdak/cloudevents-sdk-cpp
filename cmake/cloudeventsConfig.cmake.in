@@ -10,7 +10,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/cloudeventsTargets.cmake")
 
 # The codecs this package was built with. Empty is legal and supported.
 set(_ce_shipped_codecs "@CE_CODECS@")
-set(_ce_known_codecs nlohmann)
+set(_ce_known_codecs nlohmann rapidjson boost_json)
 foreach(_ce_codec IN LISTS _ce_known_codecs)
   set(cloudevents_codec_${_ce_codec}_FOUND FALSE)
 endforeach()
@@ -35,6 +35,36 @@ if("nlohmann" IN_LIST _ce_shipped_codecs)
     set_property(TARGET ce::codec_nlohmann APPEND
       PROPERTY INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)
     set(cloudevents_codec_nlohmann_FOUND TRUE)
+  endif()
+endif()
+
+if("rapidjson" IN_LIST _ce_shipped_codecs)
+  set(_ce_why_rapidjson "the RapidJSON headers (rapidjson/document.h)")
+  # Found by header, not by find_package(RapidJSON): its config module reports
+  # the include directory of the tree it was configured in, and defines no
+  # imported target. The wrapper target is ours, so the name cannot collide
+  # with one a consumer already made.
+  find_path(CE_RAPIDJSON_INCLUDE_DIR rapidjson/document.h)
+  if(CE_RAPIDJSON_INCLUDE_DIR AND TARGET ce::codec_rapidjson)
+    if(NOT TARGET ce_dep::rapidjson)
+      add_library(ce_dep::rapidjson INTERFACE IMPORTED)
+      set_target_properties(ce_dep::rapidjson PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${CE_RAPIDJSON_INCLUDE_DIR}"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${CE_RAPIDJSON_INCLUDE_DIR}")
+    endif()
+    set_property(TARGET ce::codec_rapidjson APPEND
+      PROPERTY INTERFACE_LINK_LIBRARIES ce_dep::rapidjson)
+    set(cloudevents_codec_rapidjson_FOUND TRUE)
+  endif()
+endif()
+
+if("boost_json" IN_LIST _ce_shipped_codecs)
+  set(_ce_why_boost_json "Boost @CE_BOOST_MINIMUM@ or newer with the compiled Boost.JSON library")
+  find_package(Boost @CE_BOOST_MINIMUM@ QUIET COMPONENTS json)
+  if(TARGET Boost::json AND TARGET ce::codec_boost_json)
+    set_property(TARGET ce::codec_boost_json APPEND
+      PROPERTY INTERFACE_LINK_LIBRARIES Boost::json)
+    set(cloudevents_codec_boost_json_FOUND TRUE)
   endif()
 endif()
 

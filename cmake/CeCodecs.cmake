@@ -4,7 +4,7 @@
 # Codec:: statics, and mini_codec exists to prove it (ADR-0004). The BUILD was
 # codec-singular, keyed on one boolean, which is what this file replaces.
 
-set(CE_KNOWN_CODECS nlohmann)
+set(CE_KNOWN_CODECS nlohmann rapidjson boost_json)
 
 foreach(codec IN LISTS CE_CODECS)
   if(NOT codec IN_LIST CE_KNOWN_CODECS)

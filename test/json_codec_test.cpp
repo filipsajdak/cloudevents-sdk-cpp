@@ -8,6 +8,10 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <array>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -765,6 +769,105 @@ const boost::ut::suite<"number-kind-follows-the-text-not-the-magnitude"> number_
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_number_kinds<C>(codec); };
   });
+};
+
+/// \brief Every codec header names its own JSON library and no other.
+///
+/// A codec that reached for a second library would compile on any developer
+/// machine that has both installed, and fail only in a CI job that deliberately
+/// installs one. A text scan finds it in a second.
+const boost::ut::suite<"codec-headers-are-mutually-isolated"> codec_isolation = [] {
+  using namespace boost::ut;
+
+  // Comments are stripped first. The check is about what a header DEPENDS on,
+  // and a doc comment explaining how another codec behaves differently is not a
+  // dependency - rapidjson.hpp says nlohmann's DOM is node-stable, and saying so
+  // is the point of the comment.
+  const auto read_code = [](const std::filesystem::path& path) {
+    std::ifstream in{path, std::ios::binary};
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    const std::string source = buffer.str();
+
+    std::string code;
+    code.reserve(source.size());
+    for (std::size_t i = 0; i < source.size(); ++i) {
+      if (source.compare(i, 2, "//") == 0) {
+        while (i < source.size() && source[i] != '\n') {
+          ++i;
+        }
+        code.push_back('\n');
+      } else if (source.compare(i, 2, "/*") == 0) {
+        const auto end = source.find("*/", i + 2);
+        i = end == std::string::npos ? source.size() : end + 1;
+      } else {
+        code.push_back(source[i]);
+      }
+    }
+    return code;
+  };
+
+  // library token -> the one codec header allowed to name it
+  const std::array<std::pair<std::string_view, std::string_view>, 3> libraries{{
+      {"nlohmann", "nlohmann.hpp"},
+      {"rapidjson", "rapidjson.hpp"},
+      {"boost", "boost_json.hpp"},
+  }};
+
+  const std::filesystem::path codec_dir{std::string{CE_INCLUDE_DIR} + "/cloudevents/codec"};
+
+  "the codec directory is where this test thinks it is"_test = [codec_dir] {
+    // Otherwise every assertion below passes over an empty range.
+    expect(std::filesystem::is_directory(codec_dir)) << codec_dir.string();
+    std::size_t headers = 0;
+    for (const auto& entry : std::filesystem::directory_iterator{codec_dir}) {
+      headers += entry.path().extension() == ".hpp" ? 1 : 0;
+    }
+    expect(headers > 0_ul) << "no codec headers found";
+  };
+
+  "a codec header names only its own library"_test = [&read_code, &libraries, codec_dir] {
+    if (!std::filesystem::is_directory(codec_dir)) {
+      return;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator{codec_dir}) {
+      if (entry.path().extension() != ".hpp") {
+        continue;
+      }
+      const auto name = entry.path().filename().string();
+      const auto source = read_code(entry.path());
+      for (const auto& [token, owner] : libraries) {
+        if (name == owner) {
+          expect(source.find(token) != std::string::npos)
+              << name << " no longer names " << token;
+          continue;
+        }
+        expect(source.find(token) == std::string::npos)
+            << name << " names " << token << ", which belongs to " << owner;
+      }
+    }
+  };
+
+  "no header outside codec/ names a JSON library"_test = [&read_code, &libraries] {
+    const std::filesystem::path root{std::string{CE_INCLUDE_DIR} + "/cloudevents"};
+    if (!std::filesystem::is_directory(root)) {
+      return;
+    }
+    for (const auto& entry : std::filesystem::recursive_directory_iterator{root}) {
+      if (!entry.is_regular_file() || entry.path().extension() != ".hpp") {
+        continue;
+      }
+      const auto relative = std::filesystem::relative(entry.path(), root).generic_string();
+      if (relative.starts_with("codec/")) {
+        continue;
+      }
+      const auto source = read_code(entry.path());
+      for (const auto& [token, owner] : libraries) {
+        expect(source.find(token) == std::string::npos)
+            << relative << " names " << token << ", which only " << owner << " may";
+      }
+    }
+  };
 };
 
 }  // namespace

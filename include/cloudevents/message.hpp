@@ -36,6 +36,19 @@ class headers {
     entries_.emplace_back(std::move(name), std::move(value));
   }
 
+  /// \brief Replace every header of this name, matching byte for byte.
+  ///
+  /// The case-insensitive `set` is right for HTTP, whose field names are
+  /// case-insensitive, and wrong everywhere else: Kafka record headers, AMQP
+  /// application-properties and MQTT user properties are all case-sensitive, so
+  /// a case-insensitive erase would remove a header a caller had deliberately
+  /// distinguished.
+  void set_exact(std::string name, std::string value) {
+    const auto matches = [&name](const entry& candidate) { return candidate.first == name; };
+    std::erase_if(entries_, matches);
+    entries_.emplace_back(std::move(name), std::move(value));
+  }
+
   /// \brief The first header of this name, or nullptr.
   [[nodiscard]] auto find(std::string_view name) const noexcept -> const std::string* {
     for (const auto& [candidate, value] : entries_) {
@@ -46,8 +59,23 @@ class headers {
     return nullptr;
   }
 
+  /// \brief The first header of exactly this name, or nullptr.
+  [[nodiscard]] auto find_exact(std::string_view name) const noexcept -> const std::string* {
+    for (const auto& [candidate, value] : entries_) {
+      if (candidate == name) {
+        return &value;
+      }
+    }
+    return nullptr;
+  }
+
   [[nodiscard]] auto contains(std::string_view name) const noexcept -> bool {
     return find(name) != nullptr;
+  }
+
+  /// \brief Whether a header of exactly this name is present.
+  [[nodiscard]] auto contains_exact(std::string_view name) const noexcept -> bool {
+    return find_exact(name) != nullptr;
   }
 
   [[nodiscard]] auto begin() const noexcept { return entries_.begin(); }

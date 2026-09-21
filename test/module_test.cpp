@@ -47,7 +47,8 @@
   X(errc) X(error) X(fail) X(result) X(to_string_view)                                           \
   X(attribute_value) X(binary) X(content_mode) X(data_t) X(event) X(headers)                     \
   X(is_json_content_type) X(json_text) X(lint_warning) X(message) X(parse_timestamp)             \
-  X(reserved_name) X(timestamp) X(to_string) X(uri) X(uri_ref) X(valid_attribute_name)           \
+  X(reserved_name) X(timestamp) X(to_string) X(to_bytes) X(to_text) X(uri) X(uri_ref)\
+  X(valid_attribute_name)           \
   X(backend_of) X(describe_backend) X(described) X(field_count) X(field_names)                   \
   X(for_each_field) X(members_supported) X(name) X(reflect) X(skip)                              \
   X(base64_decode) X(base64_encode) X(data_as) X(event_of) X(from_json_value) X(json_format)     \
@@ -95,7 +96,9 @@ constexpr std::array nested_exports{
       continue;
     }
     const std::string relative = std::filesystem::relative(entry.path(), root).generic_string();
-    if (relative.find("cloudevents/detail/") != std::string::npos ||
+    // Any detail/ segment, not only the top-level one: binding/detail/ is just
+    // as private, and a header there is not something a module consumer names.
+    if (relative.find("/detail/") != std::string::npos ||
         relative.find("cloudevents/codec/") != std::string::npos) {
       continue;
     }

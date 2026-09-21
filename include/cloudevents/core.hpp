@@ -127,6 +127,69 @@ inline constexpr std::string_view reserved_names[] = {
   return text.size() >= suffix.size() && iequals(text.substr(text.size() - suffix.size()), suffix);
 }
 
+[[nodiscard]] constexpr auto starts_with_ignoring_case(std::string_view text,
+                                                       std::string_view prefix) noexcept -> bool {
+  return text.size() >= prefix.size() &&
+         ce::detail::iequals(text.substr(0, prefix.size()), prefix);
+}
+
+/// \brief True when the bytes are well-formed UTF-8.
+///
+/// Rejects overlong encodings, surrogates and values above U+10FFFF, because each
+/// of those is a way to smuggle a second spelling of the same text past a
+/// consumer that compares strings.
+[[nodiscard]] constexpr auto is_valid_utf8(std::string_view text) noexcept -> bool {
+  std::size_t index = 0;
+  while (index < text.size()) {
+    const auto lead = static_cast<unsigned char>(text[index]);
+    std::size_t length = 0;
+    std::uint32_t code = 0;
+
+    if (lead < 0x80) {
+      ++index;
+      continue;
+    }
+    if ((lead & 0xE0U) == 0xC0U) {
+      length = 2;
+      code = lead & 0x1FU;
+    } else if ((lead & 0xF0U) == 0xE0U) {
+      length = 3;
+      code = lead & 0x0FU;
+    } else if ((lead & 0xF8U) == 0xF0U) {
+      length = 4;
+      code = lead & 0x07U;
+    } else {
+      return false;
+    }
+
+    if (index + length > text.size()) {
+      return false;
+    }
+    for (std::size_t offset = 1; offset < length; ++offset) {
+      const auto continuation = static_cast<unsigned char>(text[index + offset]);
+      if ((continuation & 0xC0U) != 0x80U) {
+        return false;
+      }
+      code = (code << 6U) | (continuation & 0x3FU);
+    }
+
+    if (length == 2 && code < 0x80) {
+      return false;
+    }
+    if (length == 3 && code < 0x800) {
+      return false;
+    }
+    if (length == 4 && code < 0x10000) {
+      return false;
+    }
+    if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
+      return false;
+    }
+    index += length;
+  }
+  return true;
+}
+
 }  // namespace detail
 
 /// \brief True when `name` matches `[a-z0-9]+`. Length is a SHOULD, so it
@@ -277,6 +340,30 @@ template <extension_field F>
 }
 
 }  // namespace detail
+
+/// \brief The bytes of some text, as the core binary type.
+///
+/// Public because a binding's caller needs it: a payload arrives as bytes and is
+/// often held as text. It lived in ce::http::detail until examples and suites
+/// started reaching in for it, which made it public in all but name.
+[[nodiscard]] inline auto to_bytes(std::string_view text) -> binary {
+  binary out;
+  out.reserve(text.size());
+  for (const char character : text) {
+    out.push_back(static_cast<std::byte>(character));
+  }
+  return out;
+}
+
+/// \brief The text of some bytes.
+[[nodiscard]] inline auto to_text(const binary& bytes) -> std::string {
+  std::string out;
+  out.reserve(bytes.size());
+  for (const std::byte value : bytes) {
+    out.push_back(static_cast<char>(value));
+  }
+  return out;
+}
 
 /// \brief A SHOULD-level observation about an event: not an error.
 struct lint_warning {

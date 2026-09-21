@@ -574,4 +574,106 @@ const boost::ut::suite<"interop-http-binary-mode"> interop_http_binary_mode = []
   };
 };
 
+
+// spec: SWR-SEC-0005
+const boost::ut::suite<"interop-behaviour-audit"> interop_behaviour_audit = [] {
+  using namespace boost::ut;
+
+  // interop/audit/main.go ran these same cases through the Go SDK and its
+  // answers are committed beside the goldens. These assert THIS SDK's answer,
+  // so a change here is caught even where the two SDKs legitimately differ.
+  // interop/audit/README.md has the comparison and who is right on each.
+
+  "the recorded Go behaviour is present and complete"_test = [] {
+    std::ifstream in{ce_fixtures::path("interop/go/behaviour.json"), std::ios::binary};
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    auto document = nlohmann::json::parse(buffer.str(), nullptr, false, false);
+    expect(!document.is_discarded());
+    if (!document.is_discarded()) {
+      expect(document.size() == 21U) << "the audit recorded " << document.size() << " cases";
+    }
+  };
+
+  "a non-UTC offset survives a write here, unlike Go"_test = [] {
+    ce::event subject{.id = "1", .source = "/probe", .type = "com.example.probe"};
+    subject.time = *ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00");
+
+    auto written = ce::http::to_message<nlohmann_codec>(subject, ce::content_mode::binary_mode);
+    expect(bool{written});
+    if (written) {
+      const std::string* time = written->header_fields.find("ce-time");
+      expect(time != nullptr);
+      if (time != nullptr) {
+        // Go writes 2026-09-20T10:34:56.123456789Z for this event. Same instant,
+        // different text, so an event that round-trips through Go no longer
+        // compares equal to the one that set out.
+        expect(*time == "2026-09-20T12:34:56.123456789+02:00"sv) << *time;
+      }
+    }
+  };
+
+  "a lowercase RFC 3339 time is accepted here, unlike Go"_test = [] {
+    // RFC 3339 section 5.6: parsers SHOULD accept lower case t and z. Go rejects
+    // this input, so a third party emitting it is read here and refused there.
+    ce::message request;
+    request.header_fields.set("ce-specversion", "1.0");
+    request.header_fields.set("ce-id", "1");
+    request.header_fields.set("ce-source", "/s");
+    request.header_fields.set("ce-type", "t");
+    request.header_fields.set("ce-time", "2026-09-20t12:34:56z");
+
+    auto decoded = ce::http::from_message<nlohmann_codec>(request);
+    expect(bool{decoded});
+    if (decoded) {
+      expect(decoded->time.has_value());
+    }
+  };
+
+  "an empty required or optional attribute is refused here, unlike Go"_test = [] {
+    // The core spec requires a present attribute to be non-empty. Go accepts
+    // both of these and this SDK refuses them, which is a difference a caller
+    // meets as a rejected message rather than as corrupted data.
+    const auto with = [](std::string_view name, std::string_view value) {
+      ce::message request;
+      request.header_fields.set("ce-specversion", "1.0");
+      request.header_fields.set("ce-id", "1");
+      request.header_fields.set("ce-source", "/s");
+      request.header_fields.set("ce-type", "t");
+      request.header_fields.set(std::string{name}, std::string{value});
+      return request;
+    };
+
+    auto empty_subject = ce::http::from_message<nlohmann_codec>(with("ce-subject", ""));
+    expect(!empty_subject);
+    if (!empty_subject) {
+      expect(empty_subject.error().code == ce::errc::invalid_attribute_value);
+    }
+
+    auto empty_type = ce::http::from_message<nlohmann_codec>(with("ce-type", ""));
+    expect(!empty_type);
+
+    // And writing one is refused too, where Go silently drops the attribute.
+    ce::event subject{.id = "1", .source = "/probe", .type = "com.example.probe"};
+    subject.subject = "";
+    expect(!ce::http::to_message<nlohmann_codec>(subject, ce::content_mode::binary_mode));
+  };
+
+  "a specversion this SDK does not implement is refused"_test = [] {
+    ce::message request;
+    request.header_fields.set("ce-specversion", "0.3");
+    request.header_fields.set("ce-id", "1");
+    request.header_fields.set("ce-source", "/s");
+    request.header_fields.set("ce-type", "t");
+
+    // Go accepts this because it implements 0.3. This SDK claims 1.0 only, so
+    // refusing is the honest answer rather than a divergence.
+    auto decoded = ce::http::from_message<nlohmann_codec>(request);
+    expect(!decoded);
+    if (!decoded) {
+      expect(decoded.error().code == ce::errc::unsupported_spec_version);
+    }
+  };
+};
+
 int main() {}

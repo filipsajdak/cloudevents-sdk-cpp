@@ -31,6 +31,16 @@ carrier; copy and move; `explicit operator bool()`; `has_value()`; `operator*` a
 `error()`. `result<void>` carries `operator bool`, `has_value` and `error()` and no
 `operator*`. Anything outside that list is banned in `include/`.
 
+Those preconditions are **checked in the polyfill**, which is a deliberate
+asymmetry. `std::expected` leaves a wrong-branch read undefined; the polyfill
+calls a function that is not `constexpr`, so the same mistake is a compile error
+under constant evaluation and an abort at run time. A polyfill may be smaller
+than what it stands in for; it may not answer differently. Returning a plausible
+wrong value is the one outcome that makes the choice of backend observable, which
+is what this ADR exists to prevent. Aborting is consistent with ADR-0001: a
+precondition violation is a defect in the caller, not a recoverable failure.
+`docs/DECISIONS.md` D-CORE-7 records the divergence this replaced.
+
 Enforcement is three layers, strongest first:
 
 1. **The polyfill is the lint.** CI builds the whole library and the whole test
@@ -41,6 +51,11 @@ Enforcement is three layers, strongest first:
    members genuinely do not exist, so the polyfill cannot drift into growing them.
 3. **A grep lint** over `include/` rejecting the banned spellings, which catches a
    code path guarded by `#if CE_HAS_EXPECTED` that layer 1 would not compile.
+   **Not implemented.** Audited 2026-09-21: no such lint exists in
+   `.github/workflows/`, in `cmake/`, or in `lefthook.yml`, and the repository has
+   no scripts directory. Layers 1 and 2 are real and green; this one was described
+   and never built, so the gap it names - a banned spelling inside
+   `#if CE_HAS_EXPECTED`, which no configuration compiles - is currently open.
 
 GCC 16 at `-std=c++20` is a load-bearing job for the same reason: it is the natural
 configuration where `__cpp_lib_expected` is genuinely absent.

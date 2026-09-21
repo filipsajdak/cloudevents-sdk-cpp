@@ -960,3 +960,70 @@ than a `message`. They are not deprecated by `to_message` and `from_message`.
 They are the correct API for a server before NATS 2.2, which cannot carry
 headers at all, and `ce::v1` is frozen: `SWR-BUILD-0006` permits adding to it
 and not removing from it. A caller on 2.2 or later wants the message pair.
+
+## D-CORE-6: The timestamp fraction is rendered whole, then truncated
+
+`to_string` built the fractional digits by dividing a place value that started at
+1e8 nanoseconds and shrank by ten each digit. On the tenth digit that place value
+is zero, so the expression was an integer division by zero.
+
+`fractional_digits` is a public `std::uint8_t` on an aggregate, so 10 through 255
+are all reachable by hand, and `D-CORE-1` is the reason the field exists at all:
+the digit count is stored because it is the only way a canonical input
+round-trips. `parse_timestamp` cannot produce a count above nine, which is why
+this was never observed.
+
+The fix is not a bound check. The nanosecond field is rendered as all nine of its
+digits and then truncated to the requested width, which divides nothing, needs no
+guard, and gives a defined answer for every value the type can hold. Truncation
+rather than rounding keeps a shorter count a prefix of a longer one, so the same
+instant never renders two ways depending on how many digits were asked for.
+
+The type will stop admitting a count above nine when the attribute types land,
+and this stays correct when it does.
+
+## D-CORE-7: A wrong-branch read of the polyfill aborts rather than being undefined
+
+`poly::expected<void, E>` stored a default-constructed `E` beside its flag, so
+`error()` on a **successful** result returned `errc{0}`. That is not an
+enumerator - `errc` starts at 1 - and `to_string_view` renders it `"unknown"`.
+Under `std::expected` the same call is undefined.
+
+So the two backends disagreed, and which one a build got was decided by the
+standard library rather than by the call site. A polyfill may be smaller than
+what it stands in for (ADR-0002); it may not behave differently.
+
+The error moved into a union, as in the primary template, so there is no default
+error to return. Reading either alternative when the other is held now calls a
+function that is deliberately **not** `constexpr`: in a constant expression that
+is a compile error naming what happened, and at run time it aborts.
+
+That makes the polyfill stricter than `std::expected`, which is the useful
+direction. `gcc-cxx20` and `polyfill-cxx23` are where a mistake surfaces, and
+both are in CI. Aborting also keeps ADR-0001 intact: a precondition violation is
+a defect in the caller, not a recoverable failure, so it is not something to
+return.
+
+## D-BIND-1: A prefixed datacontenttype is refused where it is read
+
+Where a binding carries the media type in its own content-type field - HTTP and
+Kafka both do, NATS does not - a `ce-datacontenttype` field matched no attribute
+branch and fell through to the extension branch. The name is lowercase
+alphanumeric, so it passed `valid_attribute_name`, and the reserved-name check
+lives in `validate()` rather than there. The event was built carrying an
+extension the encoder would refuse, and a caller who never called `validate()`
+never found out.
+
+`validate()` did refuse it, as `reserved_attribute_name`. That answer is true and
+useless: the name is not the problem, the field is. The caller's fix is to send
+the media type in the content-type field, and nothing in that error said so.
+
+It is now refused in `read_attributes`, as `invalid_argument`, naming the
+attribute and where the media type belongs. `invalid_argument` rather than
+`reserved_attribute_name` because the complaint is about the field having no
+place in this binding, which is the same complaint `to_message` already makes
+when asked for a content mode a transport does not have.
+
+Measured before changing it: no fixture under `test/fixtures/` contains
+`ce-datacontenttype` or `ce_datacontenttype` in any spelling, and neither the Go
+nor the Java golden emits one, so no peer sends this today.

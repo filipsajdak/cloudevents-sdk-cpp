@@ -2,6 +2,65 @@
 
 Notable changes per release. Dates are the tag date.
 
+## v0.3.0
+
+NATS binary mode, and the reason it was missing.
+
+### Added
+
+- **`ce::nats::to_message` / `from_message`.** Binary mode maps each attribute
+  to a header named for it with a `ce-` prefix, percent-encoded by HTTP's rule.
+  It needs a server at NATS 2.2 or later, which is where the protocol gained
+  headers. All three bindings now support binary mode.
+- `ce::nats::detect_content_mode`. The binding inverts HTTP's default: a
+  CloudEvents content type means structured and **anything else means binary**,
+  including no content type at all.
+
+`to_payload` and `from_payload` are unchanged and not deprecated. They remain
+the right API for a server before 2.2, which cannot carry a header (D-NATS-2).
+
+### Two rules that differ from every other binding here
+
+- **datacontenttype is not special.** It maps to `ce-datacontenttype` like any
+  other attribute, and `Content-Type` is left to mean that a message is
+  structured. The shared binding core gained `content_type_is_attribute` for
+  this, **detected rather than required**, so a `binding_traits` type written
+  before it still satisfies the concept unchanged.
+- **No batch mode**, which the binding does not define.
+
+### Why this was missing
+
+`SWR-NATS-0001` forbade binary mode, quoting the v1.0.2 binding: "the NATS
+protocol does not support custom message headers, necessary for binary mode".
+NATS 2.2 introduced headers in 2021 and the binding now says "Every compliant
+implementation SHOULD support both structured and binary modes".
+
+The requirement was written against a frozen tag and the tag moved. Nothing in
+the gates would catch that: they check a requirement is traceable and verified,
+not that the document it was derived from still says the same thing.
+
+### Following the specification rather than the only implementation
+
+sdk-go's `protocol/nats_jetstream` is the only other header-based NATS mapping
+and differs from the binding on three rules: `content-type` unprefixed instead
+of `ce-datacontenttype`, binary detected by `ce-specversion` presence rather
+than content-type absence, and no percent-encoding where the binding requires
+it. Reported as `cloudevents/sdk-go#1334`. This SDK follows the binding, and
+deliberately ships no compatibility mode for the divergence: no other SDK has a
+NATS binary mode yet, so there is nothing to be compatible with (D-NATS-1).
+
+### JetStream
+
+There is no JetStream binding in the CloudEvents specification, so there is
+nothing named to implement. JetStream carries the same subjects, headers and
+payloads as core NATS; persisting and delivering them is the client's, as
+moving any message onto a wire is.
+
+### Known cost
+
+Binary mode follows the binding on `main`, marked 1.0.3-wip, while the rest of
+the SDK implements v1.0.2. If it changes before 1.0.3 is cut, this follows it.
+
 ## v0.2.0
 
 Three more JSON codecs to choose between, two more protocol bindings, and the

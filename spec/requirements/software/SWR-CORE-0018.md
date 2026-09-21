@@ -1,20 +1,21 @@
 ---
 uid: SWR-CORE-0018
-title: validate accepts only specversion 1.0
+title: Only specversion 1.0 is accepted on receive, and no other can be produced
 type: software
 status: approved
 priority: high
 rationale: >
   SPEC 5.1 pins `specversion` to the value 1.0 and open decision D5 declines
-  support for 0.3 on receive, so any other version string is a failure rather
-  than a silently processed event.
+  support for 0.3 on receive. Under ADR-0008 the produce side cannot express any
+  other version at all: `spec_version` is a type with one inhabitant, so the
+  remaining rule concerns text arriving from a peer.
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
 satisfied_by: [code:include/cloudevents/core.hpp]
 verified_by: [test:test/core_test.cpp::core-validate-specversion]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
-When `specversion` holds a value other than the string 1.0, `validate()` shall
-return a failed result reporting the unsupported version.
+When a decoded `specversion` holds a value other than the string 1.0, the SDK
+shall return a failed result reporting the unsupported version.

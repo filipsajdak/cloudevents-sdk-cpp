@@ -40,6 +40,8 @@ ce_add_test(core_test SOURCES core_test.cpp)
 ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
+# The binding core names no codec, so this suite runs in a build with none.
+ce_add_test(binding_core_test SOURCES binding_core_test.cpp)
 
 ce_add_test(module_test SOURCES module_test.cpp)
 # CE_MODULE_IN_DEFAULT_BUILD carries the option's value rather than a constant,

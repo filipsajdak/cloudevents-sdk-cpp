@@ -75,6 +75,9 @@ constexpr std::array nested_exports{
     "ce::v1::json::json_codec"sv, "ce::v1::json::kind"sv,
     "ce::v1::http::from_message"sv, "ce::v1::http::to_message"sv,
     "ce::v1::ext::tracing"sv,       "ce::v1::ext::dataref"sv,
+    "ce::v1::binding::binding_traits"sv,
+    "ce::v1::binding::write_attributes"sv,
+    "ce::v1::binding::read_attributes"sv,
 };
 
 [[nodiscard]] auto read_module() -> std::string {

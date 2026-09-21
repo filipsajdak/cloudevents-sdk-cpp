@@ -26,9 +26,12 @@ auto request = ce::http::to_message<codec>(order, ce::content_mode::binary_mode)
 
 ## What you get
 
-- **The three content modes.** Binary, structured and batched, in both
-  directions, over a transport-neutral `ce::message`. The SDK performs no
-  network I/O and names no type from an HTTP library.
+- **Three protocol bindings.** HTTP, Kafka and NATS, in both directions, over a
+  transport-neutral `ce::message`. The SDK performs no network I/O and names no
+  type from any client library: moving a message onto the wire is yours.
+- **The three content modes.** Binary, structured and batched, where the binding
+  defines them. Kafka has no batch mode and NATS is structured-only, and the SDK
+  refuses what the transport does not have rather than inventing it.
 - **Typed extensions.** The five documented CloudEvents extensions as structs.
   `event.get<ce::ext::tracing>()` returns a struct, and the declared field type
   is restored even when the wire form threw it away - which HTTP binary mode
@@ -79,6 +82,8 @@ Four targets, and the dependency direction only goes downward:
 | `ce::core` | the event model, validation, timestamps | CTRE, nothing else |
 | `ce::format_json` | the JSON event format, over any codec | `ce::core` |
 | `ce::binding_http` | the HTTP protocol binding | `ce::core` |
+| `ce::binding_kafka` | the Kafka protocol binding | `ce::core` |
+| `ce::binding_nats` | the NATS protocol binding | `ce::core` |
 | `ce::codec_nlohmann` | the nlohmann codec, the default | `ce::core`, nlohmann |
 | `ce::codec_rapidjson` | the RapidJSON codec, opt in with `-DCE_CODECS=` | `ce::core`, RapidJSON |
 | `ce::codec_boost_json` | the Boost.JSON codec, opt in; needs exceptions | `ce::core`, Boost.JSON |
@@ -98,6 +103,21 @@ using format = ce::json_format<my_codec>;
 
 The concept is what reports a missing operation, naming it, rather than failing
 inside a template.
+
+### Which codec
+
+Three ship in the box. `bench/` measures them over CloudEvents-sized workloads;
+these are its findings, not a recommendation to take on trust.
+
+| codec | choose it when |
+|---|---|
+| `nlohmann` | you already depend on it, or you want the default and no decision |
+| `rapidjson` | throughput matters: fastest on event-sized documents, smallest binary, shortest compile |
+| `boost_json` | documents run large (it wins at 64 KiB), or you already link Boost |
+
+`boost_json` needs exceptions; the build refuses it under `-fno-exceptions`
+rather than failing at link. Glaze was measured too and is not shipped: it needs
+C++23 and this SDK's floor is C++20.
 
 ## Errors
 

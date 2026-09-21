@@ -883,3 +883,39 @@ alongside the binding's own.
 `content-type` is matched the same way, and it is the one place the strictness is
 visible: a producer emitting `Content-Type` on a Kafka record is not matched. No
 SDK does, and the binding examples are lowercase throughout.
+
+## D-HTTP-1: Percent-encoding is conformant by default and opt-out
+
+The HTTP binding specification section 3.1.3.2 requires space, double-quote,
+percent and anything outside U+0021-U+007E to be percent-encoded in a header
+value. Measured on 2026-09-21 by running sdk-go v2.15.2 and by reading sdk-java
+main, neither SDK encodes on send or decodes on receive.
+
+What that costs, with the values each side actually puts on the wire:
+
+| event | C++ sends | Go application sees |
+|---|---|---|
+| `subject = "a b"` | `ce-subject: a%20b` | `a%20b` |
+| `subject = "100%"` | `ce-subject: 100%25` | `100%25` |
+
+| event | Go sends | C++ produces |
+|---|---|---|
+| `subject = "a b"` | `ce-subject: a b` | `a b` |
+| `subject = "100%"` | `ce-subject: 100%` | rejected, truncated escape |
+| `subject = "100%41"` | `ce-subject: 100%41` | `100A` |
+
+The default stays conformant. The specification is what a receiver is entitled
+to expect, a released version already behaves this way, and a silent change
+would be worse than a documented incompatibility. `ce::http::literal_values` is
+the opt-in for callers who must talk to Go or Java, named at the call site so
+the departure is visible in the code that made it.
+
+Only binary mode is affected, and only for values containing space, double
+quote, percent or a byte outside printable ASCII. Structured mode carries the
+event in the body, so it is unaffected, as is the Kafka binding, where neither
+this SDK nor the others escape anything.
+
+`literal_values` is not "do nothing". Percent-encoding was also what kept a
+control character out of a header field: a value carrying CR or LF would end
+the header and start another one of the sender's choosing. The literal policy
+refuses a control character rather than passing it through.

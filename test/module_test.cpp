@@ -78,6 +78,9 @@ constexpr std::array nested_exports{
     "ce::v1::binding::binding_traits"sv,
     "ce::v1::binding::write_attributes"sv,
     "ce::v1::binding::read_attributes"sv,
+    "ce::v1::kafka::to_record"sv,
+    "ce::v1::kafka::from_message"sv,
+    "ce::v1::kafka::partitionkey_mapper"sv,
 };
 
 [[nodiscard]] auto read_module() -> std::string {

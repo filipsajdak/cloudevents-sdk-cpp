@@ -84,7 +84,7 @@ include/cloudevents/{core,describe,message}.hpp
 include/cloudevents/detail/config.hpp
 include/cloudevents/format/{json_codec,json_format,base64}.hpp
 include/cloudevents/codec/{nlohmann,rapidjson,boost_json}.hpp
-include/cloudevents/binding/{common,http}.hpp
+include/cloudevents/binding/{common,http,kafka}.hpp
 include/cloudevents/binding/detail/percent.hpp
 include/cloudevents/extensions/{tracing,partitioning,sequence,sampledrate,dataref}.hpp
 test/  fuzz/  examples/  cmake/  docs/  prototype/
@@ -197,6 +197,20 @@ header mapping. Consumers must never branch on the backend.
 - Binary-mode receive cannot know extension types: decode as `std::string`.
 - A request with no `ce-specversion` and a non-CloudEvents content type is
   `errc::not_a_cloudevent`, distinct from malformed.
+
+### 5.4.1 Kafka binding
+
+- `kafka::to_message` / `from_message`, and `to_record` returning
+  `record{ message value; std::optional<std::string> key; }`.
+- Prefix `ce_`; `content-type` carries datacontenttype and takes no prefix.
+- Header keys and values are UTF-8 strings with **no** escaping. A value that is
+  not well-formed UTF-8 is `errc::invalid_utf8`, refused rather than transmitted.
+- Header keys compare byte for byte (D-KAFKA-2).
+- No batch mode in either direction (D-KAFKA-1); the batch content type is
+  recognised before the structured one so the refusal names the mode.
+- `key_mapper` concept; `no_key_mapper` is the default and `partitionkey_mapper`
+  is the opt-in the binding spec asks for. The extension still travels as a
+  header when it becomes the key.
 
 ### 5.5 Typed extensions and payloads
 

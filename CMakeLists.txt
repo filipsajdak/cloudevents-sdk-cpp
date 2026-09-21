@@ -95,6 +95,11 @@ add_library(ce::binding_http ALIAS ce_binding_http)
 set_target_properties(ce_binding_http PROPERTIES EXPORT_NAME binding_http)
 target_link_libraries(ce_binding_http INTERFACE ce_core)
 
+add_library(ce_binding_kafka INTERFACE)
+add_library(ce::binding_kafka ALIAS ce_binding_kafka)
+set_target_properties(ce_binding_kafka PROPERTIES EXPORT_NAME binding_kafka)
+target_link_libraries(ce_binding_kafka INTERFACE ce_core)
+
 # The only target permitted to see nlohmann. With that codec absent from
 # CE_CODECS it does not exist at all, which is what makes SWR-ADOPT-0002 and
 # SWR-JSON-0030 testable rather than aspirational.
@@ -164,7 +169,8 @@ endif()
 include(CMakePackageConfigHelpers)
 
 ce_codec_targets(CE_CODEC_TARGET_LIST)
-set(CE_INSTALL_TARGETS ce_core ce_format_json ce_binding_http ${CE_CODEC_TARGET_LIST})
+set(CE_INSTALL_TARGETS ce_core ce_format_json ce_binding_http ce_binding_kafka
+    ${CE_CODEC_TARGET_LIST})
 
 install(TARGETS ${CE_INSTALL_TARGETS} EXPORT cloudeventsTargets)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

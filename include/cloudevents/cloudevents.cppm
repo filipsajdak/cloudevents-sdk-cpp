@@ -10,6 +10,7 @@ module;
 
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/http.hpp>
+#include <cloudevents/binding/kafka.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>
 #include <cloudevents/extensions.hpp>
@@ -105,6 +106,18 @@ using ce::v1::http::from_message;
 using ce::v1::http::to_batch_message;
 using ce::v1::http::to_message;
 }  // namespace http
+
+// --- Kafka binding ----------------------------------------------------------
+namespace kafka {
+using ce::v1::kafka::detect_content_mode;
+using ce::v1::kafka::from_message;
+using ce::v1::kafka::key_mapper;
+using ce::v1::kafka::no_key_mapper;
+using ce::v1::kafka::partitionkey_mapper;
+using ce::v1::kafka::record;
+using ce::v1::kafka::to_message;
+using ce::v1::kafka::to_record;
+}  // namespace kafka
 
 // --- documented extensions --------------------------------------------------
 namespace ext {

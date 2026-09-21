@@ -55,7 +55,11 @@ docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/java \
                -Dexec.args="$1 /w/test/fixtures/interop/cpp"' sh "$java_out"
 
 if [ "$mode" = "verify" ]; then
-  rm -rf "$root/build/interop-verify"
+  # Removed from inside a container, because the generators run as root and
+  # create subdirectories the host user cannot empty: unlinking a root-owned
+  # file needs write permission on its DIRECTORY, which a root-owned
+  # subdirectory does not grant.
+  docker run --rm -v "$root:/w" alpine:3 rm -rf /w/build/interop-verify
 fi
 
 echo

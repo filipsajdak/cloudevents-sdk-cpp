@@ -1,0 +1,9 @@
+{
+  "headers": {
+    "ce-id": "id-minimal",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-type": "com.example.minimal"
+  },
+  "body_base64": ""
+}

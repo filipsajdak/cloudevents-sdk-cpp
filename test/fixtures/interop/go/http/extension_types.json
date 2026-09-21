@@ -1,0 +1,14 @@
+{
+  "headers": {
+    "ce-aboolean": "true",
+    "ce-aninteger": "42",
+    "ce-astring": "text",
+    "ce-id": "id-types",
+    "ce-negative": "-7",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-type": "com.example.types",
+    "ce-zero": "0"
+  },
+  "body_base64": ""
+}

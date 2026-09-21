@@ -1,0 +1,11 @@
+{
+  "headers": {
+    "ce-id": "id-percent",
+    "ce-pct": "a%20b",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-subject": "100% of 50%OFF",
+    "ce-type": "com.example.percent"
+  },
+  "body_base64": ""
+}

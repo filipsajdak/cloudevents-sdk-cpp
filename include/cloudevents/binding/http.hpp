@@ -3,6 +3,7 @@
 /// \file
 /// \brief The CloudEvents HTTP protocol binding, over a transport-neutral message.
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -48,6 +49,7 @@ using ce::v1::binding::detail::percent_encode;
 /// A named namespace, not an anonymous one: an anonymous namespace in a header
 /// gives every translation unit its own type, which is an ODR violation the
 /// linker does not report.
+template <class Values>
 struct http_traits {
   static constexpr std::string_view attribute_prefix = ce::v1::http::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
@@ -56,17 +58,72 @@ struct http_traits {
   static constexpr bool case_sensitive_names = false;
 
   [[nodiscard]] static auto encode_value(std::string_view text) -> result<std::string> {
-    return percent_encode(text);
+    return Values::encode(text);
   }
 
   [[nodiscard]] static auto decode_value(std::string_view text) -> result<std::string> {
-    return percent_decode(text);
+    return Values::decode(text);
   }
 };
 
-static_assert(binding::binding_traits<http_traits>);
-
 }  // namespace detail
+
+/// \brief How a binding renders an attribute value into a header field.
+template <class T>
+concept value_policy = requires(std::string_view text) {
+  { T::encode(text) } -> std::same_as<result<std::string>>;
+  { T::decode(text) } -> std::same_as<result<std::string>>;
+};
+
+/// \brief The specification's rule, and the default.
+///
+/// Binding spec section 3.1.3.2: space, double-quote, percent and anything
+/// outside U+0021-U+007E are percent-encoded.
+struct percent_encoded_values {
+  [[nodiscard]] static auto encode(std::string_view text) -> result<std::string> {
+    return detail::percent_encode(text);
+  }
+
+  [[nodiscard]] static auto decode(std::string_view text) -> result<std::string> {
+    return detail::percent_decode(text);
+  }
+};
+
+/// \brief Header values exactly as the Go and Java SDKs write and read them.
+///
+/// Measured on 2026-09-21 against sdk-go v2.15.2 and sdk-java main: neither
+/// encodes on send nor decodes on receive. So a conformant sender is misread by
+/// both, and this policy exists for callers who must talk to them. Naming it is
+/// a deliberate departure from the binding specification.
+///
+/// It is not simply "do nothing". Percent-encoding was also what kept a control
+/// character out of a header field, and a value carrying CR or LF would let an
+/// attacker end the header and start another. This policy refuses one instead.
+struct literal_values {
+  [[nodiscard]] static auto encode(std::string_view text) -> result<std::string> {
+    for (const char character : text) {
+      if (static_cast<unsigned char>(character) < 0x20U ||
+          static_cast<unsigned char>(character) == 0x7FU) {
+        return fail(errc::invalid_argument,
+                    "a literal header value may not contain a control character");
+      }
+    }
+    if (!detail::is_valid_utf8(text)) {
+      return fail(errc::invalid_utf8, "a header value must be well-formed UTF-8");
+    }
+    return std::string{text};
+  }
+
+  [[nodiscard]] static auto decode(std::string_view text) -> result<std::string> {
+    if (!detail::is_valid_utf8(text)) {
+      return fail(errc::invalid_utf8, "a header value must be well-formed UTF-8");
+    }
+    return std::string{text};
+  }
+};
+
+static_assert(binding::binding_traits<detail::http_traits<percent_encoded_values>>);
+static_assert(binding::binding_traits<detail::http_traits<literal_values>>);
 
 /// \brief Which content mode a received message uses.
 ///
@@ -87,14 +144,14 @@ static_assert(binding::binding_traits<http_traits>);
 }
 
 /// \brief Lay an event out as an HTTP message.
-template <json::json_codec Codec>
+template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto to_message(const event& subject, content_mode mode) -> result<message> {
   if (auto valid = subject.validate(); !valid) {
     return fail(valid.error().code, valid.error().detail, valid.error().where);
   }
 
   if (mode == content_mode::structured) {
-    return binding::encode_structured<detail::http_traits, Codec>(subject);
+    return binding::encode_structured<detail::http_traits<Values>, Codec>(subject);
   }
 
   if (mode == content_mode::batched) {
@@ -102,7 +159,8 @@ template <json::json_codec Codec>
   }
 
   message out;
-  if (auto written = binding::write_attributes<detail::http_traits>(subject, out.header_fields);
+  if (auto written =
+          binding::write_attributes<detail::http_traits<Values>>(subject, out.header_fields);
       !written) {
     return fail(written.error().code, written.error().detail, written.error().where);
   }
@@ -132,7 +190,7 @@ template <json::json_codec Codec>
 /// A request with no `ce-specversion` and a content type that is not a
 /// CloudEvents one is `not_a_cloudevent`, which a receiver usually wants to pass
 /// through rather than reject. That is a different outcome from malformed.
-template <json::json_codec Codec>
+template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto from_message(const message& request) -> result<event> {
   const content_mode mode = detect_content_mode(request);
 
@@ -147,7 +205,7 @@ template <json::json_codec Codec>
     return fail(errc::not_a_cloudevent, "no ce-specversion header and no CloudEvents content type");
   }
 
-  auto subject = binding::read_attributes<detail::http_traits>(request.header_fields);
+  auto subject = binding::read_attributes<detail::http_traits<Values>>(request.header_fields);
   if (!subject) {
     return fail(subject.error().code, subject.error().detail, subject.error().where);
   }

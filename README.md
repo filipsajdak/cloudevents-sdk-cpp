@@ -165,6 +165,25 @@ See `D-MODULE-1` in `docs/DECISIONS.md` for what works and what does not.
 
 ## Interoperability
 
+`interop/run.sh` regenerates goldens with the Go and Java SDKs and checks both
+directions. That covers the JSON event format, which is also what the NATS
+binding carries.
+
+**One known incompatibility, in HTTP binary mode.** The binding spec requires
+header values containing space, double quote, percent or non-ASCII to be
+percent-encoded. Measured on 2026-09-21, sdk-go v2.15.2 and sdk-java do neither
+encode nor decode, so an event whose `subject` is `a b` reaches a Go application
+as `a%20b`. Name the opt-in policy when you talk to them:
+
+```cpp
+auto request = ce::http::to_message<codec, ce::http::literal_values>(
+    event, ce::content_mode::binary_mode);
+```
+
+The default stays spec-conformant. `docs/DECISIONS.md` (D-HTTP-1) has the full
+table and the reasoning. Kafka is unaffected: no SDK escapes anything there.
+
+
 There is no reference C++ CloudEvents SDK to agree with, so agreement with the
 Go and Java SDKs is the external correctness measure.
 

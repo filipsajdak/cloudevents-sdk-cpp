@@ -1,0 +1,10 @@
+{
+  "headers": {
+    "ce-id": "id-scalar",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-type": "com.example.scalar",
+    "content-type": "application/json"
+  },
+  "body_base64": "WzEsMiwzXQ=="
+}

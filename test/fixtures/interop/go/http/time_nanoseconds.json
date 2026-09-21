@@ -1,0 +1,10 @@
+{
+  "headers": {
+    "ce-id": "id-nanos",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-time": "2026-09-20T10:34:56.123456789Z",
+    "ce-type": "com.example.nanos"
+  },
+  "body_base64": ""
+}

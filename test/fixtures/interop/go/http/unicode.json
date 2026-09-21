@@ -1,0 +1,11 @@
+{
+  "headers": {
+    "ce-id": "id-unicode-é文",
+    "ce-source": "/interop/go/%C3%A9v%C3%A9nement",
+    "ce-specversion": "1.0",
+    "ce-subject": "日本語 😀",
+    "ce-type": "com.example.unicode",
+    "content-type": "application/json"
+  },
+  "body_base64": "eyJ0ZXh0Ijoiw6nmlocg8J+YgCJ9"
+}

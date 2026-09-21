@@ -1,0 +1,10 @@
+{
+  "headers": {
+    "ce-id": "id-binary",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-type": "com.example.binary",
+    "content-type": "application/octet-stream"
+  },
+  "body_base64": "AAEC/w=="
+}

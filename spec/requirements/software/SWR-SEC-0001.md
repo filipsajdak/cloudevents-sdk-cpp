@@ -6,9 +6,11 @@ status: approved
 priority: high
 rationale: >
   SPEC 6 names timestamp parsing, JSON decode, HTTP message decode and base64 decode
-  as fuzz targets. These four routines are the whole surface an attacker can reach by
-  sending a request, so each carries its own target seeded from the conformance
-  fixtures.
+  as fuzz targets. Each new protocol binding adds a decode path to that surface, so
+  Kafka record decoding and NATS payload decoding carry targets too. The Kafka target
+  is not a duplicate of the HTTP one: the two bindings take opposite branches of every
+  compile-time choice in the shared core, so byte-exact key matching and UTF-8
+  validation on the way in are unreachable from the HTTP target.
 
   The run splits by cadence because the two runs answer different questions. Replaying
   the seed corpus answers "did a defect we already found come back", costs a second,
@@ -21,9 +23,10 @@ derived_from: [SYS-SEC-0001]
 satisfied_by: []
 verified_by: [test:fuzz/fuzz_json_decode.cpp::fuzz-json-decode]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
-The SDK shall provide a libFuzzer target for timestamp parsing, JSON decoding, HTTP
-message decoding and base64 decoding, each seeded from the conformance fixtures, each
-replaying its seed corpus on every pull request, and each completing a ten-minute run
-without a crash, a leak or a timeout in a scheduled daily job.
+The SDK shall provide a libFuzzer target for timestamp parsing, JSON decoding, base64
+decoding, and the decode path of every protocol binding, each seeded from the
+conformance fixtures, each replaying its seed corpus on every pull request, and each
+completing a ten-minute run without a crash, a leak or a timeout in a scheduled daily
+job.

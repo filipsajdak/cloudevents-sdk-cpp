@@ -39,6 +39,13 @@ inline constexpr std::string_view base64_alphabet =
   return 0xFF;
 }
 
+/// Characters in one base64 quantum: four sextets carrying three octets.
+inline constexpr std::size_t quantum_characters = 4;
+
+/// RFC 4648 section 4 pads a final quantum out to four characters, so a
+/// well-formed encoding carries at most two padding characters.
+inline constexpr std::size_t max_padding_characters = 2;
+
 }  // namespace detail
 
 /// \brief Encode bytes as base64, with padding.
@@ -87,19 +94,35 @@ inline constexpr std::string_view base64_alphabet =
 
 /// \brief Decode base64.
 ///
-/// Padding is optional, because a peer may omit it and the encoded length still
-/// determines the byte count. Anything outside the alphabet is rejected,
-/// including whitespace and the URL-safe alphabet, which RFC 4648 section 4 does
-/// not admit.
+/// Padding may be omitted entirely, because the encoded length already
+/// determines the byte count. Where it is present it must be exactly what the
+/// final quantum needs: at most two characters, completing the input to a
+/// multiple of four. Anything outside the alphabet is rejected, including
+/// whitespace and the URL-safe alphabet, which RFC 4648 section 4 does not
+/// admit.
 [[nodiscard]] constexpr auto base64_decode(std::string_view text) -> result<binary> {
   std::string_view body = text;
+  std::size_t padding = 0;
   while (!body.empty() && body.back() == '=') {
     body.remove_suffix(1);
+    ++padding;
+  }
+
+  // Padding is optional, but a spelling that carries it must carry exactly the
+  // amount the final quantum needs. Accepting any run of '=' made "QQ======" and
+  // "====" decode, and made several spellings of the same octets valid.
+  if (padding > detail::max_padding_characters) {
+    return fail(errc::invalid_base64, "more than two padding characters",
+                std::string{text});
+  }
+  if (padding > 0 && text.size() % detail::quantum_characters != 0) {
+    return fail(errc::invalid_base64, "padding does not complete the final quantum",
+                std::string{text});
   }
 
   // Every character after the padding was stripped must be in the alphabet, and
   // a leftover of exactly one sextet cannot have come from any byte sequence.
-  if (body.size() % 4 == 1) {
+  if (body.size() % detail::quantum_characters == 1) {
     return fail(errc::invalid_base64, "encoded length leaves a stray sextet", std::string{text});
   }
 

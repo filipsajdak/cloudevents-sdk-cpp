@@ -87,6 +87,53 @@ static_assert(!binding::binding_traits<bare_string>);
 
 }  // namespace
 
+// spec: SWR-MSG-0002
+const boost::ut::suite<"message-headers-from-field-list"> message_headers_field_list = [] {
+  using namespace boost::ut;
+
+  "a braced list builds the same fields as repeated add calls"_test = [] {
+    const ce::headers listed{
+        {"x_specversion", "1.0"},
+        {"x_id", "1"},
+        {"x_source", "/s"},
+    };
+
+    ce::headers added;
+    added.add("x_specversion", "1.0");
+    added.add("x_id", "1");
+    added.add("x_source", "/s");
+
+    expect(listed == added);
+    expect(listed.size() == 3U);
+  };
+
+  // add semantics, not set: a message that arrived carrying a field twice is
+  // exactly what a test written against this constructor needs to describe.
+  "the order is kept and a repeated name is kept twice"_test = [] {
+    const ce::headers fields{
+        {"x_id", "first"},
+        {"x_other", "v"},
+        {"x_id", "second"},
+    };
+
+    expect(fields.size() == 3U);
+    expect(field_names(fields) == std::vector<std::string>{"x_id", "x_other", "x_id"});
+
+    // find returns the first, which is the behaviour the duplicate exists to pin.
+    const std::string* found = fields.find_exact("x_id");
+    expect(found != nullptr);
+    if (found != nullptr) {
+      expect(*found == "first"sv);
+    }
+  };
+
+  "an empty braced list is an empty set of fields"_test = [] {
+    const ce::headers none{};
+    expect(none.empty());
+    expect(none.size() == 0U);
+  };
+};
+
 // spec: SWR-BIND-0001
 const boost::ut::suite<"binding-core-traits"> binding_core_traits = [] {
   using namespace boost::ut;
@@ -242,6 +289,28 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
     if (!subject) {
       expect(subject.error().code == ce::errc::missing_required_attribute);
       expect(subject.error().where == "type"sv);
+    }
+  };
+
+  // A prefixed datacontenttype used to reach the extension branch, pass the name
+  // check, be stored as an extension, and only then be refused by validate() as a
+  // reserved name - a complaint about the name rather than about the field having
+  // no place in this binding. The caller's fix is to move the media type to the
+  // content-type field, and nothing in the old diagnosis said so.
+  "a prefixed datacontenttype is refused where the binding has a content-type field"_test = [] {
+    const ce::headers fields{
+        {"x_specversion", "1.0"},
+        {"x_id", "1"},
+        {"x_source", "/s"},
+        {"x_type", "t"},
+        {"x_datacontenttype", "application/json"},
+    };
+
+    auto subject = binding::read_attributes<exact_traits>(fields);
+    expect(!subject);
+    if (!subject) {
+      expect(subject.error().code == ce::errc::invalid_argument);
+      expect(subject.error().where == "datacontenttype"sv);
     }
   };
 

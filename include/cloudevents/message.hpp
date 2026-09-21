@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -22,6 +23,16 @@ namespace ce::inline v1 {
 class headers {
  public:
   using entry = std::pair<std::string, std::string>;
+
+  headers() = default;
+
+  /// \brief Build a set of fields from a literal list, in the order given.
+  ///
+  /// Carries the same meaning as repeated `add`: order is kept and a repeated
+  /// name is kept twice, which is what a wire-shaped literal has to be able to
+  /// say. `set` semantics would silently drop the duplicate a test was written
+  /// to exercise.
+  headers(std::initializer_list<entry> fields) : entries_{fields} {}
 
   void add(std::string name, std::string value) {
     entries_.emplace_back(std::move(name), std::move(value));

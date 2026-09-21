@@ -84,7 +84,8 @@ include/cloudevents/{core,describe,message}.hpp
 include/cloudevents/detail/config.hpp
 include/cloudevents/format/{json_codec,json_format,base64}.hpp
 include/cloudevents/codec/{nlohmann,rapidjson,boost_json}.hpp
-include/cloudevents/binding/http.hpp
+include/cloudevents/binding/{common,http}.hpp
+include/cloudevents/binding/detail/percent.hpp
 include/cloudevents/extensions/{tracing,partitioning,sequence,sampledrate,dataref}.hpp
 test/  fuzz/  examples/  cmake/  docs/  prototype/
 ```
@@ -172,8 +173,15 @@ header mapping. Consumers must never branch on the backend.
 - `event::data_as<T>(codec)` and `event::set_data(const T&, codec)` for described
   `T`, implemented in the format layer as free functions if that keeps core clean.
 
-### 5.4 Message and HTTP binding
+### 5.4 Message, the binding core, and the HTTP binding
 
+- `binding::binding_traits`: what one protocol contributes. `attribute_prefix`,
+  `content_type_header`, `case_sensitive_names`, `encode_value`, `decode_value`.
+  The shared `write_attributes`, `read_attributes`, `write_body`, `read_body`,
+  `render_attribute`, `encode_structured` and `decode_structured` are templates over
+  it (ADR-0007). `case_sensitive_names` decides prefix matching, name
+  normalisation, content-type lookup and replace-on-write together, so the read and
+  write halves cannot disagree.
 - `message{ headers, body }`: `headers` is an ordered multimap with case-insensitive
   lookup; `body` is `binary`. No HTTP library types.
 - `http::to_message(event, mode, codec)` and `http::from_message(message, codec)`;

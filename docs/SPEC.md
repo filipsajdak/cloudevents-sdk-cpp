@@ -15,8 +15,12 @@ with the other SDKs (Go, Java, Rust, C#) is the measure of correctness.
 - Typed payloads and typed extension structs driven by the reflection seam
 - CMake packaging, CI matrix, conformance tests, fuzz targets
 
-**Out of scope for v0.1** (design must not block them)
-- Kafka, MQTT, AMQP, NATS, WebSocket bindings
+**Delivered after v0.1**, on the shared binding core (ADR-0007)
+- Kafka and NATS protocol bindings
+- RapidJSON and Boost.JSON codecs
+
+**Out of scope** (design must not block them)
+- MQTT, AMQP, WebSocket bindings
 - Protobuf, Avro, XML formats
 - CloudEvents SQL, Subscriptions, Discovery, CESQL
 - Any transport adapter doing real I/O (Beast, libcurl, Paho)

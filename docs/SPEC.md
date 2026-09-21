@@ -218,16 +218,25 @@ header mapping. Consumers must never branch on the backend.
 
 ### 5.4.2 NATS binding
 
-- `nats::to_payload` / `from_payload`, exchanging UTF-8 JSON text.
-- **Structured mode only, JSON only.** The binding spec says NATS "will only
-  support structured data mode at this time" because the protocol has no custom
-  message headers, and that implementations "MUST support the JSON event format".
-  So there is no content mode parameter and no header map.
+- `nats::to_payload` / `from_payload` exchange structured mode as UTF-8 JSON
+  text, which is all a server before NATS 2.2 can carry.
+- `nats::to_message` / `from_message` are the general form. Binary mode needs
+  NATS 2.2, which introduced message headers; the binding spec now says every
+  implementation SHOULD support both modes.
+- Prefix `ce-`, header values percent-encoded by HTTP's rule. **datacontenttype
+  is not special**: it maps to `ce-datacontenttype` like any other attribute, and
+  `Content-Type` is left to mean that a message is structured (D-NATS-1).
+- **Mode detection inverts HTTP's default.** A CloudEvents content type means
+  structured and anything else means binary, including no content type at all.
+  No batch mode.
+- **JSON only.** Implementations "MUST support the JSON event format" and the
+  binding names no other, so the codec chooses the library and not the format.
 - **No subject.** The spec defines no mapping from an event to a subject, so the
   binding derives none and takes none.
-- **`not_a_cloudevent` is not reachable here** (`SWR-NATS-0004`). With no content
-  type and no specversion header to consult, an unrelated JSON document cannot be
-  told from a corrupt event, so every failure is a parse or validation error.
+- **`not_a_cloudevent` is not reachable from the payload entry points**
+  (`SWR-NATS-0004`): with no headers to consult, an unrelated JSON document
+  cannot be told from a corrupt event. `from_message` can answer it, because a
+  binary-mode message carries `ce-specversion`.
 
 ### 5.5 Typed extensions and payloads
 

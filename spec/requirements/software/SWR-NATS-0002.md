@@ -5,14 +5,15 @@ type: software
 status: approved
 priority: medium
 rationale: >
-  A NATS message has a subject and a payload and no header section, so a binding that returned the shared `message` type would hand the caller a header map that can never be transmitted. Someone would eventually set a field in it and wonder where the value went.
+  A pre-2.2 NATS message has a subject and a payload and no header section, so the structured entry points exchange text: returning the shared `message` type there would hand the caller a header map that cannot be transmitted, and someone would eventually set a field in it and wonder where the value went. Binary mode needs headers by definition, so its entry points use `message` and say in their name that they do.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-NATS-0001]
 satisfied_by: [code:include/cloudevents/binding/nats.hpp]
-verified_by: [test:test/nats_binding_test.cpp::nats-payload-is-the-whole-message]
+verified_by: [test:test/nats_binding_test.cpp::nats-payload-is-the-whole-message, test:test/nats_binding_test.cpp::nats-binary-mode]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
-The NATS binding shall exchange the payload as UTF-8 JSON text rather than as the
-shared message type, and shall emit no header fields and no content type.
+The NATS binding shall exchange structured mode as UTF-8 JSON text through
+entry points that emit no header fields, and shall exchange binary mode through
+separate entry points taking and returning the shared message type.

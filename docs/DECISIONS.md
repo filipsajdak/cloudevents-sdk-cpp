@@ -919,3 +919,44 @@ this SDK nor the others escape anything.
 control character out of a header field: a value carrying CR or LF would end
 the header and start another one of the sender's choosing. The literal policy
 refuses a control character rather than passing it through.
+
+## D-NATS-1: Binary mode follows the binding on `main`, not the v1.0.2 tag
+
+The NATS binding this SDK first implemented said NATS "will only support
+_structured_ data mode at this time", because "the NATS protocol does not
+support custom message headers, necessary for _binary_ mode". That is the
+v1.0.2 text and it has been obsolete since NATS 2.2 introduced headers in 2021.
+The binding on `main`, version 1.0.3-wip, now says "Every compliant
+implementation SHOULD support both structured and binary modes".
+
+So binary mode here follows a work-in-progress document rather than the tag the
+rest of the SDK implements. The alternative was to follow sdk-go, the only SDK
+shipping a header-based NATS mapping, and that is worse: it would mean copying
+behaviour with no normative text behind it.
+
+Three rules are worth naming because they are where sdk-go's
+`protocol/nats_jetstream` differs from the binding, reported as sdk-go#1334:
+
+| rule | binding on `main` | this SDK | sdk-go |
+|---|---|---|---|
+| datacontenttype | `ce-datacontenttype`, prefixed like any attribute | same | `content-type`, unprefixed |
+| deciding the mode | structured when a CloudEvents content type is present, binary otherwise | same | binary when `ce-specversion` is present |
+| header values | percent-encoded | same | not encoded |
+
+The third is `D-HTTP-1` in a second binding, so `ce::http::literal_values` has
+no NATS counterpart yet on purpose: no other SDK ships a NATS binary mode to be
+compatible with, and inventing a compatibility mode for one implementation's
+divergence would make this SDK the third behaviour rather than the second.
+
+**If the specification changes before 1.0.3 is cut, this follows it.** That is
+the cost of implementing a document marked work in progress, and it is recorded
+here so the change is expected rather than surprising.
+
+## D-NATS-2: The payload entry points stay
+
+`to_payload` and `from_payload` predate binary mode and exchange text rather
+than a `message`. They are not deprecated by `to_message` and `from_message`.
+
+They are the correct API for a server before NATS 2.2, which cannot carry
+headers at all, and `ce::v1` is frozen: `SWR-BUILD-0006` permits adding to it
+and not removing from it. A caller on 2.2 or later wants the message pair.

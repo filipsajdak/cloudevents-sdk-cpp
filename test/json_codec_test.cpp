@@ -111,6 +111,15 @@ void check_parse_dump_roundtrip(std::string_view label) {
       expect(rejected.error().code == ce::errc::parse_error) << label << " on " << bad;
     }
   }
+
+  // A default-constructed view has a null data(), which ""sv does not: that one
+  // points at a string literal. A codec handing the null straight to a parser
+  // that only asserts on it reports nothing in a release build.
+  auto empty = C::parse(std::string_view{});
+  expect(!empty.has_value()) << label << ": should reject a default-constructed view";
+  if (!empty) {
+    expect(empty.error().code == ce::errc::parse_error) << label;
+  }
 }
 
 template <class C>
@@ -147,6 +156,16 @@ void check_value_constructors(std::string_view label) {
   if (text) {
     expect(*text == "text"sv) << label;
   }
+
+  // Same null data() as in parse: an empty attribute value reaches make_string
+  // whenever a peer sends one.
+  const auto from_null = C::make_string(std::string_view{});
+  expect(C::kind_of(from_null) == ce::json::kind::string) << label;
+  const auto empty_text = C::as_string(from_null);
+  expect(empty_text.has_value()) << label;
+  if (empty_text) {
+    expect(empty_text->empty()) << label;
+  }
 }
 
 template <class C>
@@ -167,6 +186,18 @@ void check_set_and_push(std::string_view label) {
   if (replaced != nullptr) {
     const auto held = C::as_int(*replaced);
     expect(held.has_value() && *held == 9) << label;
+  }
+
+  // An empty key is not a name the SDK emits, but find() is reached with an
+  // arbitrary name whenever a decoder looks one up, and a null data() must not
+  // travel into the DOM.
+  expect(C::find(object, std::string_view{}) == nullptr) << label;
+  C::set(object, std::string_view{}, C::make_int(3));
+  const auto* under_empty_key = C::find(object, std::string_view{});
+  expect(under_empty_key != nullptr) << label;
+  if (under_empty_key != nullptr) {
+    const auto held = C::as_int(*under_empty_key);
+    expect(held.has_value() && *held == 3) << label;
   }
 
   auto array = C::make_array();

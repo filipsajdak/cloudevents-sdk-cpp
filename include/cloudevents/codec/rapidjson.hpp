@@ -63,6 +63,16 @@ struct rapidjson_codec {
     return instance;
   }
 
+  /// \brief A never-null pointer to the view's characters.
+  ///
+  /// `std::string_view{}.data()` is null, and RapidJSON asserts a non-null
+  /// pointer in every overload that takes one. The assertion is compiled out of
+  /// a release build, which turns an empty key or an empty document into a null
+  /// dereference rather than a diagnosis.
+  [[nodiscard]] static constexpr auto chars_of(std::string_view text) noexcept -> const char* {
+    return text.empty() ? "" : text.data();
+  }
+
   /// \brief A JSON null.
   [[nodiscard]] static auto make_null() -> value { return value{rapidjson::kNullType}; }
   /// \brief A JSON boolean.
@@ -73,7 +83,7 @@ struct rapidjson_codec {
   [[nodiscard]] static auto make_double(double held) -> value { return value{held}; }
   /// \brief A JSON string, copying the text.
   [[nodiscard]] static auto make_string(std::string_view held) -> value {
-    return value{held.data(), static_cast<rapidjson::SizeType>(held.size()), allocator()};
+    return value{chars_of(held), static_cast<rapidjson::SizeType>(held.size()), allocator()};
   }
   /// \brief An empty JSON array.
   [[nodiscard]] static auto make_array() -> value { return value{rapidjson::kArrayType}; }
@@ -83,12 +93,12 @@ struct rapidjson_codec {
   /// \brief Insert or replace a member. RapidJSON has no insert-or-assign.
   static void set(value& object, std::string_view key, value member) {
     // A non-owning probe: the lookup copies nothing.
-    const value probe{key.data(), static_cast<rapidjson::SizeType>(key.size())};
+    const value probe{chars_of(key), static_cast<rapidjson::SizeType>(key.size())};
     if (auto found = object.FindMember(probe); found != object.MemberEnd()) {
       found->value = std::move(member);
       return;
     }
-    value name{key.data(), static_cast<rapidjson::SizeType>(key.size()), allocator()};
+    value name{chars_of(key), static_cast<rapidjson::SizeType>(key.size()), allocator()};
     object.AddMember(name, member, allocator());
   }
 
@@ -127,7 +137,7 @@ struct rapidjson_codec {
     if (!object.IsObject()) {
       return nullptr;
     }
-    const value probe{key.data(), static_cast<rapidjson::SizeType>(key.size())};
+    const value probe{chars_of(key), static_cast<rapidjson::SizeType>(key.size())};
     auto found = object.FindMember(probe);
     return found == object.MemberEnd() ? nullptr : &found->value;
   }
@@ -197,7 +207,7 @@ struct rapidjson_codec {
   [[nodiscard]] static auto parse(std::string_view text) -> ce::result<value> {
     rj_document document{&allocator()};
     // The length overload: a string_view is not null-terminated.
-    document.Parse(text.data(), text.size());
+    document.Parse(chars_of(text), text.size());
     if (document.HasParseError()) {
       return ce::fail(ce::errc::parse_error,
                       rapidjson::GetParseError_En(document.GetParseError()));

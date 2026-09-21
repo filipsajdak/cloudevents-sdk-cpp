@@ -98,6 +98,49 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
     expect(poly_bad.error().code == ce::errc::parse_error);
     expect(result_bad.error().code == ce::errc::parse_error);
   };
+
+  // expected<void, E> once stored a default-constructed E alongside the flag, so
+  // error() on a SUCCESS returned errc{0} - a code with no enumerator, printing
+  // as "unknown" - while std::expected leaves that read undefined. A misread
+  // behaved differently depending on which backend the build selected, which is
+  // the one divergence the polyfill cannot have. The error now lives in a union,
+  // which is also why the special members below are hand-written and worth
+  // exercising in both states.
+  "the void specialisation carries an error only when it holds one"_test = [] {
+    const poly_void ok{};
+    expect(ok.has_value() && static_cast<bool>(ok));
+
+    const poly_void bad{
+        ce::detail::poly::unexpected<ce::error>{ce::error{.code = ce::errc::invalid_base64,
+                                                          .detail = "a detail long enough to "
+                                                                    "outgrow the small-string "
+                                                                    "buffer and allocate",
+                                                          .where = "here"}}};
+    expect(!bad.has_value());
+    expect(bad.error().code == ce::errc::invalid_base64);
+
+    const poly_void copied_bad{bad};
+    expect(!copied_bad.has_value() && copied_bad.error().where == "here");
+    const poly_void copied_ok{ok};
+    expect(copied_ok.has_value());
+
+    poly_void moved_bad{bad};
+    const poly_void taken{std::move(moved_bad)};
+    expect(!taken.has_value() && taken.error().code == ce::errc::invalid_base64);
+
+    // Assignment across the two alternatives is where a union gets destroyed on
+    // the wrong branch, so both directions are covered.
+    poly_void assigned{};
+    assigned = bad;
+    expect(!assigned.has_value() && assigned.error().detail.starts_with("a detail"));
+    assigned = ok;
+    expect(assigned.has_value());
+
+    poly_void move_assigned{};
+    poly_void source{bad};
+    move_assigned = std::move(source);
+    expect(!move_assigned.has_value() && move_assigned.error().where == "here");
+  };
 };
 
 // spec: SWR-BUILD-0005

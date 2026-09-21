@@ -218,6 +218,19 @@ template <binding_traits T>
         subject.datacontenttype = *decoded;
         continue;
       }
+    } else {
+      // Where the binding carries the media type in its own content-type field,
+      // a prefixed datacontenttype is a field the binding does not define. It
+      // used to fall through to the extension branch, which accepted the name,
+      // stored it, and left validate() to refuse it later as a reserved name -
+      // a complaint about the name rather than about where it arrived.
+      if (attribute == "datacontenttype") {
+        header_error = fail(errc::invalid_argument,
+                            "this binding carries datacontenttype in its content-type field, "
+                            "not as a prefixed attribute",
+                            attribute);
+        break;
+      }
     }
 
     if (attribute == "specversion") {

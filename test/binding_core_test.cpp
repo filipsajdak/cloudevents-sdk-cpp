@@ -292,6 +292,28 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
     }
   };
 
+  // A prefixed datacontenttype used to reach the extension branch, pass the name
+  // check, be stored as an extension, and only then be refused by validate() as a
+  // reserved name - a complaint about the name rather than about the field having
+  // no place in this binding. The caller's fix is to move the media type to the
+  // content-type field, and nothing in the old diagnosis said so.
+  "a prefixed datacontenttype is refused where the binding has a content-type field"_test = [] {
+    const ce::headers fields{
+        {"x_specversion", "1.0"},
+        {"x_id", "1"},
+        {"x_source", "/s"},
+        {"x_type", "t"},
+        {"x_datacontenttype", "application/json"},
+    };
+
+    auto subject = binding::read_attributes<exact_traits>(fields);
+    expect(!subject);
+    if (!subject) {
+      expect(subject.error().code == ce::errc::invalid_argument);
+      expect(subject.error().where == "datacontenttype"sv);
+    }
+  };
+
   "the body round-trips as bytes or as JSON text"_test = [] {
     ce::event subject = base_event();
     subject.datacontenttype = "application/json";

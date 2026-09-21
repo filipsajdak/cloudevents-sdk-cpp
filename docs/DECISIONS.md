@@ -852,3 +852,34 @@ each one.
 The test enforces exactly that distinction: a block containing code, or an
 `#else`, still fails. Both were checked by introducing them and watching the
 suite catch each.
+
+## D-KAFKA-1: The Kafka binding has no batch mode
+
+The Kafka protocol binding defines binary and structured mode and says nothing
+about batches. The batch content type belongs to the HTTP binding, and a record
+carrying a JSON array under `application/cloudevents-batch+json` is something no
+other SDK's consumer reads, so producing one would be an interoperability defect
+rather than a useful extension.
+
+`to_message` and `to_record` refuse `content_mode::batched` with
+`errc::invalid_argument`. On receive the batch content type is recognised
+**before** the structured one, because `application/cloudevents-batch+json` also
+starts with `application/cloudevents`: without that ordering a batch record
+reaches the format layer as a malformed object and the error describes the
+document rather than the mode.
+
+## D-KAFKA-2: Record header keys compare byte for byte
+
+The binding specification does not state a case rule for record header keys. It
+does not need to: a Kafka record header key is an opaque byte string, so there is
+no case-folding to apply, and every SDK writes the names in the lowercase the
+examples use.
+
+The binding therefore sets `case_sensitive_names`, which is the strict reading.
+The alternative would accept `CE_ID` as the id attribute from a producer that
+never sent it, and would erase a `CE_ID` header a caller had deliberately set
+alongside the binding's own.
+
+`content-type` is matched the same way, and it is the one place the strictness is
+visible: a producer emitting `Content-Type` on a Kafka record is not matched. No
+SDK does, and the binding examples are lowercase throughout.

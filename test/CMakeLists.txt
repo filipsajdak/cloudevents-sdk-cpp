@@ -69,6 +69,9 @@ if(CE_CODEC_NLOHMANN)
   ce_add_codec_test(http_binding_test
     SOURCES http_binding_test.cpp
     LIBS ce::codec_nlohmann)
+  ce_add_codec_test(kafka_binding_test
+    SOURCES kafka_binding_test.cpp
+    LIBS ce::codec_nlohmann ce::binding_kafka)
   ce_add_test(extensions_test
     SOURCES extensions_test.cpp
     LIBS ce::codec_nlohmann)

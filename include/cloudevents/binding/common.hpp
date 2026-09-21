@@ -41,6 +41,31 @@ concept binding_traits = requires(std::string_view text) {
 
 namespace detail {
 
+/// \brief Whether a binding carries datacontenttype as a prefixed attribute.
+///
+/// HTTP and Kafka put it in an unprefixed content-type field and must not also
+/// emit it under the prefix. NATS does the opposite: the binding maps every
+/// attribute including datacontenttype "with the same name as the attribute name
+/// but prefixed with `ce-`", and reserves the content-type field for saying that
+/// a message is in structured mode.
+///
+/// Detected rather than required, so a traits type written before this existed
+/// still satisfies `binding_traits` and still means what it meant.
+template <class T>
+concept declares_content_type_as_attribute = requires {
+  { T::content_type_is_attribute } -> std::convertible_to<bool>;
+};
+
+template <class T>
+struct content_type_policy {
+  static constexpr bool as_attribute = false;
+};
+
+template <declares_content_type_as_attribute T>
+struct content_type_policy<T> {
+  static constexpr bool as_attribute = static_cast<bool>(T::content_type_is_attribute);
+};
+
 template <binding_traits T>
 void put(headers& into, std::string name, std::string value) {
   if constexpr (T::case_sensitive_names) {
@@ -146,11 +171,16 @@ template <binding_traits T>
     return failure;
   }
 
-  // datacontenttype travels as the content-type field and must not also appear
-  // under the prefix, or a receiver sees the same attribute twice. It is not
-  // encoded: it is a media type, not an attribute value.
+  // Where datacontenttype travels as the content-type field it must not also
+  // appear under the prefix, or a receiver sees the same attribute twice, and it
+  // is not encoded there: it is a media type, not an attribute value. Where the
+  // binding maps it like any other attribute, it is encoded like one.
   if (subject.datacontenttype) {
-    detail::put<T>(into, std::string{T::content_type_header}, *subject.datacontenttype);
+    if constexpr (detail::content_type_policy<T>::as_attribute) {
+      put_attribute("datacontenttype", *subject.datacontenttype);
+    } else {
+      detail::put<T>(into, std::string{T::content_type_header}, *subject.datacontenttype);
+    }
   }
   return failure;
 }
@@ -177,6 +207,17 @@ template <binding_traits T>
     if (!decoded) {
       header_error = fail(decoded.error().code, decoded.error().detail, attribute);
       break;
+    }
+
+    // Hoisted out of the chain below rather than joined to it with &&: mixing a
+    // compile-time constant into a runtime condition is C4127 under MSVC's /W4,
+    // and `if constexpr` is what actually expresses "this branch does not exist
+    // for that binding".
+    if constexpr (detail::content_type_policy<T>::as_attribute) {
+      if (attribute == "datacontenttype") {
+        subject.datacontenttype = *decoded;
+        continue;
+      }
     }
 
     if (attribute == "specversion") {

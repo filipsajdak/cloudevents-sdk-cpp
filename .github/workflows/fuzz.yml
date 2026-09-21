@@ -1,0 +1,104 @@
+name: fuzz
+
+# One job per fuzz target, and two budgets. Five targets at ten minutes each, in
+# sequence, took the whole hour and were the last thing to go green on every pull
+# request.
+#
+# The budgets answer different questions. A pull request replays the checked-in
+# seed corpus, which is the regression test for every defect fuzzing has already
+# found, and adds a minute of exploration on top. The nightly explores for fifteen
+# minutes against a corpus that accumulates across nights, which is where a new
+# defect actually comes from. SWR-SEC-0001.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds of fuzzing per target
+        default: '900'
+  workflow_call:
+    inputs:
+      seconds:
+        description: Seconds of fuzzing per target
+        type: string
+        default: '60'
+
+permissions:
+  contents: read
+
+# `inputs` is null on a schedule, so the nightly takes the fallback.
+env:
+  CE_FUZZ_SECONDS: ${{ inputs.seconds || '900' }}
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: fuzz_timestamp, seeds: timestamp }
+          - { target: fuzz_base64, seeds: base64 }
+          - { target: fuzz_json_decode, seeds: json }
+          - { target: fuzz_http_message, seeds: http }
+          - { target: fuzz_typed, seeds: typed }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-17 ninja-build nlohmann-json3-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++-17
+          -DCMAKE_CXX_STANDARD=20
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCE_BUILD_FUZZERS=ON
+          "-DCMAKE_CXX_FLAGS=-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer"
+      - name: Build
+        run: cmake --build build --target ${{ matrix.target }}
+
+      # Only a budget long enough to discover something is worth carrying over.
+      - name: Restore the corpus earlier runs found
+        if: fromJSON(env.CE_FUZZ_SECONDS) >= 600
+        uses: actions/cache/restore@v4
+        with:
+          path: found
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      # The scratch directory is named FIRST because libFuzzer writes what it
+      # discovers into the first corpus directory, and pointing it at the seeds
+      # would bury the curated ones.
+      - name: Fuzz for ${{ env.CE_FUZZ_SECONDS }} seconds
+        run: |
+          set -e
+          mkdir -p found
+          ./build/fuzz/${{ matrix.target }} found fuzz/corpus/${{ matrix.seeds }} \
+            -max_total_time="$CE_FUZZ_SECONDS" -timeout=25 -rss_limit_mb=4096 \
+            -print_final_stats=1 -artifact_prefix=found/
+
+      # Without this the cache grows without bound. -merge=1 keeps the smallest
+      # set of inputs that reaches the same coverage, seeds included.
+      - name: Shrink the corpus to a coverage-equivalent set
+        if: success() && fromJSON(env.CE_FUZZ_SECONDS) >= 600
+        run: |
+          set -e
+          mkdir -p merged
+          ./build/fuzz/${{ matrix.target }} -merge=1 merged found fuzz/corpus/${{ matrix.seeds }}
+          rm -rf found && mv merged found
+      - uses: actions/cache/save@v4
+        if: success() && fromJSON(env.CE_FUZZ_SECONDS) >= 600
+        with:
+          path: found
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-findings-${{ matrix.target }}
+          path: found/

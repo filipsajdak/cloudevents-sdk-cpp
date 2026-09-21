@@ -22,7 +22,9 @@ that should be removed from `ce::v1` has to go before the tag.
       (`SWR-SEC-0007`). It fails the build below it; do not lower
       `CE_COVERAGE_FLOOR` to make a release go out.
 - [ ] Each fuzz target has run ten minutes clean on the release commit
-      (`SWR-SEC-0001`). The nightly job counts only if it ran on that commit.
+      (`SWR-SEC-0001`). Pull-request CI runs a one-minute budget, so the nightly
+      `fuzz` workflow is the evidence, and it counts only if it ran on that
+      commit. Run it on demand from the Actions tab if the nightly predates it.
 - [ ] `./interop/run.sh` regenerates the goldens and both SDKs accept every
       document this one produced (`SWR-SEC-0005`).
 - [ ] `git diff --exit-code test/fixtures/interop` is empty after that run, or

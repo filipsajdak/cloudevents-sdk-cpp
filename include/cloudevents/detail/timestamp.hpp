@@ -3,7 +3,10 @@
 /// \file
 /// \brief RFC 3339 date-time, parsed by one CTRE pattern.
 
+#include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -37,6 +40,12 @@ struct timestamp {
 };
 
 namespace detail {
+
+/// The most fractional digits a nanosecond-resolution instant can express, and
+/// the upper bound the RFC 3339 grammar below admits.
+inline constexpr std::size_t max_fractional_digits = 9;
+
+inline constexpr int decimal_radix = 10;
 
 /// The one definition of the grammar. The sign class must escape the dash: CTRE
 /// rejects a bare `-` inside a character class.
@@ -167,14 +176,19 @@ template <class Capture>
 
   std::string fraction;
   if (value.fractional_digits > 0) {
-    fraction.reserve(std::size_t{value.fractional_digits} + 1);
-    fraction.push_back('.');
-    auto place =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds{100});
-    for (std::uint8_t i = 0; i < value.fractional_digits; ++i) {
-      fraction.push_back(static_cast<char>('0' + (nanos / place) % 10));
-      place /= 10;
+    // Rendered as the full nanosecond field and then truncated, rather than by
+    // dividing down a place value: the place value reaches zero on the tenth
+    // digit, and `fractional_digits` is a public field any caller can set.
+    std::array<char, detail::max_fractional_digits> rendered{};
+    auto remaining = nanos.count();
+    for (auto digit = rendered.rbegin(); digit != rendered.rend(); ++digit) {
+      *digit = static_cast<char>('0' + remaining % detail::decimal_radix);
+      remaining /= detail::decimal_radix;
     }
+    const auto shown = std::min<std::size_t>(value.fractional_digits, rendered.size());
+    fraction.reserve(shown + 1);
+    fraction.push_back('.');
+    fraction.append(rendered.data(), shown);
   }
 
   const auto offset_minutes = value.offset.count();

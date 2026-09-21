@@ -493,6 +493,40 @@ const boost::ut::suite<"core-timestamp-roundtrip"> core_timestamp_roundtrip = []
     expect(round_trips("2018-04-05T17:31:00-07:00"sv));
     expect(round_trips("2018-04-05T17:31:00+05:30"sv));  // half-hour offset
   };
+
+  // `fractional_digits` is a public field of an aggregate, so a caller can set a
+  // count no nanosecond instant can express. Rendering one divided a place value
+  // that had already reached zero.
+  "a digit count beyond nanosecond resolution renders instead of dividing by zero"_test = [] {
+    const auto parsed = ce::parse_timestamp("2018-04-05T17:31:00.123456789Z"sv);
+    expect(parsed.has_value());
+    if (!parsed) {
+      return;
+    }
+    for (std::uint8_t digits = 10; digits < 20; ++digits) {
+      auto beyond = *parsed;
+      beyond.fractional_digits = digits;
+      expect(ce::to_string(beyond) == "2018-04-05T17:31:00.123456789Z")
+          << "fractional_digits = " << digits;
+    }
+
+    auto every_digit = *parsed;
+    every_digit.fractional_digits = 255;
+    expect(ce::to_string(every_digit) == "2018-04-05T17:31:00.123456789Z");
+  };
+
+  // Truncation keeps the leading digits, so a shorter count is a prefix of the
+  // full nanosecond field rather than a different number.
+  "a shorter digit count truncates rather than rounds"_test = [] {
+    const auto parsed = ce::parse_timestamp("2018-04-05T17:31:00.987654321Z"sv);
+    expect(parsed.has_value());
+    if (!parsed) {
+      return;
+    }
+    auto three = *parsed;
+    three.fractional_digits = 3;
+    expect(ce::to_string(three) == "2018-04-05T17:31:00.987Z");
+  };
 };
 
 // spec: SWR-CORE-0010

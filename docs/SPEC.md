@@ -301,6 +301,12 @@ sanitizer job, coverage report, `examples/` (produce, consume, custom codec, cus
 described payload), README, API reference via Doxygen, `cloudevents.cppm` wrapper.
 *Accept:* tag `v0.1.0` candidate; checklist in `docs/RELEASE.md` complete.
 
+> **Withdrawn in v0.4.0: the Doxygen API reference.** It was built as a CI artifact and
+> published nowhere, so no reader ever reached it, and section 10 now reduces header
+> comments to spec markers, which leaves it nothing to render. `docs/GUIDE.md` is the
+> user-facing documentation instead. M6 shipped as written in v0.1.0; this note records
+> the later removal rather than rewriting what was delivered.
+
 ## 8. Toolchain floor
 
 GCC 13, Clang 16, MSVC 19.36 (VS 2022 17.6), AppleClang 16. Reflection job: newest
@@ -324,7 +330,7 @@ Use the default, record it, move on. Do not relitigate inside a task.
 
 | ID | Question | Default |
 |---|---|---|
-| D1 | `event` as public aggregate vs builder with private state | Aggregate; `validate()` is the gate |
+| D1 | `event` as public aggregate vs builder with private state | ~~Aggregate; `validate()` is the gate~~ **Reversed by CR-0001 / ADR-0008**: every context attribute is a type that cannot hold a forbidden value, `event` is constructed through `create` or `builder`, and `validate()` is removed |
 | D2 | License | Apache-2.0, matching the other CloudEvents SDKs |
 | D3 | Repo and namespace name | `cloudevents-cpp`, `ce` |
 | D4 | Support `-fno-exceptions` builds | Yes; verify ut and nlohmann configs permit it, else tests only need exceptions |
@@ -337,6 +343,9 @@ Use the default, record it, move on. Do not relitigate inside a task.
 - Tests written first, cite spec sections, pass on all available presets
 - No new warnings, clang-tidy clean, formatted
 - No `#if` outside `detail/config.hpp` and describe backends
-- Public symbols documented with a one-line Doxygen brief and spec reference
+- Public entities in `include/` carry a `// spec: SWR-AREA-NNNN` marker and nothing
+  else; a `// TODO(#NN):` naming an issue is the only other comment permitted there.
+  Contract prose belongs in `docs/GUIDE.md`, rationale in `docs/DECISIONS.md`, a trap in
+  a named test, and the story of a change in its commit message.
 - `docs/DECISIONS.md` updated for any judgement call
 - Commit message states which SPEC section it satisfies

@@ -1467,6 +1467,91 @@ const boost::ut::suite<"decoded-message-always-validates"> ce_header_name_gramma
   });
 };
 
+// spec: SWR-MSG-0001
+// spec: SYS-MSG-0001
+const boost::ut::suite<"headers-case-sensitive-lookup"> headers_exact = [] {
+  using namespace boost::ut;
+
+  "find_exact answers only to the exact spelling"_test = [] {
+    ce::headers fields;
+    fields.add("ce-id", "lower");
+    fields.add("CE-ID", "upper");
+
+    // The case-insensitive form answers with the first of the two.
+    const auto* lenient = fields.find("Ce-Id");
+    expect(lenient != nullptr);
+    if (lenient != nullptr) {
+      expect(*lenient == "lower");
+    }
+
+    const auto* exact_lower = fields.find_exact("ce-id");
+    const auto* exact_upper = fields.find_exact("CE-ID");
+    expect(exact_lower != nullptr);
+    expect(exact_upper != nullptr);
+    if (exact_lower != nullptr && exact_upper != nullptr) {
+      expect(*exact_lower == "lower");
+      expect(*exact_upper == "upper");
+    }
+    // A spelling neither header uses matches nothing, where find would match.
+    expect(fields.find_exact("Ce-Id") == nullptr);
+    expect(fields.find("Ce-Id") != nullptr);
+  };
+
+  "contains_exact is the same rule"_test = [] {
+    ce::headers fields;
+    fields.add("ce_partitionkey", "k");
+    expect(fields.contains_exact("ce_partitionkey"));
+    expect(!fields.contains_exact("CE_PARTITIONKEY"));
+    // The lenient form does not distinguish them.
+    expect(fields.contains("CE_PARTITIONKEY"));
+  };
+
+  "set_exact replaces only the exact spelling"_test = [] {
+    // This is the reason set_exact exists. A Kafka binding writing extension
+    // "abc" must not erase a caller's "ABC", which is a different header on
+    // that transport.
+    ce::headers fields;
+    fields.add("abc", "one");
+    fields.add("ABC", "two");
+
+    fields.set_exact("abc", "replaced");
+    expect(fields.size() == 2_ul) << "set_exact removed the other spelling";
+
+    const auto* lower = fields.find_exact("abc");
+    const auto* upper = fields.find_exact("ABC");
+    expect(lower != nullptr);
+    expect(upper != nullptr);
+    if (lower != nullptr && upper != nullptr) {
+      expect(*lower == "replaced");
+      expect(*upper == "two") << "the other spelling was disturbed";
+    }
+  };
+
+  "set still erases case-insensitively, as HTTP needs"_test = [] {
+    // SWR-HTTP-0002 is unchanged: the existing three keep their behaviour, and
+    // that is what stops this addition being a breaking change.
+    ce::headers fields;
+    fields.add("abc", "one");
+    fields.add("ABC", "two");
+
+    fields.set("abc", "replaced");
+    expect(fields.size() == 1_ul) << "set stopped erasing case-insensitively";
+
+    const auto* only = fields.find("ABC");
+    expect(only != nullptr);
+    if (only != nullptr) {
+      expect(*only == "replaced");
+    }
+  };
+
+  "set_exact adds when absent"_test = [] {
+    ce::headers fields;
+    fields.set_exact("ce_type", "t");
+    expect(fields.size() == 1_ul);
+    expect(fields.contains_exact("ce_type"));
+  };
+};
+
 }  // namespace
 
 int main() {}

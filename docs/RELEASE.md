@@ -3,13 +3,17 @@
 Everything here is a gate that a machine can run. A step that reads "check that
 ..." without a command is not a step.
 
-`v0.1.0` is the first tag, so the API is fixed at that moment: `SWR-BUILD-0006`
-requires a new version namespace for any breaking change afterwards. Anything
-that should be removed from `ce::v1` has to go before the tag.
+The API was fixed at `v0.1.0`: `SWR-BUILD-0006` requires a new version
+namespace for any breaking change after it. A later tag may add to `ce::v1` and
+may not remove from it, so anything that should go has to go before the *first*
+tag of a namespace, not this one.
+
+Run every command from a clean `main` at the commit being tagged.
 
 ## Before tagging
 
-- [ ] `main` is green: all 13 CI jobs, not only the compiler matrix.
+- [ ] `main` is green: every CI check, not only the compiler matrix.
+      `gh pr checks` on the last merged pull request is the quickest reading.
 - [ ] `python3 spec/tools/lint_requirements.py` exits 0.
 - [ ] `python3 spec/tools/check_trace.py` exits 0.
 - [ ] `python3 spec/tools/check_references.py` exits 0 with **no warnings**. A
@@ -21,6 +25,14 @@ that should be removed from `ce::v1` has to go before the tag.
 - [ ] `cmake --build build --target coverage-report` meets the floor
       (`SWR-SEC-0007`). It fails the build below it; do not lower
       `CE_COVERAGE_FLOOR` to make a release go out.
+      **The `coverage floor` CI job is the measurement of record**, because
+      the local toolchain has twice reported a number that was not the
+      coverage. Apple's `gcov` cannot read GCC's `.gcda` and returns
+      `0.0% (0 out of 0)`; passing `-DCE_GCOV_EXECUTABLE=gcov-<n>` fixes that
+      and, measured on 2026-09-21 with g++-16 and gcov-16 on macOS, still
+      under-reported at 27.4% while the CI job on g++-13 passed the floor on
+      the same commit. Read a local number below the floor as a question
+      about the toolchain until CI agrees with it.
 - [ ] Each fuzz target has run ten minutes clean on the release commit
       (`SWR-SEC-0001`). Pull-request CI runs a one-minute budget, so the nightly
       `fuzz` workflow is the evidence, and it counts only if it ran on that
@@ -53,7 +65,10 @@ that should be removed from `ce::v1` has to go before the tag.
       previous tag.
 - [ ] Release notes name the measured facts, not the intentions: the coverage
       number, the fuzz durations, the toolchains actually tested.
-- [ ] Tag `v0.1.0` on `main`, signed.
+- [ ] `CMakeLists.txt` `VERSION` matches the tag about to be created.
+- [ ] `CHANGELOG.md` has a section for it, naming what changed rather than
+      which pull requests changed it.
+- [ ] Tag on `main`, signed.
 - [ ] The tag builds from a clean clone with no network access beyond the
       dependency fetch.
 

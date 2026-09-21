@@ -148,6 +148,31 @@ const boost::ut::suite<"base64-decode-rejects-invalid-input"> base64_rejects_inv
     }
   };
 
+  // RFC 4648 section 4 pads a final quantum out to four characters, so two is
+  // the most any well-formed encoding carries. A decoder that stripped whatever
+  // run of '=' it found accepted "QQ======" and "====", which is the same
+  // several-spellings-of-one-value problem as the trailing-bits rule below.
+  "more than two padding characters are rejected"_test = [] {
+    expect(rejected("QQ======"sv));
+    expect(rejected("===="sv));
+    expect(rejected("Zg==="sv));
+    expect(rejected("Zm9v===="sv));
+    expect(rejected("A==="sv));
+  };
+
+  // Padding is optional, but a spelling that carries it must carry the right
+  // amount: "Zg=" is neither the padded form nor the bare one.
+  "padding that does not complete the final quantum is rejected"_test = [] {
+    expect(rejected("Zg="sv));
+    expect(rejected("Zm9vYg="sv));
+    expect(rejected("Zm8=="sv));
+    // The two spellings that are well formed stay accepted.
+    expect(ce::base64_decode("Zg=="sv).has_value());
+    expect(ce::base64_decode("Zg"sv).has_value());
+    expect(ce::base64_decode("Zm8="sv).has_value());
+    expect(ce::base64_decode("Zm8"sv).has_value());
+  };
+
   // Accepting these would make two spellings decode to the same octets, and two
   // peers comparing the encoded forms would disagree with two peers comparing
   // the decoded ones.

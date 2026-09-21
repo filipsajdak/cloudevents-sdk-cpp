@@ -123,6 +123,7 @@ const boost::ut::suite<"base64-rfc4648-section-4-vectors"> base64_vectors = [] {
 };
 
 // spec: SWR-JSON-0028
+// spec: SWR-JSON-0038
 const boost::ut::suite<"base64-decode-rejects-invalid-input"> base64_rejects_invalid = [] {
   using namespace boost::ut;
 

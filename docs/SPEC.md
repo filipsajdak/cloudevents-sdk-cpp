@@ -75,6 +75,9 @@ ce::codec_nlohmann  format_json+nlohmann nlohmann_codec (the default)
 ce::codec_rapidjson format_json+RapidJSON rapidjson_codec
 ce::codec_boost_json format_json+Boost.JSON boost_json_codec
 ce::binding_http    core (+format)       message, http binding
+ce::binding_kafka   core (+format)       kafka binding (binary and structured)
+ce::binding_nats    core (+format)       nats binding (binary and structured)
+ce::module          core                 optional cloudevents.cppm, off by default
 ```
 
 All targets are header-only INTERFACE libraries. Dependency direction is strictly
@@ -84,15 +87,21 @@ nlohmann from it and is kept because four requirements and a preset name it.
 
 Layout:
 ```
-include/cloudevents/{core,describe,message}.hpp
-include/cloudevents/detail/config.hpp
+include/cloudevents/{core,result,describe,message,extensions}.hpp
+include/cloudevents/cloudevents.cppm
+include/cloudevents/detail/{config,timestamp,expected_polyfill}.hpp
+include/cloudevents/detail/{describe_macro,describe_reflection}.hpp
 include/cloudevents/format/{json_codec,json_format,base64}.hpp
+include/cloudevents/format/{typed_payload,describe_json}.hpp
 include/cloudevents/codec/{nlohmann,rapidjson,boost_json}.hpp
 include/cloudevents/binding/{common,http,kafka,nats}.hpp
 include/cloudevents/binding/detail/percent.hpp
-include/cloudevents/extensions/{tracing,partitioning,sequence,sampledrate,dataref}.hpp
-test/  fuzz/  examples/  cmake/  docs/  prototype/
+test/  fuzz/  examples/  bench/  interop/  cmake/  docs/  spec/
 ```
+
+The five documented extensions are one `extensions.hpp`, not a directory: each is a
+handful of fields and a `CE_DESCRIBE`, and splitting them would make a consumer include
+five headers to read one event.
 
 ## 5. Component contracts
 
@@ -270,13 +279,15 @@ header mapping. Consumers must never branch on the backend.
 Each milestone ends with all tests green on every available preset.
 
 **M0 Scaffold.** CMake 3.25+, presets (`gcc-cxx20`, `gcc-cxx23`, `clang-cxx20`,
-`clang-cxx23`, `msvc-cxx20`, `reflect-cxx26`, `asan`, `fuzz`), FetchContent pins by
+`clang-cxx23`, `msvc-cxx20`, `reflect-cxx26`, `asan`, `fuzz`, and, added as the
+configurations they guard arrived, `polyfill-cxx23`, `no-exceptions`,
+`no-default-codec`, `coverage`), FetchContent pins by
 commit hash for CTRE, nlohmann/json, ut, with `find_package` preferred when present.
 `.clang-format`, `.clang-tidy`, GitHub Actions matrix, `detail/config.hpp`.
 *Accept:* empty ut test builds and runs on all presets; install + `find_package(cloudevents)`
 works from a consumer project in `test/consumer/`.
 
-**M1 Core.** Harden the prototype to §5.1. Add `lint()`, string content rules from
+**M1 Core.** Build §5.1. Add `lint()`, string content rules from
 core spec §3 (reject disallowed control characters on produce), full error coverage.
 *Accept:* §5.1 contract tests pass under C++20 and C++23; zero warnings.
 
@@ -301,6 +312,12 @@ sanitizer job, coverage report, `examples/` (produce, consume, custom codec, cus
 described payload), README, API reference via Doxygen, `cloudevents.cppm` wrapper.
 *Accept:* tag `v0.1.0` candidate; checklist in `docs/RELEASE.md` complete.
 
+> **Withdrawn in v0.4.0: the Doxygen API reference.** It was built as a CI artifact and
+> published nowhere, so no reader ever reached it, and section 10 now reduces header
+> comments to spec markers, which leaves it nothing to render. `docs/GUIDE.md` is the
+> user-facing documentation instead. M6 shipped as written in v0.1.0; this note records
+> the later removal rather than rewriting what was delivered.
+
 ## 8. Toolchain floor
 
 GCC 13, Clang 16, MSVC 19.36 (VS 2022 17.6), AppleClang 16. Reflection job: newest
@@ -324,7 +341,7 @@ Use the default, record it, move on. Do not relitigate inside a task.
 
 | ID | Question | Default |
 |---|---|---|
-| D1 | `event` as public aggregate vs builder with private state | Aggregate; `validate()` is the gate |
+| D1 | `event` as public aggregate vs builder with private state | ~~Aggregate; `validate()` is the gate~~ **Reversed by CR-0001 / ADR-0008**: every context attribute is a type that cannot hold a forbidden value, `event` is constructed through `create` or `builder`, and `validate()` is removed |
 | D2 | License | Apache-2.0, matching the other CloudEvents SDKs |
 | D3 | Repo and namespace name | `cloudevents-cpp`, `ce` |
 | D4 | Support `-fno-exceptions` builds | Yes; verify ut and nlohmann configs permit it, else tests only need exceptions |
@@ -337,6 +354,9 @@ Use the default, record it, move on. Do not relitigate inside a task.
 - Tests written first, cite spec sections, pass on all available presets
 - No new warnings, clang-tidy clean, formatted
 - No `#if` outside `detail/config.hpp` and describe backends
-- Public symbols documented with a one-line Doxygen brief and spec reference
+- Public entities in `include/` carry a `// spec: SWR-AREA-NNNN` marker and nothing
+  else; a `// TODO(#NN):` naming an issue is the only other comment permitted there.
+  Contract prose belongs in `docs/GUIDE.md`, rationale in `docs/DECISIONS.md`, a trap in
+  a named test, and the story of a change in its commit message.
 - `docs/DECISIONS.md` updated for any judgement call
 - Commit message states which SPEC section it satisfies

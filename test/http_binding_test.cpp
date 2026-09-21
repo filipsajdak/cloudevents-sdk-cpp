@@ -1552,6 +1552,106 @@ const boost::ut::suite<"headers-case-sensitive-lookup"> headers_exact = [] {
   };
 };
 
+
+// The wire shapes below are not invented: they were produced by running
+// sdk-go v2.15.2 on 2026-09-21. Go writes `ce-subject: a b` for subject "a b"
+// and `ce-pct: 100%` for a literal percent, and reads a percent-encoded value
+// back without decoding it.
+template <class Codec>
+void check_value_policy(std::string_view codec) {
+  using namespace boost::ut;
+
+  ce::event subject = base_event();
+  subject.subject = "a b";
+
+  // The default is unchanged and stays what the binding specification requires.
+  auto conformant = ce::http::to_message<Codec>(subject, ce::content_mode::binary_mode);
+  expect(bool{conformant}) << codec;
+  if (conformant) {
+    expect(*conformant->header_fields.find("ce-subject") == "a%20b"sv) << codec;
+  }
+
+  // The opt-in policy writes what Go and Java write.
+  auto literal =
+      ce::http::to_message<Codec, ce::http::literal_values>(subject, ce::content_mode::binary_mode);
+  expect(bool{literal}) << codec;
+  if (literal) {
+    expect(*literal->header_fields.find("ce-subject") == "a b"sv) << codec;
+  }
+
+  // A literal percent is what a Go sender puts on the wire. The conformant
+  // reader refuses it as a truncated escape; the literal reader takes it.
+  ce::message from_go = minimal_binary_message();
+  from_go.header_fields.set("ce-subject", "100%");
+
+  auto strict = ce::http::from_message<Codec>(from_go);
+  expect(!strict) << codec;
+
+  auto lenient = ce::http::from_message<Codec, ce::http::literal_values>(from_go);
+  expect(bool{lenient}) << codec;
+  if (lenient) {
+    expect(bool{lenient->subject == std::optional<std::string>{"100%"}}) << codec;
+  }
+
+  // And the escape a conformant sender produced is NOT decoded under the
+  // literal policy, which is exactly how Go misreads us. Naming the policy is
+  // choosing that behaviour.
+  ce::message from_cpp = minimal_binary_message();
+  from_cpp.header_fields.set("ce-subject", "a%20b");
+  auto as_go_sees_it = ce::http::from_message<Codec, ce::http::literal_values>(from_cpp);
+  expect(bool{as_go_sees_it}) << codec;
+  if (as_go_sees_it) {
+    expect(bool{as_go_sees_it->subject == std::optional<std::string>{"a%20b"}}) << codec;
+  }
+}
+
+// Percent-encoding was also what kept a line break out of a header field, so
+// the literal policy has to refuse one itself.
+template <class Codec>
+void check_literal_refuses_control_characters(std::string_view codec) {
+  using namespace boost::ut;
+
+  // std::string, not const char*: a char pointer stops at the embedded NUL, so
+  // the last case would reach the binding as "a" and prove nothing.
+  const std::string injected_values[] = {"a\rb", "a\nb", "a\r\nX-Evil: 1",
+                                         std::string{"a\0b", 3}};
+  for (const std::string& injected : injected_values) {
+    ce::event subject = base_event();
+    subject.subject = injected;
+    auto written = ce::http::to_message<Codec, ce::http::literal_values>(
+        subject, ce::content_mode::binary_mode);
+    expect(!written) << codec << " accepted a control character";
+    if (!written) {
+      expect(written.error().code == ce::errc::invalid_argument) << codec;
+    }
+  }
+
+  // The conformant policy escapes them instead, which is equally safe.
+  ce::event subject = base_event();
+  subject.subject = "a\r\nX-Evil: 1";
+  auto escaped = ce::http::to_message<Codec>(subject, ce::content_mode::binary_mode);
+  expect(bool{escaped}) << codec;
+  if (escaped) {
+    expect(escaped->header_fields.find("ce-subject")->find('\r') == std::string::npos) << codec;
+    expect(escaped->header_fields.find("ce-subject")->find('\n') == std::string::npos) << codec;
+  }
+}
+
 }  // namespace
+
+// spec: SWR-HTTP-0016
+const boost::ut::suite<"http-value-policy"> http_value_policy = [] {
+  using namespace boost::ut;
+
+  static_assert(ce::http::value_policy<ce::http::percent_encoded_values>);
+  static_assert(ce::http::value_policy<ce::http::literal_values>);
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      check_value_policy<C>(codec);
+      check_literal_refuses_control_characters<C>(codec);
+    };
+  });
+};
 
 int main() {}

@@ -75,6 +75,9 @@ ce::codec_nlohmann  format_json+nlohmann nlohmann_codec (the default)
 ce::codec_rapidjson format_json+RapidJSON rapidjson_codec
 ce::codec_boost_json format_json+Boost.JSON boost_json_codec
 ce::binding_http    core (+format)       message, http binding
+ce::binding_kafka   core (+format)       kafka binding (binary and structured)
+ce::binding_nats    core (+format)       nats binding (binary and structured)
+ce::module          core                 optional cloudevents.cppm, off by default
 ```
 
 All targets are header-only INTERFACE libraries. Dependency direction is strictly
@@ -84,15 +87,21 @@ nlohmann from it and is kept because four requirements and a preset name it.
 
 Layout:
 ```
-include/cloudevents/{core,describe,message}.hpp
-include/cloudevents/detail/config.hpp
+include/cloudevents/{core,result,describe,message,extensions}.hpp
+include/cloudevents/cloudevents.cppm
+include/cloudevents/detail/{config,timestamp,expected_polyfill}.hpp
+include/cloudevents/detail/{describe_macro,describe_reflection}.hpp
 include/cloudevents/format/{json_codec,json_format,base64}.hpp
+include/cloudevents/format/{typed_payload,describe_json}.hpp
 include/cloudevents/codec/{nlohmann,rapidjson,boost_json}.hpp
 include/cloudevents/binding/{common,http,kafka,nats}.hpp
 include/cloudevents/binding/detail/percent.hpp
-include/cloudevents/extensions/{tracing,partitioning,sequence,sampledrate,dataref}.hpp
-test/  fuzz/  examples/  cmake/  docs/  prototype/
+test/  fuzz/  examples/  bench/  interop/  cmake/  docs/  spec/
 ```
+
+The five documented extensions are one `extensions.hpp`, not a directory: each is a
+handful of fields and a `CE_DESCRIBE`, and splitting them would make a consumer include
+five headers to read one event.
 
 ## 5. Component contracts
 
@@ -270,13 +279,15 @@ header mapping. Consumers must never branch on the backend.
 Each milestone ends with all tests green on every available preset.
 
 **M0 Scaffold.** CMake 3.25+, presets (`gcc-cxx20`, `gcc-cxx23`, `clang-cxx20`,
-`clang-cxx23`, `msvc-cxx20`, `reflect-cxx26`, `asan`, `fuzz`), FetchContent pins by
+`clang-cxx23`, `msvc-cxx20`, `reflect-cxx26`, `asan`, `fuzz`, and, added as the
+configurations they guard arrived, `polyfill-cxx23`, `no-exceptions`,
+`no-default-codec`, `coverage`), FetchContent pins by
 commit hash for CTRE, nlohmann/json, ut, with `find_package` preferred when present.
 `.clang-format`, `.clang-tidy`, GitHub Actions matrix, `detail/config.hpp`.
 *Accept:* empty ut test builds and runs on all presets; install + `find_package(cloudevents)`
 works from a consumer project in `test/consumer/`.
 
-**M1 Core.** Harden the prototype to §5.1. Add `lint()`, string content rules from
+**M1 Core.** Build §5.1. Add `lint()`, string content rules from
 core spec §3 (reject disallowed control characters on produce), full error coverage.
 *Accept:* §5.1 contract tests pass under C++20 and C++23; zero warnings.
 

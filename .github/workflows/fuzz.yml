@@ -44,6 +44,8 @@ jobs:
           - { target: fuzz_base64, seeds: base64 }
           - { target: fuzz_json_decode, seeds: json }
           - { target: fuzz_http_message, seeds: http }
+          - { target: fuzz_kafka_message, seeds: kafka }
+          - { target: fuzz_nats_payload, seeds: nats }
           - { target: fuzz_typed, seeds: typed }
     steps:
       - uses: actions/checkout@v4

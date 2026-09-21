@@ -43,6 +43,10 @@ if(CE_CODEC_NLOHMANN)
     LIBS ce::codec_nlohmann CORPUS corpus/json)
   ce_add_fuzzer(fuzz_http_message SOURCES fuzz_http_message.cpp
     LIBS ce::codec_nlohmann ce::binding_http CORPUS corpus/http)
+  ce_add_fuzzer(fuzz_kafka_message SOURCES fuzz_kafka_message.cpp
+    LIBS ce::codec_nlohmann ce::binding_kafka CORPUS corpus/kafka)
+  ce_add_fuzzer(fuzz_nats_payload SOURCES fuzz_nats_payload.cpp
+    LIBS ce::codec_nlohmann ce::binding_nats CORPUS corpus/nats)
   ce_add_fuzzer(fuzz_typed SOURCES fuzz_typed.cpp
     LIBS ce::codec_nlohmann CORPUS corpus/typed)
   target_include_directories(fuzz_json_decode PRIVATE ${CMAKE_SOURCE_DIR})

@@ -81,6 +81,8 @@ constexpr std::array nested_exports{
     "ce::v1::kafka::to_record"sv,
     "ce::v1::kafka::from_message"sv,
     "ce::v1::kafka::partitionkey_mapper"sv,
+    "ce::v1::nats::to_payload"sv,
+    "ce::v1::nats::from_payload"sv,
 };
 
 [[nodiscard]] auto read_module() -> std::string {

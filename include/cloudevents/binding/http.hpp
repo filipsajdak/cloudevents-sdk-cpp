@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include <cloudevents/binding/detail/percent.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
@@ -24,159 +25,40 @@ namespace detail {
 inline constexpr std::string_view attribute_prefix = "ce-";
 inline constexpr std::string_view content_type_header = "Content-Type";
 
-/// \brief True when a byte must be percent-encoded in a header value.
-///
-/// The binding requires escaping anything outside printable ASCII, plus space,
-/// double quote and percent. Space is excluded by the printable-range test, and
-/// percent has to be escaped or decoding could not tell an escape from a literal.
-[[nodiscard]] constexpr auto needs_escape(unsigned char byte) noexcept -> bool {
-  return byte < 0x21 || byte > 0x7E || byte == '"' || byte == '%';
-}
+// The generic helpers moved to where they belong: the text/byte conversions and
+// the case-insensitive prefix test are core, and percent-encoding belongs to the
+// bindings that escape their field values.
+//
+// Using-declarations, not wrappers. A using-declaration preserves constexpr, and
+// the suites contain static_assert(ce::http::detail::needs_escape(...)); a
+// forwarding function would have to repeat every signature to keep that working.
+using ce::v1::to_bytes;
+using ce::v1::to_text;
+using ce::v1::detail::is_valid_utf8;
+using ce::v1::detail::starts_with_ignoring_case;
+using ce::v1::binding::detail::hex_digit;
+using ce::v1::binding::detail::hex_value;
+using ce::v1::binding::detail::needs_escape;
+using ce::v1::binding::detail::percent_decode;
+using ce::v1::binding::detail::percent_encode;
 
-[[nodiscard]] constexpr auto hex_digit(unsigned value) noexcept -> char {
-  return static_cast<char>(value < 10 ? '0' + value : 'A' + (value - 10));
-}
 
-[[nodiscard]] constexpr auto hex_value(char character) noexcept -> int {
-  if (character >= '0' && character <= '9') {
-    return character - '0';
-  }
-  if (character >= 'a' && character <= 'f') {
-    return character - 'a' + 10;
-  }
-  if (character >= 'A' && character <= 'F') {
-    return character - 'A' + 10;
-  }
-  return -1;
-}
 
-/// \brief Percent-encode a header value, treating it as UTF-8 bytes.
-[[nodiscard]] inline auto percent_encode(std::string_view text) -> std::string {
-  std::string out;
-  out.reserve(text.size());
-  for (const char character : text) {
-    const auto byte = static_cast<unsigned char>(character);
-    if (needs_escape(byte)) {
-      out.push_back('%');
-      out.push_back(hex_digit(byte >> 4U));
-      out.push_back(hex_digit(byte & 0x0FU));
-    } else {
-      out.push_back(character);
-    }
-  }
-  return out;
-}
 
-/// \brief True when the bytes are well-formed UTF-8.
-///
-/// Rejects overlong encodings, surrogates and values above U+10FFFF, because each
-/// of those is a way to smuggle a second spelling of the same text past a
-/// consumer that compares strings.
-[[nodiscard]] constexpr auto is_valid_utf8(std::string_view text) noexcept -> bool {
-  std::size_t index = 0;
-  while (index < text.size()) {
-    const auto lead = static_cast<unsigned char>(text[index]);
-    std::size_t length = 0;
-    std::uint32_t code = 0;
 
-    if (lead < 0x80) {
-      ++index;
-      continue;
-    }
-    if ((lead & 0xE0U) == 0xC0U) {
-      length = 2;
-      code = lead & 0x1FU;
-    } else if ((lead & 0xF0U) == 0xE0U) {
-      length = 3;
-      code = lead & 0x0FU;
-    } else if ((lead & 0xF8U) == 0xF0U) {
-      length = 4;
-      code = lead & 0x07U;
-    } else {
-      return false;
-    }
 
-    if (index + length > text.size()) {
-      return false;
-    }
-    for (std::size_t offset = 1; offset < length; ++offset) {
-      const auto continuation = static_cast<unsigned char>(text[index + offset]);
-      if ((continuation & 0xC0U) != 0x80U) {
-        return false;
-      }
-      code = (code << 6U) | (continuation & 0x3FU);
-    }
 
-    if (length == 2 && code < 0x80) {
-      return false;
-    }
-    if (length == 3 && code < 0x800) {
-      return false;
-    }
-    if (length == 4 && code < 0x10000) {
-      return false;
-    }
-    if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
-      return false;
-    }
-    index += length;
-  }
-  return true;
-}
 
-/// \brief Percent-decode a header value.
-///
-/// Any octet may be escaped, because a sender is free to escape more than the
-/// minimum. The result must still be well-formed UTF-8.
-[[nodiscard]] inline auto percent_decode(std::string_view text) -> result<std::string> {
-  std::string out;
-  out.reserve(text.size());
-  for (std::size_t index = 0; index < text.size(); ++index) {
-    if (text[index] != '%') {
-      out.push_back(text[index]);
-      continue;
-    }
-    if (index + 2 >= text.size()) {
-      return fail(errc::parse_error, "truncated percent escape", std::string{text});
-    }
-    const int high = hex_value(text[index + 1]);
-    const int low = hex_value(text[index + 2]);
-    if (high < 0 || low < 0) {
-      return fail(errc::parse_error, "percent escape is not hexadecimal", std::string{text});
-    }
-    out.push_back(static_cast<char>((high << 4) | low));
-    index += 2;
-  }
-  if (!is_valid_utf8(out)) {
-    return fail(errc::invalid_utf8, "the decoded header value is not well-formed UTF-8",
-                std::string{text});
-  }
-  return out;
-}
 
-[[nodiscard]] inline auto to_bytes(std::string_view text) -> binary {
-  binary out;
-  out.reserve(text.size());
-  for (const char character : text) {
-    out.push_back(static_cast<std::byte>(character));
-  }
-  return out;
-}
 
-[[nodiscard]] inline auto to_text(const binary& bytes) -> std::string {
-  std::string out;
-  out.reserve(bytes.size());
-  for (const std::byte value : bytes) {
-    out.push_back(static_cast<char>(value));
-  }
-  return out;
-}
 
-[[nodiscard]] constexpr auto starts_with_ignoring_case(std::string_view text,
-                                                       std::string_view prefix) noexcept -> bool {
-  return text.size() >= prefix.size() &&
-         ce::detail::iequals(text.substr(0, prefix.size()), prefix);
-}
+
+
+
+
+
+
+
 
 }  // namespace detail
 

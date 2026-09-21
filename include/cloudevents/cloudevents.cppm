@@ -48,6 +48,8 @@ using ce::v1::message;
 using ce::v1::parse_timestamp;
 using ce::v1::reserved_name;
 using ce::v1::timestamp;
+using ce::v1::to_bytes;
+using ce::v1::to_text;
 using ce::v1::to_string;
 using ce::v1::uri;
 using ce::v1::uri_ref;

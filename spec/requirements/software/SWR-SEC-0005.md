@@ -12,7 +12,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-SEC-0001]
 satisfied_by: []
-verified_by: [test:test/interop_test.cpp::interop-golden-corpus]
+verified_by: [test:test/interop_test.cpp::interop-golden-corpus, test:test/interop_test.cpp::interop-behaviour-audit]
 owner: filip.sajdak
 version: 1
 ---

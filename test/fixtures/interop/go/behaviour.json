@@ -1,0 +1,178 @@
+[
+  {
+    "case": "recv/batch_content_type",
+    "error": "read: not supported for batch events"
+  },
+  {
+    "case": "recv/body_no_content_type",
+    "error": "json: error calling MarshalJSON for type *event.Event: invalid character 's' looking for beginning of value"
+  },
+  {
+    "case": "recv/empty_subject",
+    "event": {
+      "id": "1",
+      "source": "/s",
+      "specversion": "1.0",
+      "type": "t"
+    }
+  },
+  {
+    "case": "recv/empty_type",
+    "event": {
+      "id": "1",
+      "source": "/s",
+      "specversion": "1.0",
+      "type": ""
+    }
+  },
+  {
+    "case": "recv/invalid_extension_name",
+    "error": "read: bad key, CloudEvents attribute names MUST consist of lower-case letters ('a' to 'z'), upper-case letters ('A' to 'Z') or digits ('0' to '9') from the ASCII character set"
+  },
+  {
+    "case": "recv/no_ce_headers_plain_json",
+    "error": "read: unknown Message encoding"
+  },
+  {
+    "case": "recv/specversion_0_3",
+    "event": {
+      "id": "1",
+      "source": "/s",
+      "specversion": "0.3",
+      "type": "t"
+    }
+  },
+  {
+    "case": "recv/structured_with_charset",
+    "event": {
+      "id": "1",
+      "source": "/s",
+      "specversion": "1.0",
+      "type": "t"
+    }
+  },
+  {
+    "case": "recv/time_lowercase",
+    "error": "read: invalid value for time: \"2026-09-20t12:34:56z\""
+  },
+  {
+    "case": "recv/unknown_ce_header",
+    "event": {
+      "id": "1",
+      "source": "/s",
+      "specversion": "1.0",
+      "type": "t",
+      "unknown": "v"
+    }
+  },
+  {
+    "case": "recv/uppercase_extension_name",
+    "event": {
+      "id": "1",
+      "mixedcase": "v",
+      "source": "/s",
+      "specversion": "1.0",
+      "type": "t"
+    }
+  },
+  {
+    "case": "recv/uppercase_header_name",
+    "event": {
+      "id": "1",
+      "source": "/s",
+      "specversion": "1.0",
+      "subject": "s",
+      "type": "t"
+    }
+  },
+  {
+    "body_base64": "AP8=",
+    "case": "send/binary_payload",
+    "headers": {
+      "ce-id": "1",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe",
+      "content-type": "application/octet-stream"
+    }
+  },
+  {
+    "case": "send/dataschema",
+    "headers": {
+      "ce-dataschema": "https://example.test/s",
+      "ce-id": "1",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe"
+    }
+  },
+  {
+    "case": "send/extension_bool",
+    "headers": {
+      "ce-flag": "true",
+      "ce-id": "1",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe"
+    }
+  },
+  {
+    "case": "send/extension_integer",
+    "headers": {
+      "ce-id": "1",
+      "ce-num": "42",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe"
+    }
+  },
+  {
+    "case": "send/extension_uppercase_name",
+    "headers": {
+      "ce-id": "1",
+      "ce-mixedcase": "v",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe"
+    }
+  },
+  {
+    "case": "send/no_datacontenttype",
+    "headers": {
+      "ce-id": "1",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe"
+    }
+  },
+  {
+    "case": "send/subject_empty",
+    "headers": {
+      "ce-id": "1",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe"
+    }
+  },
+  {
+    "body_base64": "aGVsbG8=",
+    "case": "send/text_payload",
+    "headers": {
+      "ce-id": "1",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-type": "com.example.probe",
+      "content-type": "text/plain"
+    }
+  },
+  {
+    "case": "send/time_with_offset",
+    "headers": {
+      "ce-id": "1",
+      "ce-source": "/probe",
+      "ce-specversion": "1.0",
+      "ce-time": "2026-09-20T10:34:56.123456789Z",
+      "ce-type": "com.example.probe"
+    }
+  }
+]

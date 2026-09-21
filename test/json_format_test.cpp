@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "codecs_under_test.hpp"
+#include "json_format_checks.hpp"
 #include "mini_codec.hpp"
 
 // json_format owns every CloudEvents JSON rule, over whatever codec it is given.
@@ -1272,5 +1273,17 @@ const boost::ut::suite<"extension-integer-beyond-int64-is-refused"> beyond_int64
 };
 
 }  // namespace
+
+// spec: SWR-JSON-0037
+const boost::ut::suite<"format-rules-shared-with-the-bench"> format_rules_shared = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce::checks::check_format_rules<C>(
+          [codec](bool ok, std::string_view what) { expect(ok) << codec << ": " << what; });
+    };
+  });
+};
 
 int main() {}

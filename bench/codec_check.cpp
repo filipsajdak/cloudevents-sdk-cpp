@@ -14,6 +14,8 @@
 #include "codecs/rapidjson_codec.hpp"
 #include "documents.hpp"
 
+#include "../test/json_format_checks.hpp"
+
 #include <cstdio>
 #include <span>
 #include <string>
@@ -120,22 +122,13 @@ void run(std::string_view name) {
   auto large = format::decode(ce::bench::large_document());
   check(large.has_value(), name, "large document does not decode");
 
-  // --- UTF-8 --------------------------------------------------------------
+  // --- the rules the test suite also enforces ------------------------------
   //
-  // Non-BMP characters arrive as a surrogate PAIR from some producers, and a
-  // codec that encodes each half separately produces invalid UTF-8.
-  std::string escaped = R"({"specversion":"1.0","id":"1","source":"/s","type":"t","subject":")";
-  escaped += static_cast<char>(92);
-  escaped += "uD83D";
-  escaped += static_cast<char>(92);
-  escaped += "uDE00";
-  escaped += R"("})";
-  auto emoji = format::decode(escaped);
-  check(emoji.has_value(), name, "a surrogate pair does not decode");
-  if (emoji && emoji->subject) {
-    check(emoji->subject->size() == 4, name,
-          "a surrogate pair did not become one code point (CESU-8 or a dropped character)");
-  }
+  // Byte-exact timestamps, surrogate pairs and a hundred-event batch live in
+  // test/json_format_checks.hpp so a codec that only ships here is judged by
+  // exactly the rules a codec in the tree is.
+  ce::checks::check_format_rules<C>(
+      [name](bool ok, std::string_view what) { check(ok, name, what); });
 }
 
 }  // namespace

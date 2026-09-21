@@ -1,20 +1,22 @@
 ---
 uid: SWR-CORE-0014
-title: event aggregate carrying the required context attributes
+title: event is constructed through a factory or a builder, never as an aggregate
 type: software
 status: approved
 priority: high
 rationale: >
-  SPEC 5.1 and open decision D1 settle on a public aggregate gated by
-  `validate()`, and CloudEvents v1.0.2 core specification section 3.1 names `id`,
-  `source`, `specversion` and `type` as REQUIRED on every event.
+  CR-0001 found that a public aggregate lets a caller build an event CloudEvents
+  v1.0.2 core section 3.1 forbids, and that the encode paths disagree about whether
+  to re-check it. ADR-0008 moves validity into the attribute types, which leaves
+  construction as the single place an event can come into existence.
 verification_method: test
-security_classification: operational
+security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
 satisfied_by: [code:include/cloudevents/core.hpp]
 verified_by: [test:test/core_test.cpp::core-event-required-attributes]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
-The `event` type shall be an aggregate with public members `id`, `source`,
-`specversion` defaulted to the value `1.0`, and `type`.
+The `event` type shall come into existence only through `create`, taking
+already-validated `id`, `source` and `type`, or through `builder`, exposing no
+public data member.

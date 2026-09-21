@@ -19,3 +19,5 @@ Neutral), `## References`. Start from `template.md`.
 | [0004](./0004-json-codec-abstracts-a-dom.md) | The codec concept abstracts a JSON DOM, not the event | Accepted |
 | [0005](./0005-transport-neutral-message.md) | Bindings map to a transport-neutral message, never to a transport | Accepted |
 | [0006](./0006-one-configuration-header.md) | Every feature gate lives in one configuration header | Accepted |
+| [0007](./0007-traits-parameterised-binding-core.md) | A binding is a traits type over a shared core | Accepted |
+| [0008](./0008-invalid-events-are-not-representable.md) | An invalid event is not representable, and `validate()` goes away | Accepted |

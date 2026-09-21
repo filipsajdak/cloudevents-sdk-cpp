@@ -241,6 +241,7 @@ const boost::ut::suite<"binding-core-name-case"> binding_core_name_case = [] {
 };
 
 // spec: SYS-BIND-0001
+// spec: SWR-BIND-0005
 const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
   using namespace boost::ut;
 

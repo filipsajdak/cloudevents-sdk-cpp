@@ -836,7 +836,7 @@ a Homebrew Boost is built against libc++, so a GCC/libstdc++ build compiles the
 header and then fails to link on mangling differences. That is an ABI mismatch,
 not a defect, and the header says so.
 
-## D-BUILD-1: A codec header may carry a conditional that only refuses
+## D-BUILD-3: A codec header may carry a conditional that only refuses
 
 `SWR-BUILD-0002` keeps capability gating in `detail/config.hpp`, because gating
 spread across headers makes the supported matrix unreadable. The Boost.JSON

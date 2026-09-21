@@ -84,7 +84,7 @@ include/cloudevents/{core,describe,message}.hpp
 include/cloudevents/detail/config.hpp
 include/cloudevents/format/{json_codec,json_format,base64}.hpp
 include/cloudevents/codec/{nlohmann,rapidjson,boost_json}.hpp
-include/cloudevents/binding/{common,http,kafka}.hpp
+include/cloudevents/binding/{common,http,kafka,nats}.hpp
 include/cloudevents/binding/detail/percent.hpp
 include/cloudevents/extensions/{tracing,partitioning,sequence,sampledrate,dataref}.hpp
 test/  fuzz/  examples/  cmake/  docs/  prototype/
@@ -211,6 +211,19 @@ header mapping. Consumers must never branch on the backend.
 - `key_mapper` concept; `no_key_mapper` is the default and `partitionkey_mapper`
   is the opt-in the binding spec asks for. The extension still travels as a
   header when it becomes the key.
+
+### 5.4.2 NATS binding
+
+- `nats::to_payload` / `from_payload`, exchanging UTF-8 JSON text.
+- **Structured mode only, JSON only.** The binding spec says NATS "will only
+  support structured data mode at this time" because the protocol has no custom
+  message headers, and that implementations "MUST support the JSON event format".
+  So there is no content mode parameter and no header map.
+- **No subject.** The spec defines no mapping from an event to a subject, so the
+  binding derives none and takes none.
+- **`not_a_cloudevent` is not reachable here** (`SWR-NATS-0004`). With no content
+  type and no specversion header to consult, an unrelated JSON document cannot be
+  told from a corrupt event, so every failure is a parse or validation error.
 
 ### 5.5 Typed extensions and payloads
 

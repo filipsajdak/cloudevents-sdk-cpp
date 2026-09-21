@@ -11,6 +11,7 @@ module;
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/http.hpp>
 #include <cloudevents/binding/kafka.hpp>
+#include <cloudevents/binding/nats.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>
 #include <cloudevents/extensions.hpp>
@@ -118,6 +119,12 @@ using ce::v1::kafka::record;
 using ce::v1::kafka::to_message;
 using ce::v1::kafka::to_record;
 }  // namespace kafka
+
+// --- NATS binding -----------------------------------------------------------
+namespace nats {
+using ce::v1::nats::from_payload;
+using ce::v1::nats::to_payload;
+}  // namespace nats
 
 // --- documented extensions --------------------------------------------------
 namespace ext {

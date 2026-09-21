@@ -1,6 +1,7 @@
 #include <boost/ut.hpp>
 
 #include <cloudevents/binding/nats.hpp>
+#include <cloudevents/message.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
@@ -113,6 +114,94 @@ void check_invalid_event_is_refused(std::string_view codec) {
   }
 }
 
+
+template <class Codec>
+void check_binary_mode(std::string_view codec) {
+  using namespace boost::ut;
+
+  ce::event subject = base_event();
+  subject.subject = "a b";  // a space, so the percent-encoding rule is exercised
+  subject.datacontenttype = "text/plain";
+  subject.data = std::string{"hello"};
+
+  auto out = ce::nats::to_message<Codec>(subject, ce::content_mode::binary_mode);
+  expect(bool{out}) << codec;
+  if (!out) {
+    return;
+  }
+
+  // The prefix is HTTP's, not Kafka's.
+  expect(out->header_fields.find("ce-specversion") != nullptr) << codec;
+  expect(out->header_fields.find("ce-id") != nullptr) << codec;
+  expect(out->header_fields.find("ce_id") == nullptr) << codec;
+
+  // datacontenttype is an attribute here, unlike every other binding, and
+  // Content-Type is left to mean "structured".
+  const std::string* declared = out->header_fields.find("ce-datacontenttype");
+  expect(declared != nullptr) << codec;
+  if (declared != nullptr) {
+    expect(*declared == "text/plain"sv) << codec;
+  }
+  expect(out->header_fields.find("Content-Type") == nullptr) << codec;
+
+  // Values are percent-encoded, by the same rule as HTTP.
+  const std::string* written = out->header_fields.find("ce-subject");
+  expect(written != nullptr) << codec;
+  if (written != nullptr) {
+    expect(*written == "a%20b"sv) << codec;
+  }
+
+  // The data bytes are the payload.
+  expect(ce::to_text(out->body) == "hello") << codec;
+
+  auto read_back = ce::nats::from_message<Codec>(*out);
+  expect(bool{read_back}) << codec;
+  if (read_back) {
+    expect(read_back->id == subject.id) << codec;
+    expect(bool{read_back->subject == subject.subject}) << codec;
+    expect(bool{read_back->datacontenttype == subject.datacontenttype}) << codec;
+  }
+}
+
+template <class Codec>
+void check_mode_detection(std::string_view codec) {
+  using namespace boost::ut;
+
+  // The binding inverts HTTP's default: no content type means BINARY, not
+  // structured, so a message with neither is not a CloudEvent rather than an
+  // empty structured document.
+  ce::message bare;
+  expect(ce::nats::detect_content_mode(bare) == ce::content_mode::binary_mode) << codec;
+
+  auto refused = ce::nats::from_message<Codec>(bare);
+  expect(!refused) << codec;
+  if (!refused) {
+    expect(refused.error().code == ce::errc::not_a_cloudevent) << codec;
+  }
+
+  ce::message structured;
+  structured.header_fields.set("content-type", "application/cloudevents+json; charset=utf-8");
+  expect(ce::nats::detect_content_mode(structured) == ce::content_mode::structured) << codec;
+
+  const ce::event subject = base_event();
+  auto encoded = ce::nats::to_message<Codec>(subject, ce::content_mode::structured);
+  expect(bool{encoded}) << codec;
+  if (encoded) {
+    expect(encoded->header_fields.find("Content-Type") != nullptr) << codec;
+    auto read_back = ce::nats::from_message<Codec>(*encoded);
+    expect(bool{read_back}) << codec;
+    if (read_back) {
+      expect(read_back->id == subject.id) << codec;
+    }
+  }
+
+  auto batched = ce::nats::to_message<Codec>(subject, ce::content_mode::batched);
+  expect(!batched) << codec;
+  if (!batched) {
+    expect(batched.error().code == ce::errc::invalid_argument) << codec;
+  }
+}
+
 }  // namespace
 
 // spec: SWR-NATS-0001
@@ -155,5 +244,17 @@ const boost::ut::suite<"nats-every-failure-is-a-parse-error"> nats_every_failure
         test(std::string{codec}) = [codec] { check_every_failure_is_a_parse_error<C>(codec); };
       });
     };
+
+
+// spec: SWR-NATS-0001
+const boost::ut::suite<"nats-binary-mode"> nats_binary_mode = [] {
+  using namespace boost::ut;
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      check_binary_mode<C>(codec);
+      check_mode_detection<C>(codec);
+    };
+  });
+};
 
 int main() {}

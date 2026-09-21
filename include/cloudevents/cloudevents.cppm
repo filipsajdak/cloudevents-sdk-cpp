@@ -122,7 +122,10 @@ using ce::v1::kafka::to_record;
 
 // --- NATS binding -----------------------------------------------------------
 namespace nats {
+using ce::v1::nats::detect_content_mode;
+using ce::v1::nats::from_message;
 using ce::v1::nats::from_payload;
+using ce::v1::nats::to_message;
 using ce::v1::nats::to_payload;
 }  // namespace nats
 

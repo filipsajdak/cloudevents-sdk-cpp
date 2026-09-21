@@ -8,6 +8,7 @@ module;
 // section 8 names is uneven, and a broken module target would break the floor
 // configuration for everyone who never asked for one.
 
+#include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/http.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>
@@ -83,6 +84,18 @@ using ce::v1::json::content_type;
 using ce::v1::json::json_codec;
 using ce::v1::json::kind;
 }  // namespace json
+
+// --- the shared binding core ------------------------------------------------
+namespace binding {
+using ce::v1::binding::binding_traits;
+using ce::v1::binding::decode_structured;
+using ce::v1::binding::encode_structured;
+using ce::v1::binding::read_attributes;
+using ce::v1::binding::read_body;
+using ce::v1::binding::render_attribute;
+using ce::v1::binding::write_attributes;
+using ce::v1::binding::write_body;
+}  // namespace binding
 
 // --- HTTP binding -----------------------------------------------------------
 namespace http {

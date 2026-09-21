@@ -1,0 +1,10 @@
+{
+  "headers": {
+    "ce-id": "id-text",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-type": "com.example.text",
+    "content-type": "text/plain"
+  },
+  "body_base64": "cGxhaW4gdGV4dCBwYXlsb2Fk"
+}

@@ -1,0 +1,13 @@
+{
+  "headers": {
+    "ce-dataschema": "https://example.test/schema/1",
+    "ce-id": "id-full",
+    "ce-source": "https://example.test/interop/go",
+    "ce-specversion": "1.0",
+    "ce-subject": "the-subject",
+    "ce-time": "2026-09-20T12:34:56Z",
+    "ce-type": "com.example.full",
+    "content-type": "application/json"
+  },
+  "body_base64": "eyJjb3VudCI6MywibGFiZWwiOiJnbyJ9"
+}

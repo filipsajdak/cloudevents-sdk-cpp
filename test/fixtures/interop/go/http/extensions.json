@@ -1,0 +1,12 @@
+{
+  "headers": {
+    "ce-id": "id-extensions",
+    "ce-partitionkey": "customer-42",
+    "ce-sampledrate": "30",
+    "ce-source": "/interop/go",
+    "ce-specversion": "1.0",
+    "ce-traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+    "ce-type": "com.example.extensions"
+  },
+  "body_base64": ""
+}

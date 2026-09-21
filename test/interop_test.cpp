@@ -1,5 +1,6 @@
 #include <boost/ut.hpp>
 
+#include <cloudevents/binding/http.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/extensions.hpp>
@@ -46,6 +47,47 @@ using mini_codec = ce::test::mini_codec;
   buffer << in.rdbuf();
   return buffer.str();
 }
+
+
+/// \brief One HTTP binary-mode message exactly as the Go SDK wrote it.
+///
+/// Recorded by interop/go, not hand-written: the point is to hold the bytes
+/// another SDK actually puts on the wire, which no amount of reading its source
+/// can substitute for.
+[[nodiscard]] auto read_http_wire(std::string_view sdk, std::string_view name) -> ce::message {
+  const std::string raw = [&] {
+    std::ifstream in{ce_fixtures::path(std::string{"interop/"} + std::string{sdk} + "/http/" +
+                                       std::string{name} + ".json"),
+                     std::ios::binary};
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+  }();
+
+  auto document = nlohmann::json::parse(raw, nullptr, false, false);
+  ce::message out;
+  if (document.is_discarded()) {
+    return out;
+  }
+  for (const auto& entry : document["headers"].items()) {
+    out.header_fields.add(entry.key(), entry.value().get<std::string>());
+  }
+  const auto encoded = document["body_base64"].get<std::string>();
+  if (!encoded.empty()) {
+    if (auto decoded = ce::base64_decode(encoded)) {
+      out.body = *decoded;
+    }
+  }
+  return out;
+}
+
+/// Each name has two recordings of the same Go event: the JSON event format, and
+/// the HTTP binary-mode headers. Decoding the headers must reach the event the
+/// document describes, or the binding disagrees with the format.
+constexpr std::array http_wire_names{
+    "minimal"sv,     "full"sv,            "extensions"sv, "text_data"sv,
+    "binary_data"sv, "extension_types"sv, "unicode"sv,    "minimal_relative"sv,
+};
 
 constexpr std::array producers{"go"sv, "java"sv, "cpp"sv};
 
@@ -472,5 +514,64 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
 };
 
 }  // namespace
+
+
+// spec: SWR-HTTP-0016
+const boost::ut::suite<"interop-http-binary-mode"> interop_http_binary_mode = [] {
+  using namespace boost::ut;
+
+  "go binary-mode headers decode to the documented event"_test = [] {
+    for (const auto name : http_wire_names) {
+      const ce::message wire = read_http_wire("go", name);
+      expect(!wire.header_fields.empty()) << name;
+
+      auto from_headers =
+          ce::http::from_message<nlohmann_codec, ce::http::literal_values>(wire);
+      expect(bool{from_headers}) << name << " headers did not decode";
+      if (!from_headers) {
+        continue;
+      }
+      auto from_document = ce::json_format<nlohmann_codec>::decode(read_golden("go", name));
+      expect(bool{from_document}) << name;
+      if (!from_document) {
+        continue;
+      }
+
+      expect(from_headers->id == from_document->id) << name;
+      expect(bool{from_headers->source == from_document->source}) << name;
+      expect(from_headers->type == from_document->type) << name;
+      expect(bool{from_headers->subject == from_document->subject}) << name;
+      expect(bool{from_headers->time == from_document->time}) << name;
+      expect(bool{from_headers->dataschema == from_document->dataschema}) << name;
+      expect(bool{payload_bytes(*from_headers) == payload_bytes(*from_document)}) << name;
+    }
+  };
+
+  // The recorded proof of the incompatibility D-HTTP-1 documents. Go wrote
+  // `ce-subject: 100% of 50%OFF`; the conformant reader must refuse it as a
+  // malformed escape, and the opt-in policy must take it.
+  "a literal percent from go needs the opt-in policy"_test = [] {
+    const ce::message wire = read_http_wire("go", "percent_in_subject");
+    expect(!wire.header_fields.empty());
+
+    auto conformant = ce::http::from_message<nlohmann_codec>(wire);
+    expect(!conformant) << "the conformant reader accepted an unescaped percent";
+    if (!conformant) {
+      expect(conformant.error().code == ce::errc::parse_error);
+    }
+
+    auto compatible = ce::http::from_message<nlohmann_codec, ce::http::literal_values>(wire);
+    expect(bool{compatible});
+    if (compatible) {
+      expect(bool{compatible->subject == std::optional<std::string>{"100% of 50%OFF"}});
+      const auto* pct = compatible->extension("pct");
+      expect(pct != nullptr);
+      if (pct != nullptr) {
+        // Not decoded to "a b": naming the policy chooses Go's reading.
+        expect(bool{*pct == ce::attribute_value{std::string{"a%20b"}}});
+      }
+    }
+  };
+};
 
 int main() {}

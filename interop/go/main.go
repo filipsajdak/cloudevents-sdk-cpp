@@ -5,15 +5,53 @@
 package main
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/binding"
 	"github.com/cloudevents/sdk-go/v2/event"
+	cehttp "github.com/cloudevents/sdk-go/v2/protocol/http"
 )
+
+// httpWire is one HTTP binary-mode message, as bytes rather than as a document.
+// The JSON goldens beside it prove the event FORMAT agrees; these prove the
+// HTTP binding's header mapping agrees, which nothing checked before.
+type httpWire struct {
+	Headers map[string]string `json:"headers"`
+	Body    string            `json:"body_base64"`
+}
+
+// writeHTTPWire records exactly what the Go SDK puts on the wire in binary mode.
+func writeHTTPWire(dir, name string, e event.Event) {
+	must(os.MkdirAll(filepath.Join(dir, "http"), 0o755))
+	req, err := http.NewRequest("POST", "http://interop/", nil)
+	must(err)
+	must(cehttp.WriteRequest(context.Background(), binding.ToMessage(&e), req))
+
+	wire := httpWire{Headers: map[string]string{}}
+	for key, values := range req.Header {
+		wire.Headers[strings.ToLower(key)] = values[0]
+	}
+	body := []byte{}
+	if req.Body != nil {
+		body, err = io.ReadAll(req.Body)
+		must(err)
+	}
+	wire.Body = base64.StdEncoding.EncodeToString(body)
+
+	data, err := json.MarshalIndent(wire, "", "  ")
+	must(err)
+	must(os.WriteFile(filepath.Join(dir, "http", name+".json"), data, 0o644))
+}
 
 func must(err error) {
 	if err != nil {
@@ -25,6 +63,7 @@ func write(dir, name string, e event.Event) {
 	data, err := json.Marshal(e)
 	must(err)
 	must(os.WriteFile(filepath.Join(dir, name+".json"), data, 0o644))
+	writeHTTPWire(dir, name, e)
 }
 
 func main() {
@@ -120,6 +159,17 @@ func main() {
 	unicode.SetSubject("\u65e5\u672c\u8a9e \U0001F600")
 	must(unicode.SetData("application/json", map[string]any{"text": "\u00e9\u6587 \U0001F600"}))
 	write(outDir, "unicode", unicode)
+
+	// A percent in an attribute value. This is the case the HTTP binding spec
+	// says to escape and the Go SDK does not, so it is where the two disagree.
+	percent := cloudevents.NewEvent()
+	percent.SetSpecVersion("1.0")
+	percent.SetID("id-percent")
+	percent.SetSource("/interop/go")
+	percent.SetType("com.example.percent")
+	percent.SetSubject("100% of 50%OFF")
+	percent.SetExtension("pct", "a%20b")
+	write(outDir, "percent_in_subject", percent)
 
 	// A JSON payload that is not an object: the format permits any JSON value.
 	scalar := cloudevents.NewEvent()

@@ -209,6 +209,17 @@ template <binding_traits T>
       break;
     }
 
+    // Hoisted out of the chain below rather than joined to it with &&: mixing a
+    // compile-time constant into a runtime condition is C4127 under MSVC's /W4,
+    // and `if constexpr` is what actually expresses "this branch does not exist
+    // for that binding".
+    if constexpr (detail::content_type_policy<T>::as_attribute) {
+      if (attribute == "datacontenttype") {
+        subject.datacontenttype = *decoded;
+        continue;
+      }
+    }
+
     if (attribute == "specversion") {
       subject.specversion = *decoded;
     } else if (attribute == "id") {
@@ -220,8 +231,6 @@ template <binding_traits T>
     } else if (attribute == "type") {
       subject.type = *decoded;
       saw_type = true;
-    } else if (detail::content_type_policy<T>::as_attribute && attribute == "datacontenttype") {
-      subject.datacontenttype = *decoded;
     } else if (attribute == "dataschema") {
       subject.dataschema = uri{*decoded};
     } else if (attribute == "subject") {

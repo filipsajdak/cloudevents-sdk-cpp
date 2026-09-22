@@ -52,23 +52,28 @@ check, and a runtime value cannot reach the compile-time path: the proxy's only
 constructors are `consteval`, so a non-constant argument is ill-formed at the call site.
 
 **A failure type for constant evaluation, not a second result type.** `static_error` holds
-an `errc` and two `string_view`s into static storage. `ce::error` gains a converting
-constructor from it, which is the single widening point. There is no `constexpr_result<T>`:
+an `errc` and two `string_view`s into static storage. A free function, `widen()`, converts
+it to `ce::error` and is the single widening point; a converting constructor would have
+stopped `error` being an aggregate. There is no `constexpr_result<T>`:
 a second `expected`-like alias would need a second polyfill to keep in step, which is the
 drift ADR-0002 exists to prevent, and the compile-time path has no value-or-error to carry
 because its failure mode is a compile error.
 
 **`validate()` is removed.** Every rule it holds is a single-attribute rule, and CloudEvents
 v1.0.2 core defines no constraint spanning two context attributes. Once each part is valid
-by construction, the product of valid parts is a valid event, so `event::create(id, source,
-type, options)` is infallible. `lint()` stays: it reports SHOULD-level observations, which
-are not validity.
+by construction, the product of valid parts is a valid event, so constructing one from
+`(id, source, type, options)` cannot fail. That makes it a constructor rather than a named
+factory: a factory returning a result is the idiom for construction that can fail without
+exceptions, and the fallible steps (each attribute's `make()`, and `builder::build()`) are
+factories already. `lint()` stays: it reports SHOULD-level observations, which are not
+validity.
 
 **A builder for decoders.** `binding::read_attributes` and `json_format::from_value`
 discover attributes one at a time in wire order and cannot know until the end whether `id`
 arrived. `event::builder` accumulates and `build() &&` returns `result<event>`, failing only
-on absence or on a remembered parse failure. It is rvalue-ref-qualified, so a builder cannot
-be consumed twice or left half-built.
+on absence: every other refusal happened in an attribute's `make()` before the value reached
+the builder. It is rvalue-ref-qualified, so a builder cannot be consumed twice or left
+half-built.
 
 ## Consequences
 

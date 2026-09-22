@@ -1064,3 +1064,24 @@ when asked for a content mode a transport does not have.
 Measured before changing it: no fixture under `test/fixtures/` contains
 `ce-datacontenttype` or `ce_datacontenttype` in any spelling, and neither the Go
 nor the Java golden emits one, so no peer sends this today.
+
+## D-CORE-8: An event is built by a constructor, not by `create`
+
+ADR-0008 first named the producer's entry point `event::create(id, source, type,
+options)`. That name came from the draft in which construction was still expected
+to fail. Construction cannot fail, because every argument is already a validated
+type. A named factory returning a result is the idiom for construction that can
+fail without exceptions, and the steps that can fail here already are factories:
+each attribute's `make()` and `builder::build()`. The C++ Core Guidelines point
+the same way (C.40, C.41): a class with an invariant gets a constructor that
+leaves the object fully initialized. So the entry point is a constructor, and it
+is `explicit`, so `return {...};` cannot hide which type it builds.
+
+The three-argument form is a separate delegating constructor rather than a
+default argument `options rest = {}`. `options` is nested in `event`, and its
+default member initializers cannot be used before `event` is complete: CWG 1397
+(C++11, `cpp/language/data_members#Defect_reports`) corrected the rule that had
+treated the class as complete in its default member initializers, and a default
+argument inside the class body is exactly such a premature use. GCC 16 rejects
+it; the same default argument at namespace scope, in a test helper for example,
+is fine.

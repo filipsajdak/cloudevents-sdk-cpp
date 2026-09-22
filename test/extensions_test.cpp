@@ -33,8 +33,10 @@ using namespace std::string_view_literals;
 using nlohmann_codec = ce::codec::nlohmann_codec;
 using mini_codec = ce::test::mini_codec;
 
-[[nodiscard]] auto minimal() -> ce::event {
-  return ce::event{.id = "id-1", .source = ce::uri_ref{"/spec/test"}, .type = "com.example.thing"};
+using namespace ce::literals;
+
+[[nodiscard]] auto minimal(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"id-1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
 }
 
 struct payload {
@@ -186,9 +188,8 @@ const boost::ut::suite<"extensions-get-set-roundtrip"> get_set_roundtrip = [] {
 
     // Five extensions, six attributes, and each one still reads back after the
     // others were written: set() must not disturb its neighbours.
-    expect(subject.extensions.size() == 6_ul);
+    expect(subject.extensions().size() == 6_ul);
     expect(subject.get<ce::ext::tracing>().has_value());
-    expect(subject.validate().has_value());
   };
 
   "set stores each field under its declared attribute type"_test = [] {
@@ -254,8 +255,7 @@ const boost::ut::suite<"extensions-get-set-roundtrip"> get_set_roundtrip = [] {
 
     // Present but incomplete is the same failure, and it still names the field
     // that is missing rather than the first one.
-    expect(
-        subject.set_extension("tracestate", ce::attribute_value{std::string{"v=1"}}).has_value());
+    subject.set_extension("tracestate"_ext, ce::attribute_value{std::string{"v=1"}});
     auto partial = subject.get<ce::ext::tracing>();
     expect(!partial.has_value());
     if (!partial) {
@@ -381,10 +381,13 @@ void check_recovery_failures(std::string_view label) {
 
   // Every declared type that is not a string has a value it cannot accept.
   const auto reject = [&label](std::string_view stored, auto probe) {
-    ce::event subject = minimal();
-    expect(subject.set_extension(std::string{probe.name}, ce::attribute_value{std::string{stored}})
-               .has_value())
-        << label;
+    auto name = ce::extension_name::make(probe.name);
+    expect(name.has_value()) << label;
+    if (!name) {
+      return;
+    }
+    const ce::event subject =
+        minimal({.extensions = {{std::move(*name), ce::attribute_value{std::string{stored}}}}});
     auto read = probe.read(subject);
     expect(!read.has_value()) << label << ": should reject " << stored;
     if (!read) {
@@ -404,9 +407,8 @@ void check_recovery_failures(std::string_view label) {
   }
 
   // A value that does fit is still accepted, so the rejection is about the text.
-  ce::event subject = minimal();
-  expect(subject.set_extension("sampledrate", ce::attribute_value{std::string{"30"}}).has_value())
-      << label;
+  const ce::event subject =
+      minimal({.extensions = {{"sampledrate"_ext, ce::attribute_value{std::string{"30"}}}}});
   auto read = subject.get<ce::ext::sampled_rate>();
   expect(read.has_value()) << label;
   if (read) {
@@ -415,8 +417,7 @@ void check_recovery_failures(std::string_view label) {
 
   // An attribute holding an unrelated type is a mismatch rather than a silent
   // conversion: a Boolean is not an Integer even though both are scalars.
-  ce::event odd = minimal();
-  expect(odd.set_extension("sampledrate", ce::attribute_value{true}).has_value()) << label;
+  const ce::event odd = minimal({.extensions = {{"sampledrate"_ext, ce::attribute_value{true}}}});
   auto mismatched = odd.get<ce::ext::sampled_rate>();
   expect(!mismatched.has_value()) << label;
   if (!mismatched) {
@@ -463,9 +464,8 @@ void check_event_of(std::string_view label) {
 
   // A view, not a container: the event is handed back whole, with the context
   // attributes the caller supplied still on it.
-  expect(built.underlying().id == "id-1") << label;
-  expect(built.underlying().type == "com.example.thing") << label;
-  expect(built.validate().has_value()) << label;
+  expect(built.underlying().id() == "id-1") << label;
+  expect(built.underlying().type() == "com.example.thing") << label;
 
   // Writing through the view updates the event it holds.
   const payload replaced{.label = "pallet", .count = 3};

@@ -10,7 +10,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-JSON-0001]
 satisfied_by: [code:include/cloudevents/format/json_format.hpp]
-verified_by: [test:test/json_format_test.cpp::decoded-event-always-validates]
+verified_by: [test:test/json_format_test.cpp::decoded-event-always-re-encodes]
 owner: filip.sajdak
 version: 2
 ---

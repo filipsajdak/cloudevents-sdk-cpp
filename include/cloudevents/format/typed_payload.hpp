@@ -28,7 +28,7 @@ template<described T, json::json_codec Codec>
     text = &stored->raw;
   } else if (const auto* plain = std::get_if<std::string>(&data_of(cloud_event))) {
     const auto& media_type = datacontenttype_of(cloud_event);
-    if (!media_type || !is_json_content_type(*media_type)) {
+    if (!media_type || !is_json_content_type(media_type->view())) {
       return fail(errc::type_mismatch,
                   "the payload is text but datacontenttype does not say it is JSON",
                   "data");
@@ -66,9 +66,9 @@ template<described T, json::json_codec Codec>
 /// built cannot fail either.
 template<described T, json::json_codec Codec>
 void set_data(event& cloud_event, const T& value) {
+  using namespace ce::literals;
   auto document = to_json_value<Codec>(value);
-  cloud_event.data = json_text{.raw = Codec::dump(document)};
-  cloud_event.datacontenttype = "application/json";
+  cloud_event.set_data(json_text{.raw = Codec::dump(document)}, "application/json"_mediatype);
 }
 
 /// \brief A typed view over an event: the payload type is part of the type.
@@ -82,7 +82,6 @@ class event_of {
   using payload_type = T;
   using codec_type = Codec;
 
-  event_of() = default;
   explicit event_of(event cloud_event) : event_{std::move(cloud_event)} {}
 
   /// \brief Build a typed view whose payload is already written.
@@ -100,12 +99,10 @@ class event_of {
   /// hold - breakable with no cast and nothing to notice it.
   [[nodiscard]] auto underlying() const noexcept -> const event& { return event_; }
 
-  [[nodiscard]] auto validate() const -> result<void> { return event_.validate(); }
-
   friend auto operator==(const event_of&, const event_of&) -> bool = default;
 
  private:
-  event event_{};
+  event event_;
 };
 
 }  // namespace ce::inline v1

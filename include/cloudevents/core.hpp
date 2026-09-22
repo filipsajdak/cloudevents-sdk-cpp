@@ -370,6 +370,7 @@ struct datacontenttype_policy {
 
 struct extension_name_policy {
   static constexpr std::string_view attribute = "extension";
+  static constexpr bool names_offending_text = true;
   [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
       -> std::optional<static_error> {
     if (!ce::v1::valid_attribute_name(text)) {
@@ -605,47 +606,119 @@ struct lint_warning {
   friend auto operator==(const lint_warning&, const lint_warning&) -> bool = default;
 };
 
-/// \brief A CloudEvent. A public aggregate: `validate()` is the gate, not a
-/// constructor.
-struct event {
-  std::string id;
-  uri_ref source;
-  std::string type;
+/// \brief A CloudEvent.
+///
+/// Every attribute is a type that cannot hold a value the specification forbids,
+/// so an invalid event has no representation and there is nothing left to check
+/// after construction (SWR-CORE-0014).
+class event {
+ public:
+  /// Keyed by the validated name, so no map entry can name an attribute the
+  /// specification refuses. Transparent comparator, so a lookup still takes a
+  /// `string_view` without building a key to look up with.
+  using extension_map = std::map<extension_name, attribute_value, std::less<>>;
 
-  std::string specversion = "1.0";
-  std::optional<std::string> datacontenttype = {};
-  std::optional<uri> dataschema = {};
-  std::optional<std::string> subject = {};
-  std::optional<timestamp> time = {};
+  /// \brief Everything the specification leaves optional.
+  struct options {
+    std::optional<ce::datacontenttype> datacontenttype = {};
+    std::optional<ce::dataschema> dataschema = {};
+    std::optional<ce::subject> subject = {};
+    std::optional<timestamp> time = {};
+    extension_map extensions = {};
+    data_t data = {};
 
-  /// Transparent comparator, so lookups take a `string_view` without allocating.
-  std::map<std::string, attribute_value, std::less<>> extensions = {};
+    friend auto operator==(const options&, const options&) -> bool = default;
+  };
 
-  data_t data = {};
+  explicit event(ce::id identifier, ce::source origin, ce::type kind, options rest)
+      : id_{std::move(identifier)},
+        source_{std::move(origin)},
+        type_{std::move(kind)},
+        rest_{std::move(rest)} {}
+
+  explicit event(ce::id identifier, ce::source origin, ce::type kind)
+      : event{std::move(identifier), std::move(origin), std::move(kind), options{}} {}
+
+  /// \brief An event under construction, for a reader that learns the attributes
+  /// one field at a time.
+  ///
+  /// A decoder cannot name all three required attributes in one expression
+  /// because it does not have them until the message is exhausted. `build()` is
+  /// where their absence is reported, and absence is its only failure: the
+  /// attribute types refuse every other way of being wrong (SWR-CORE-0029).
+  struct builder {
+    std::optional<ce::id> id = {};
+    std::optional<ce::source> source = {};
+    std::optional<ce::type> type = {};
+    options rest = {};
+
+    [[nodiscard]] auto build() && -> result<event> {
+      if (!id) {
+        return fail(errc::missing_required_attribute, "id must be present", "id");
+      }
+      if (!source) {
+        return fail(errc::missing_required_attribute, "source must be present", "source");
+      }
+      if (!type) {
+        return fail(errc::missing_required_attribute, "type must be present", "type");
+      }
+      return event{std::move(*id), std::move(*source), std::move(*type), std::move(rest)};
+    }
+  };
+
+  [[nodiscard]] auto id() const noexcept -> const ce::id& { return id_; }
+  [[nodiscard]] auto source() const noexcept -> const ce::source& { return source_; }
+  [[nodiscard]] auto type() const noexcept -> const ce::type& { return type_; }
+  [[nodiscard]] auto specversion() const noexcept -> spec_version { return {}; }
+
+  [[nodiscard]] auto datacontenttype() const noexcept -> const std::optional<ce::datacontenttype>& {
+    return rest_.datacontenttype;
+  }
+  [[nodiscard]] auto dataschema() const noexcept -> const std::optional<ce::dataschema>& {
+    return rest_.dataschema;
+  }
+  [[nodiscard]] auto subject() const noexcept -> const std::optional<ce::subject>& {
+    return rest_.subject;
+  }
+  [[nodiscard]] auto time() const noexcept -> const std::optional<timestamp>& { return rest_.time; }
+  [[nodiscard]] auto extensions() const noexcept -> const extension_map& { return rest_.extensions; }
+  [[nodiscard]] auto data() const noexcept -> const data_t& { return rest_.data; }
+
+  /// \brief Replace the payload, and say what it is.
+  ///
+  /// One call rather than two, because a payload and the media type describing it
+  /// are one fact: setting them separately leaves a window where the event says
+  /// its bytes are something they are not.
+  void set_data(data_t payload, std::optional<ce::datacontenttype> media_type) {
+    rest_.data = std::move(payload);
+    rest_.datacontenttype = std::move(media_type);
+  }
 
   friend auto operator==(const event&, const event&) -> bool = default;
 
-  /// \brief Set an extension attribute, rejecting an invalid or reserved name.
+  /// \brief Set an extension attribute.
   ///
-  /// Discarding the result loses the refusal, and the event then carries no
-  /// extension where the caller believes it set one.
-  [[nodiscard]] auto set_extension(std::string name, attribute_value value) -> result<void> {
-    if (!valid_attribute_name(name)) {
-      return fail(errc::invalid_attribute_name,
-                  "extension names must match [a-z0-9]+", name);
+  /// Infallible: `extension_name` cannot hold a name that is invalid or that
+  /// redefines a context attribute, so the refusal happened where the name was
+  /// made.
+  void set_extension(extension_name name, attribute_value value) {
+    rest_.extensions.insert_or_assign(std::move(name), std::move(value));
+  }
+
+  /// \brief Remove an extension attribute, reporting whether one was there.
+  auto remove_extension(std::string_view name) -> bool {
+    const auto found = rest_.extensions.find(name);
+    if (found == rest_.extensions.end()) {
+      return false;
     }
-    if (reserved_name(name)) {
-      return fail(errc::reserved_attribute_name,
-                  "an extension may not redefine a context attribute", name);
-    }
-    extensions.insert_or_assign(std::move(name), std::move(value));
-    return {};
+    rest_.extensions.erase(found);
+    return true;
   }
 
   /// \brief Look up an extension attribute, or nullptr when absent.
   [[nodiscard]] auto extension(std::string_view name) const noexcept -> const attribute_value* {
-    const auto found = extensions.find(name);
-    return found == extensions.end() ? nullptr : &found->second;
+    const auto found = rest_.extensions.find(name);
+    return found == rest_.extensions.end() ? nullptr : &found->second;
   }
 
   /// \brief Read a described extension struct out of the extension attributes.
@@ -709,126 +782,91 @@ struct event {
       }
       if constexpr (detail::is_optional_field<field_type>) {
         if (!field) {
-          extensions.erase(std::string{name});
+          static_cast<void>(remove_extension(name));
           return;
         }
-        mapping_error = set_extension(std::string{name}, attribute_value{*field});
+      }
+      auto attribute = extension_name::make(name);
+      if (!attribute) {
+        mapping_error = fail(attribute.error().code, attribute.error().detail,
+                             attribute.error().where);
+        return;
+      }
+      if constexpr (detail::is_optional_field<field_type>) {
+        set_extension(std::move(*attribute), attribute_value{*field});
       } else {
-        mapping_error = set_extension(std::string{name}, attribute_value{field});
+        set_extension(std::move(*attribute), attribute_value{field});
       }
     });
     return mapping_error;
   }
 
-  /// \brief Check the event against the MUST-level rules, reporting the first
-  /// violation. `source` is checked for non-emptiness only.
-  [[nodiscard]] auto validate() const -> result<void> {
-    if (specversion != "1.0") {
-      return fail(errc::unsupported_spec_version,
-                  "this SDK implements CloudEvents 1.0 only", "specversion");
-    }
-    if (id.empty()) {
-      return fail(errc::missing_required_attribute, "id must be non-empty", "id");
-    }
-    if (source.empty()) {
-      return fail(errc::missing_required_attribute, "source must be non-empty", "source");
-    }
-    if (type.empty()) {
-      return fail(errc::missing_required_attribute, "type must be non-empty", "type");
-    }
-
-    if (datacontenttype && datacontenttype->empty()) {
-      return fail(errc::invalid_attribute_value,
-                  "datacontenttype is present but empty", "datacontenttype");
-    }
-    if (datacontenttype && !is_json_content_type(*datacontenttype) &&
-        !ctre::match<detail::content_type_pattern>(*datacontenttype)) {
-      return fail(errc::invalid_content_type, "not a valid media type", "datacontenttype");
-    }
-    if (dataschema && dataschema->empty()) {
-      return fail(errc::invalid_attribute_value, "dataschema is present but empty", "dataschema");
-    }
-    if (subject && subject->empty()) {
-      return fail(errc::invalid_attribute_value, "subject is present but empty", "subject");
-    }
-
-    for (const auto& [name, value] : extensions) {
-      if (!valid_attribute_name(name)) {
-        return fail(errc::invalid_attribute_name,
-                    "extension names must match [a-z0-9]+", name);
-      }
-      if (reserved_name(name)) {
-        return fail(errc::reserved_attribute_name,
-                    "an extension may not redefine a context attribute", name);
-      }
-    }
-
-    return {};
-  }
-
-  /// \brief SHOULD-level observations, kept out of `validate()` so they never
-  /// reject an event the spec permits.
+  /// \brief SHOULD-level observations. They never reject an event, because the
+  /// specification permits every one of them.
   [[nodiscard]] auto lint() const -> std::vector<lint_warning> {
     std::vector<lint_warning> warnings;
     constexpr std::size_t recommended_name_length = 20;
-    for (const auto& [name, value] : extensions) {
+    for (const auto& [name, value] : rest_.extensions) {
       if (name.size() > recommended_name_length) {
         warnings.push_back(lint_warning{
-            .attribute = name,
+            .attribute = name.str(),
             .message = "extension names should be 20 characters or fewer",
         });
       }
     }
     return warnings;
   }
+
+ private:
+  ce::id id_;
+  ce::source source_;
+  ce::type type_;
+  options rest_;
 };
 
 /// \name Migration scaffolding
 ///
-/// Reading an attribute through a free function, so the ~300 read sites can move
-/// off the public members before `event` becomes a class. A member accessor
-/// cannot serve that purpose: C++ forbids a data member and a member function
-/// sharing a name, so `event` can never carry both `id` and `id()`, and the
-/// migration has nowhere to land.
+/// One-line forwards to the accessors. They exist so the read sites could move
+/// off the public members before `event` became a class: a member accessor could
+/// not serve that purpose, because C++ forbids a data member and a member
+/// function sharing a name, so `event` could never carry both `id` and `id()`
+/// and the migration had nowhere to land.
 ///
-/// These are temporary. Once `event` is a class they become one-line forwards to
-/// its accessors, and the commit after that replaces every call with the accessor
-/// and deletes them. They carry no requirement because nothing outside this pull
-/// request ever sees them.
+/// The next commit replaces every call with the accessor and deletes them. They
+/// carry no requirement because nothing outside this pull request ever sees them.
 /// \{
-[[nodiscard]] inline auto id_of(const event& from) noexcept -> const std::string& {
-  return from.id;
+[[nodiscard]] inline auto id_of(const event& from) noexcept -> const id& {
+  return from.id();
 }
-[[nodiscard]] inline auto source_of(const event& from) noexcept -> const uri_ref& {
-  return from.source;
+[[nodiscard]] inline auto source_of(const event& from) noexcept -> const source& {
+  return from.source();
 }
-[[nodiscard]] inline auto type_of(const event& from) noexcept -> const std::string& {
-  return from.type;
+[[nodiscard]] inline auto type_of(const event& from) noexcept -> const type& {
+  return from.type();
 }
-[[nodiscard]] inline auto spec_version_of(const event& from) noexcept -> const std::string& {
-  return from.specversion;
+[[nodiscard]] inline auto spec_version_of(const event& from) noexcept -> spec_version {
+  return from.specversion();
 }
 [[nodiscard]] inline auto datacontenttype_of(const event& from) noexcept
-    -> const std::optional<std::string>& {
-  return from.datacontenttype;
+    -> const std::optional<datacontenttype>& {
+  return from.datacontenttype();
 }
-[[nodiscard]] inline auto dataschema_of(const event& from) noexcept -> const std::optional<uri>& {
-  return from.dataschema;
+[[nodiscard]] inline auto dataschema_of(const event& from) noexcept
+    -> const std::optional<dataschema>& {
+  return from.dataschema();
 }
-[[nodiscard]] inline auto subject_of(const event& from) noexcept
-    -> const std::optional<std::string>& {
-  return from.subject;
+[[nodiscard]] inline auto subject_of(const event& from) noexcept -> const std::optional<subject>& {
+  return from.subject();
 }
 [[nodiscard]] inline auto time_of(const event& from) noexcept
     -> const std::optional<timestamp>& {
-  return from.time;
+  return from.time();
 }
-[[nodiscard]] inline auto extensions_of(const event& from) noexcept
-    -> const std::map<std::string, attribute_value, std::less<>>& {
-  return from.extensions;
+[[nodiscard]] inline auto extensions_of(const event& from) noexcept -> const event::extension_map& {
+  return from.extensions();
 }
 [[nodiscard]] inline auto data_of(const event& from) noexcept -> const data_t& {
-  return from.data;
+  return from.data();
 }
 /// \}
 

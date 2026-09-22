@@ -8,6 +8,7 @@
 #include <cloudevents/format/json_format.hpp>
 
 #include <cstdio>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -16,30 +17,44 @@ using codec = ce::codec::nlohmann_codec;
 
 namespace {
 
-/// An event is a public aggregate. The required attributes come first and have
-/// no defaults, so leaving one out is a compile error rather than an invalid
-/// event discovered later.
-[[nodiscard]] auto build() -> ce::event {
-  ce::event order{
-      .id = "A234-1234-1234",
-      .source = ce::uri_ref{"https://example.test/orders"},
-      .type = "com.example.order.placed",
-  };
-  order.subject = "order-99";
-  order.datacontenttype = "application/json";
-  order.data = ce::json_text{.raw = R"({"total":42,"currency":"EUR"})"};
+/// Every attribute is a type that refuses what CloudEvents forbids, and a
+/// literal is checked when this file compiles: `""_id` does not build. So an
+/// invalid event cannot be written down, and there is nothing to validate
+/// before sending one.
+[[nodiscard]] auto build() -> ce::result<ce::event> {
+  using namespace ce::literals;
 
-  if (auto now = ce::parse_timestamp("2026-09-20T12:34:56Z")) {
-    order.time = *now;
+  const auto placed_at = ce::parse_timestamp("2026-09-20T12:34:56Z");
+  if (!placed_at) {
+    return ce::fail(placed_at.error().code, placed_at.error().detail, placed_at.error().where);
   }
+
+  auto order = ce::event{
+      "A234-1234-1234"_id,
+      "https://example.test/orders"_source,
+      "com.example.order.placed"_type,
+      {
+          .datacontenttype = "application/json"_mediatype,
+          .subject = "order-99"_subject,
+          .time = *placed_at,
+          .data = ce::json_text{.raw = R"({"total":42,"currency":"EUR"})"},
+      },
+  };
 
   // A typed extension writes each field under its declared attribute type, so
   // the value keeps that type on the wire wherever the format can carry it.
-  (void)order.set(ce::ext::tracing{
-      .traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-      .tracestate = "vendor=1",
-  });
-  (void)order.set(ce::ext::partitioning{.partitionkey = "customer-42"});
+  // Its field names come from the struct, not from a literal, so writing one
+  // can be refused and the result says so.
+  if (auto traced = order.set(ce::ext::tracing{
+          .traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          .tracestate = "vendor=1",
+      });
+      !traced) {
+    return ce::fail(traced.error().code, traced.error().detail, traced.error().where);
+  }
+  if (auto keyed = order.set(ce::ext::partitioning{.partitionkey = "customer-42"}); !keyed) {
+    return ce::fail(keyed.error().code, keyed.error().detail, keyed.error().where);
+  }
 
   return order;
 }
@@ -55,14 +70,13 @@ void print_message(const char* title, const ce::message& request) {
 }  // namespace
 
 int main() {
-  const ce::event order = build();
-
-  // Nothing is sent until the event is valid. validate() is the gate.
-  if (auto valid = order.validate(); !valid) {
-    std::fprintf(stderr, "invalid event at %s: %s\n", valid.error().where.c_str(),
-                 valid.error().detail.c_str());
+  const auto built = build();
+  if (!built) {
+    std::fprintf(stderr, "could not build the event at %s: %s\n", built.error().where.c_str(),
+                 built.error().detail.c_str());
     return 1;
   }
+  const ce::event& order = *built;
 
   auto structured = ce::http::to_message<codec>(order, ce::content_mode::structured);
   if (!structured) {

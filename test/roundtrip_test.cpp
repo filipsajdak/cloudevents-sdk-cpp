@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "mini_codec.hpp"
+#include "equality.hpp"
 
 // decode(encode(e)) == e, for generated events, in every mode.
 //
@@ -32,11 +33,25 @@ using namespace std::string_view_literals;
 using nlohmann_codec = ce::codec::nlohmann_codec;
 using mini_codec = ce::test::mini_codec;
 
+using namespace ce::literals;
+
 /// \brief One generated event, with the index that produced it.
 struct generated {
   ce::event subject;
   std::size_t index;
 };
+
+/// Every value in the lattice satisfies its attribute's rule, so a refusal is a
+/// defect in the lattice: reported as a failed expectation, never dereferenced.
+template <class Attribute>
+[[nodiscard]] auto attribute(std::string text) -> std::optional<Attribute> {
+  auto made = Attribute::make(std::move(text));
+  boost::ut::expect(made.has_value()) << "the lattice produced text its attribute refuses";
+  if (!made) {
+    return std::nullopt;
+  }
+  return std::optional<Attribute>{std::move(*made)};
+}
 
 /// \brief A deterministic lattice over the attribute combinations that matter.
 ///
@@ -55,47 +70,61 @@ struct generated {
     for (const auto& source : sources) {
       for (const auto& type : types) {
         for (int shape = 0; shape < 4; ++shape) {
-          ce::event subject{.id = id, .source = ce::uri_ref{source}, .type = type};
+          // Which attributes are present depends on the index, so they are
+          // accumulated the way a decoder accumulates them.
+          ce::event::builder next{
+              .id = attribute<ce::id>(id),
+              .source = attribute<ce::source>(source),
+              .type = attribute<ce::type>(type),
+          };
+          auto& rest = next.rest;
 
           if (index % 2 == 0) {
-            subject.subject = "subject-" + std::to_string(index);
+            rest.subject = attribute<ce::subject>("subject-" + std::to_string(index));
           }
           if (index % 3 == 0) {
-            subject.dataschema = ce::uri{"https://example.test/schema/" + std::to_string(index)};
+            rest.dataschema =
+                attribute<ce::dataschema>("https://example.test/schema/" + std::to_string(index));
           }
           if (index % 5 == 0) {
             if (auto parsed = ce::parse_timestamp("2026-09-20T12:34:56.789-05:30")) {
-              subject.time = *parsed;
+              rest.time = *parsed;
             }
           }
-          if (index % 7 == 0) {
-            (void)subject.set(ce::ext::tracing{.traceparent = "00-a-b-01", .tracestate = {}});
-          }
           if (index % 11 == 0) {
-            (void)subject.set_extension("seq", ce::attribute_value{std::int32_t{42}});
-            (void)subject.set_extension("ok", ce::attribute_value{true});
+            rest.extensions.insert_or_assign("seq"_ext, ce::attribute_value{std::int32_t{42}});
+            rest.extensions.insert_or_assign("ok"_ext, ce::attribute_value{true});
           }
 
           switch (shape) {
             case 0:
               break;
             case 1:
-              subject.datacontenttype = "application/json";
-              subject.data = ce::json_text{.raw = R"({"n":)" + std::to_string(index) + "}"};
+              rest.datacontenttype = "application/json"_mediatype;
+              rest.data = ce::json_text{.raw = R"({"n":)" + std::to_string(index) + "}"};
               break;
             case 2:
-              subject.datacontenttype = "text/plain";
-              subject.data = "payload " + std::to_string(index);
+              rest.datacontenttype = "text/plain"_mediatype;
+              rest.data = "payload " + std::to_string(index);
               break;
             default:
-              subject.datacontenttype = "application/octet-stream";
-              subject.data = ce::binary{std::byte{0x00}, std::byte{0x7F},
-                                        static_cast<std::byte>(index & 0xFFU), std::byte{0xFF}};
+              rest.datacontenttype = "application/octet-stream"_mediatype;
+              rest.data = ce::binary{std::byte{0x00}, std::byte{0x7F},
+                                     static_cast<std::byte>(index & 0xFFU), std::byte{0xFF}};
               break;
           }
 
-          events.push_back(generated{.subject = std::move(subject), .index = index});
-          ++index;
+          const std::size_t this_index = index++;
+          auto built = std::move(next).build();
+          boost::ut::expect(built.has_value()) << "lattice event #" << this_index;
+          if (!built) {
+            continue;
+          }
+          if (this_index % 7 == 0) {
+            boost::ut::expect(bool{
+                built->set(ce::ext::tracing{.traceparent = "00-a-b-01", .tracestate = {}})});
+          }
+          events.push_back(generated{.subject = std::move(*built), .index = this_index});
         }
       }
     }
@@ -112,8 +141,6 @@ void check_structured_roundtrip(std::string_view label) {
   expect(events.size() == 96_ul) << label;
 
   for (const auto& [subject, index] : events) {
-    expect(subject.validate().has_value()) << label << " #" << index;
-
     auto encoded = format::encode(subject);
     expect(encoded.has_value()) << label << " #" << index;
     if (!encoded) {
@@ -147,13 +174,13 @@ void check_binary_roundtrip(std::string_view label) {
     // The binary binding carries every extension as a string, so an event whose
     // extensions were typed cannot come back identical. The context attributes
     // and the payload must, and the extension VALUES must match their text.
-    expect(decoded->id == subject.id) << label << " #" << index;
-    expect(bool{decoded->source == subject.source}) << label << " #" << index;
-    expect(decoded->type == subject.type) << label << " #" << index;
-    expect(bool{decoded->subject == subject.subject}) << label << " #" << index;
-    expect(bool{decoded->dataschema == subject.dataschema}) << label << " #" << index;
-    expect(bool{decoded->time == subject.time}) << label << " #" << index;
-    expect(decoded->extensions.size() == subject.extensions.size()) << label << " #" << index;
+    expect(decoded->id() == subject.id()) << label << " #" << index;
+    expect(bool{decoded->source() == subject.source()}) << label << " #" << index;
+    expect(decoded->type() == subject.type()) << label << " #" << index;
+    expect(ce_test::equal(decoded->subject(), subject.subject())) << label << " #" << index;
+    expect(ce_test::equal(decoded->dataschema(), subject.dataschema())) << label << " #" << index;
+    expect(ce_test::equal(decoded->time(), subject.time())) << label << " #" << index;
+    expect(decoded->extensions().size() == subject.extensions().size()) << label << " #" << index;
   }
 }
 
@@ -261,14 +288,14 @@ const boost::ut::suite<"roundtrip-property"> roundtrip_property = [] {
     std::size_t without_data = 0;
 
     for (const auto& [subject, index] : events) {
-      with_time += subject.time.has_value() ? 1 : 0;
-      with_subject += subject.subject.has_value() ? 1 : 0;
-      with_schema += subject.dataschema.has_value() ? 1 : 0;
-      with_extensions += subject.extensions.empty() ? 0 : 1;
-      with_json += std::holds_alternative<ce::json_text>(subject.data) ? 1 : 0;
-      with_text += std::holds_alternative<std::string>(subject.data) ? 1 : 0;
-      with_binary += std::holds_alternative<ce::binary>(subject.data) ? 1 : 0;
-      without_data += std::holds_alternative<std::monostate>(subject.data) ? 1 : 0;
+      with_time += subject.time().has_value() ? 1 : 0;
+      with_subject += subject.subject().has_value() ? 1 : 0;
+      with_schema += subject.dataschema().has_value() ? 1 : 0;
+      with_extensions += subject.extensions().empty() ? 0 : 1;
+      with_json += std::holds_alternative<ce::json_text>(subject.data()) ? 1 : 0;
+      with_text += std::holds_alternative<std::string>(subject.data()) ? 1 : 0;
+      with_binary += std::holds_alternative<ce::binary>(subject.data()) ? 1 : 0;
+      without_data += std::holds_alternative<std::monostate>(subject.data()) ? 1 : 0;
     }
 
     expect(with_time > 0_ul);

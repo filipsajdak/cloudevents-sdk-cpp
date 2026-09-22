@@ -16,14 +16,18 @@
 extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) -> int {
   const std::string_view text{reinterpret_cast<const char*>(data), size};
 
-  auto decoded = ce::json_format<ce::codec::nlohmann_codec>::decode(text);
+  using format = ce::json_format<ce::codec::nlohmann_codec>;
+  auto decoded = format::decode(text);
   if (decoded) {
-    // An event that decoded must validate and re-encode: the decoder must not
-    // produce a value the encoder then rejects.
-    if (!decoded->validate()) {
+    // An event that decoded must re-encode, and the encoding must decode to the
+    // same event: the decoder must not produce a value the encoder rejects or
+    // rewrites (SWR-JSON-0031).
+    auto encoded = format::encode(*decoded);
+    if (!encoded) {
       __builtin_trap();
     }
-    if (!ce::json_format<ce::codec::nlohmann_codec>::encode(*decoded)) {
+    auto again = format::decode(*encoded);
+    if (!again || !(*again == *decoded)) {
       __builtin_trap();
     }
   }

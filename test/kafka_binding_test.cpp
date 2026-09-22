@@ -13,6 +13,7 @@
 #include <type_traits>
 
 #include "codecs_under_test.hpp"
+#include "equality.hpp"
 #include "mini_codec.hpp"
 
 // Every assertion that touches a codec is a function template instantiated for
@@ -23,29 +24,27 @@ namespace {
 
 using namespace std::string_view_literals;
 
-[[nodiscard]] auto base_event() -> ce::event {
-  return ce::event{
-      .id = "1",
-      .source = "/spec/test",
-      .type = "com.example.thing",
-  };
+using namespace ce::literals;
+
+[[nodiscard]] auto base_event(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
 }
 
-[[nodiscard]] auto minimal_record() -> ce::message {
-  ce::message incoming;
-  incoming.header_fields.set_exact("ce_specversion", "1.0");
-  incoming.header_fields.set_exact("ce_id", "1");
-  incoming.header_fields.set_exact("ce_source", "/s");
-  incoming.header_fields.set_exact("ce_type", "t");
-  return incoming;
+/// A record carrying the four attributes every event needs, plus the one field
+/// a case is about.
+[[nodiscard]] auto record_with(ce::raw_headers::entry extra) -> ce::message {
+  return ce::message{.header_fields = {{"ce_specversion", "1.0"},
+                                       {"ce_id", "1"},
+                                       {"ce_source", "/s"},
+                                       {"ce_type", "t"},
+                                       std::move(extra)}};
 }
 
 template <class Codec>
 void check_binary_mode(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.subject = "s";
+  const ce::event subject = base_event({.subject = "s"_subject});
 
   auto laid_out = ce::kafka::to_message<Codec>(subject, ce::content_mode::binary_mode);
   expect(bool{laid_out}) << codec;
@@ -65,10 +64,10 @@ void check_binary_mode(std::string_view codec) {
   auto read_back = ce::kafka::from_message<Codec>(*laid_out);
   expect(bool{read_back}) << codec;
   if (read_back) {
-    expect(read_back->id == subject.id) << codec;
-    expect(bool{read_back->source == subject.source}) << codec;
-    expect(read_back->type == subject.type) << codec;
-    expect(bool{read_back->subject == subject.subject}) << codec;
+    expect(read_back->id() == subject.id()) << codec;
+    expect(bool{read_back->source() == subject.source()}) << codec;
+    expect(read_back->type() == subject.type()) << codec;
+    expect(ce_test::equal(read_back->subject(), subject.subject())) << codec;
   }
 }
 
@@ -93,7 +92,7 @@ void check_structured_mode(std::string_view codec) {
   auto read_back = ce::kafka::from_message<Codec>(*laid_out);
   expect(bool{read_back}) << codec;
   if (read_back) {
-    expect(read_back->id == subject.id) << codec;
+    expect(read_back->id() == subject.id()) << codec;
   }
 }
 
@@ -101,9 +100,8 @@ template <class Codec>
 void check_content_type(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.datacontenttype = "text/plain";
-  subject.data = std::string{"hello"};
+  const ce::event subject =
+      base_event({.datacontenttype = "text/plain"_mediatype, .data = std::string{"hello"}});
 
   auto laid_out = ce::kafka::to_message<Codec>(subject, ce::content_mode::binary_mode);
   expect(bool{laid_out}) << codec;
@@ -121,7 +119,7 @@ void check_content_type(std::string_view codec) {
   auto read_back = ce::kafka::from_message<Codec>(*laid_out);
   expect(bool{read_back}) << codec;
   if (read_back) {
-    expect(bool{read_back->datacontenttype == subject.datacontenttype}) << codec;
+    expect(ce_test::equal(read_back->datacontenttype(), subject.datacontenttype())) << codec;
   }
 }
 
@@ -129,8 +127,8 @@ template <class Codec>
 void check_values_are_unescaped_utf8(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.subject = "a b\xC3\xBC";  // a space and U+00FC, both escaped by HTTP
+  // A space and U+00FC, both escaped by HTTP.
+  const ce::event subject = base_event({.subject = "a b\xC3\xBC"_subject});
 
   auto laid_out = ce::kafka::to_message<Codec>(subject, ce::content_mode::binary_mode);
   expect(bool{laid_out}) << codec;
@@ -149,14 +147,17 @@ template <class Codec>
 void check_invalid_utf8_is_refused(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.subject = std::string{"\xC3"};  // a truncated two-byte sequence
+  // `subject` refuses the bytes where it is made; an extension's value is the
+  // path by which the record header can still be handed them.
+  const std::string truncated{"\xC3"};  // a truncated two-byte sequence
+  expect(!ce::subject::make(truncated)) << codec;
+  const ce::event subject = base_event({.extensions = {{"alpha"_ext, truncated}}});
 
   auto laid_out = ce::kafka::to_message<Codec>(subject, ce::content_mode::binary_mode);
   expect(!laid_out) << codec;
   if (!laid_out) {
     expect(laid_out.error().code == ce::errc::invalid_utf8) << codec;
-    expect(laid_out.error().where == "subject"sv) << codec;
+    expect(laid_out.error().where == "alpha"sv) << codec;
   }
 }
 
@@ -165,8 +166,7 @@ void check_keys_are_byte_exact(std::string_view codec) {
   using namespace boost::ut;
 
   // Writing must not erase a differently-cased header the caller set.
-  ce::message carrier;
-  carrier.header_fields.add("CE_ID", "the caller's own");
+  ce::message carrier{.header_fields = {{"CE_ID", "the caller's own"}}};
   const ce::event subject = base_event();
   auto written = ce::binding::write_attributes<ce::kafka::detail::kafka_traits>(
       subject, carrier.header_fields);
@@ -174,12 +174,10 @@ void check_keys_are_byte_exact(std::string_view codec) {
   expect(carrier.header_fields.find_exact("CE_ID") != nullptr) << codec;
 
   // Reading must not accept a differently-cased prefix as an attribute.
-  ce::message incoming = minimal_record();
-  incoming.header_fields.add("CE_SOURCE", "/not-the-source");
-  auto read_back = ce::kafka::from_message<Codec>(incoming);
+  auto read_back = ce::kafka::from_message<Codec>(record_with({"CE_SOURCE", "/not-the-source"}));
   expect(bool{read_back}) << codec;
   if (read_back) {
-    expect(bool{read_back->source == ce::uri_ref{"/s"}}) << codec;
+    expect(read_back->source().view() == "/s"sv) << codec;
   }
 }
 
@@ -196,9 +194,10 @@ void check_batch_refused(std::string_view codec) {
 
   // The batch content type also starts with the structured one, so it must be
   // recognised first or this arrives at the format layer as a malformed object.
-  ce::message incoming;
-  incoming.header_fields.set_exact("content-type", "application/cloudevents-batch+json");
-  incoming.body = ce::to_bytes("[]");
+  const ce::message incoming{
+      .header_fields = {{"content-type", "application/cloudevents-batch+json"}},
+      .body = ce::to_bytes("[]"),
+  };
   auto read_back = ce::kafka::from_message<Codec>(incoming);
   expect(!read_back) << codec;
   if (!read_back) {
@@ -210,9 +209,10 @@ template <class Codec>
 void check_not_a_cloudevent(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::message incoming;
-  incoming.header_fields.set_exact("content-type", "application/json");
-  incoming.body = ce::to_bytes("{\"unrelated\":true}");
+  const ce::message incoming{
+      .header_fields = {{"content-type", "application/json"}},
+      .body = ce::to_bytes("{\"unrelated\":true}"),
+  };
 
   auto read_back = ce::kafka::from_message<Codec>(incoming);
   expect(!read_back) << codec;

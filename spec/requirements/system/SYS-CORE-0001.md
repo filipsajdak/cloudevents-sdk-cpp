@@ -15,7 +15,7 @@ verification_method: test
 security_classification: operational
 derived_from: [STK-INTEROP-0001]
 satisfied_by: [code:include/cloudevents/core.hpp]
-verified_by: [test:test/core_test.cpp::core-validate]
+verified_by: [test:test/core_test.cpp::core-event-model]
 owner: filip.sajdak
 version: 2
 ---

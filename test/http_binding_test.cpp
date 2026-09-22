@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "codecs_under_test.hpp"
+#include "equality.hpp"
 #include "mini_codec.hpp"
 
 // The binding is a template over the JSON codec, exactly as json_format is. So
@@ -39,24 +40,22 @@ using namespace std::string_view_literals;
 using nlohmann_codec = ce::codec::nlohmann_codec;
 using mini_codec = ce::test::mini_codec;
 
-/// A minimal event that passes validate(), built with ONE designated initializer.
-[[nodiscard]] auto base_event() -> ce::event {
-  return ce::event{
-      .id = "1",
-      .source = "/spec/test",
-      .type = "com.example.thing",
-  };
+using namespace ce::literals;
+
+/// A minimal event, built in one expression; the caller states the rest.
+[[nodiscard]] auto base_event(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
 }
 
-/// A binary-mode message carrying the four attributes every event needs, so a
-/// suite can vary one header and still reach the code under test.
-[[nodiscard]] auto minimal_binary_message() -> ce::message {
-  ce::message request;
-  request.header_fields.set("ce-specversion", "1.0");
-  request.header_fields.set("ce-id", "1");
-  request.header_fields.set("ce-source", "/s");
-  request.header_fields.set("ce-type", "t");
-  return request;
+/// A binary-mode message carrying the four attributes every event needs plus the
+/// one field a case is about, so a suite can vary one header and still reach the
+/// code under test.
+[[nodiscard]] auto binary_message_with(ce::raw_headers::entry extra) -> ce::message {
+  return ce::message{.header_fields = {{"ce-specversion", "1.0"},
+                                       {"ce-id", "1"},
+                                       {"ce-source", "/s"},
+                                       {"ce-type", "t"},
+                                       std::move(extra)}};
 }
 
 // Multi-byte UTF-8 written as octets rather than as source characters, so the
@@ -71,9 +70,8 @@ template <class C>
 void check_to_message_modes(std::string_view label) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.datacontenttype = "application/json";
-  subject.data = ce::json_text{.raw = R"({"k":1})"};
+  const ce::event subject = base_event({.datacontenttype = "application/json"_mediatype,
+                                        .data = ce::json_text{.raw = R"({"k":1})"}});
 
   // The mode is the caller's argument, not a guess from the event contents: the
   // same event lays out two different ways.
@@ -103,16 +101,12 @@ void check_to_message_modes(std::string_view label) {
     expect(ce::http::detect_content_mode(*binary) == ce::content_mode::binary_mode) << label;
   }
 
-  // An event that does not validate never becomes a message, in either mode: the
-  // binding is the last place to catch it before it reaches a peer.
-  ce::event invalid = base_event();
-  invalid.id.clear();
-  for (const auto mode : {ce::content_mode::binary_mode, ce::content_mode::structured}) {
-    auto refused = ce::http::to_message<C>(invalid, mode);
-    expect(!refused.has_value()) << label;
-    if (!refused) {
-      expect(refused.error().code == ce::errc::missing_required_attribute) << label;
-    }
+  // An invalid event never becomes a message, in either mode, because none can be
+  // built: the empty id the binding used to refuse is refused where an id is made.
+  const auto no_id = ce::id::make(""sv);
+  expect(!no_id.has_value()) << label;
+  if (!no_id) {
+    expect(no_id.error().code == ce::errc::missing_required_attribute) << label;
   }
 
   // content_mode::batched names an entry point that cannot serve one event, and
@@ -142,13 +136,14 @@ void check_from_message_roundtrip(std::string_view label) {
     return;
   }
 
-  ce::event subject = base_event();
-  subject.datacontenttype = "application/json";
-  subject.dataschema = ce::uri{"https://example.com/schema"};
-  subject.subject = "s";
-  subject.time = *parsed_time;
-  expect(subject.set_extension("traceparent", std::string{"00-abc-def-01"}).has_value()) << label;
-  subject.data = ce::json_text{.raw = R"({"k":1})"};
+  const ce::event subject = base_event({
+      .datacontenttype = "application/json"_mediatype,
+      .dataschema = "https://example.com/schema"_dataschema,
+      .subject = "s"_subject,
+      .time = *parsed_time,
+      .extensions = {{"traceparent"_ext, std::string{"00-abc-def-01"}}},
+      .data = ce::json_text{.raw = R"({"k":1})"},
+  });
 
   for (const auto mode : {ce::content_mode::binary_mode, ce::content_mode::structured}) {
     auto request = ce::http::to_message<C>(subject, mode);
@@ -162,18 +157,18 @@ void check_from_message_roundtrip(std::string_view label) {
       expect(false) << label << ": " << back.error().detail;
       continue;
     }
-    expect(back->id == subject.id) << label;
-    expect(back->type == subject.type) << label;
-    expect(back->specversion == "1.0") << label;
-    expect(bool{back->source == subject.source}) << label;
-    expect(bool{back->subject == subject.subject}) << label;
-    expect(bool{back->dataschema == subject.dataschema}) << label;
-    expect(bool{back->datacontenttype == subject.datacontenttype}) << label;
-    expect(back->time.has_value()) << label;
-    if (back->time) {
-      expect(ce::to_string(*back->time) == "2018-04-05T17:31:00Z"sv) << label;
+    expect(back->id() == subject.id()) << label;
+    expect(back->type() == subject.type()) << label;
+    expect(back->specversion().view() == "1.0"sv) << label;
+    expect(bool{back->source() == subject.source()}) << label;
+    expect(ce_test::equal(back->subject(), subject.subject())) << label;
+    expect(ce_test::equal(back->dataschema(), subject.dataschema())) << label;
+    expect(ce_test::equal(back->datacontenttype(), subject.datacontenttype())) << label;
+    expect(back->time().has_value()) << label;
+    if (back->time()) {
+      expect(ce::to_string(*back->time()) == "2018-04-05T17:31:00Z"sv) << label;
     }
-    expect(back->extensions.size() == 1U) << label;
+    expect(back->extensions().size() == 1U) << label;
     expect(back->extension("traceparent") != nullptr) << label;
   }
 
@@ -183,9 +178,10 @@ void check_from_message_roundtrip(std::string_view label) {
                                ce::result<ce::event>>);
 
   // A malformed structured body fails as a parse error rather than half-decoding.
-  ce::message broken;
-  broken.header_fields.set("Content-Type", std::string{ce::json::content_type});
-  broken.body = ce::http::detail::to_bytes("{");
+  const ce::message broken{
+      .header_fields = {{"Content-Type", std::string{ce::json::content_type}}},
+      .body = ce::http::detail::to_bytes("{"),
+  };
   auto refused = ce::http::from_message<C>(broken);
   expect(!refused.has_value()) << label;
   if (!refused) {
@@ -194,10 +190,8 @@ void check_from_message_roundtrip(std::string_view label) {
 
   // A binary-mode message missing a required attribute names the one that is
   // absent, so a caller can say what the peer got wrong.
-  ce::message incomplete;
-  incomplete.header_fields.set("ce-specversion", "1.0");
-  incomplete.header_fields.set("ce-source", "/s");
-  incomplete.header_fields.set("ce-type", "t");
+  const ce::message incomplete{
+      .header_fields = {{"ce-specversion", "1.0"}, {"ce-source", "/s"}, {"ce-type", "t"}}};
   auto missing = ce::http::from_message<C>(incomplete);
   expect(!missing.has_value()) << label;
   if (!missing) {
@@ -206,8 +200,10 @@ void check_from_message_roundtrip(std::string_view label) {
   }
 
   // A specversion this SDK does not implement is its own code, not a parse error.
-  ce::message future = minimal_binary_message();
-  future.header_fields.set("ce-specversion", "0.3");
+  const ce::message future{.header_fields = {{"ce-specversion", "0.3"},
+                                             {"ce-id", "1"},
+                                             {"ce-source", "/s"},
+                                             {"ce-type", "t"}}};
   auto unsupported = ce::http::from_message<C>(future);
   expect(!unsupported.has_value()) << label;
   if (!unsupported) {
@@ -216,17 +212,16 @@ void check_from_message_roundtrip(std::string_view label) {
 
   // Header names arrive in whatever case the peer sent, because HTTP field names
   // are case-insensitive and intermediaries do rewrite them.
-  ce::message mixed_case;
-  mixed_case.header_fields.set("CE-SpecVersion", "1.0");
-  mixed_case.header_fields.set("Ce-Id", "7");
-  mixed_case.header_fields.set("ce-SOURCE", "/s");
-  mixed_case.header_fields.set("CE-type", "t");
+  const ce::message mixed_case{.header_fields = {{"CE-SpecVersion", "1.0"},
+                                                 {"Ce-Id", "7"},
+                                                 {"ce-SOURCE", "/s"},
+                                                 {"CE-type", "t"}}};
   auto decoded = ce::http::from_message<C>(mixed_case);
   expect(decoded.has_value()) << label;
   if (decoded) {
-    expect(decoded->id == "7") << label;
-    expect(decoded->type == "t") << label;
-    expect(bool{decoded->source == ce::uri_ref{"/s"}}) << label;
+    expect(decoded->id().view() == "7"sv) << label;
+    expect(decoded->type().view() == "t"sv) << label;
+    expect(decoded->source().view() == "/s"sv) << label;
   }
 }
 
@@ -328,12 +323,12 @@ void check_binary_mode_ce_headers(std::string_view label) {
     return;
   }
 
-  ce::event subject = base_event();
-  subject.dataschema = ce::uri{"https://example.com/schema"};
-  subject.subject = "s";
-  subject.time = *parsed_time;
-  expect(subject.set_extension("traceparent", std::string{"00-abc"}).has_value()) << label;
-  expect(subject.set_extension("seq", std::int32_t{7}).has_value()) << label;
+  const ce::event subject = base_event({
+      .dataschema = "https://example.com/schema"_dataschema,
+      .subject = "s"_subject,
+      .time = *parsed_time,
+      .extensions = {{"traceparent"_ext, std::string{"00-abc"}}, {"seq"_ext, std::int32_t{7}}},
+  });
 
   auto request = ce::http::to_message<C>(subject, ce::content_mode::binary_mode);
   expect(request.has_value()) << label;
@@ -393,8 +388,12 @@ void check_datacontenttype_mapping(std::string_view label) {
 
   for (const auto media_type : {"application/json"sv, "text/plain"sv, "application/xml"sv,
                                 "text/plain; charset=utf-8"sv}) {
-    ce::event subject = base_event();
-    subject.datacontenttype = std::string{media_type};
+    const auto made = ce::datacontenttype::make(media_type);
+    expect(made.has_value()) << label << ": " << media_type;
+    if (!made) {
+      continue;
+    }
+    const ce::event subject = base_event({.datacontenttype = *made});
 
     auto request = ce::http::to_message<C>(subject, ce::content_mode::binary_mode);
     expect(request.has_value()) << label << ": " << media_type;
@@ -415,9 +414,9 @@ void check_datacontenttype_mapping(std::string_view label) {
     auto back = ce::http::from_message<C>(*request);
     expect(back.has_value()) << label << ": " << media_type;
     if (back) {
-      expect(bool{back->datacontenttype == subject.datacontenttype}) << label;
+      expect(ce_test::equal(back->datacontenttype(), subject.datacontenttype())) << label;
       expect(back->extension("datacontenttype") == nullptr) << label;
-      expect(back->extensions.empty()) << label;
+      expect(back->extensions().empty()) << label;
     }
   }
 
@@ -439,8 +438,7 @@ void check_binary_mode_body(std::string_view label) {
   // Bytes: the body is those octets, not a base64 or JSON rendering of them. A
   // consumer that knows nothing of CloudEvents reads what the producer set.
   const ce::binary octets{std::byte{0x00}, std::byte{0x01}, std::byte{0xFF}, std::byte{0x10}};
-  ce::event with_bytes = base_event();
-  with_bytes.data = octets;
+  const ce::event with_bytes = base_event({.data = octets});
   auto from_bytes = ce::http::to_message<C>(with_bytes, ce::content_mode::binary_mode);
   expect(from_bytes.has_value()) << label;
   if (from_bytes) {
@@ -448,17 +446,16 @@ void check_binary_mode_body(std::string_view label) {
     auto back = ce::http::from_message<C>(*from_bytes);
     expect(back.has_value()) << label;
     if (back) {
-      expect(std::holds_alternative<ce::binary>(back->data)) << label;
-      if (std::holds_alternative<ce::binary>(back->data)) {
-        expect(std::get<ce::binary>(back->data) == octets) << label;
+      expect(std::holds_alternative<ce::binary>(back->data())) << label;
+      if (std::holds_alternative<ce::binary>(back->data())) {
+        expect(std::get<ce::binary>(back->data()) == octets) << label;
       }
     }
   }
 
   // Text: the same bytes, not a JSON string with escapes added.
-  ce::event with_text = base_event();
-  with_text.datacontenttype = "text/plain";
-  with_text.data = std::string{R"(hello "world")"};
+  const ce::event with_text = base_event(
+      {.datacontenttype = "text/plain"_mediatype, .data = std::string{R"(hello "world")"}});
   auto from_text = ce::http::to_message<C>(with_text, ce::content_mode::binary_mode);
   expect(from_text.has_value()) << label;
   if (from_text) {
@@ -468,17 +465,16 @@ void check_binary_mode_body(std::string_view label) {
 
   // Pre-serialized JSON: the raw text, byte for byte, with no reformatting.
   constexpr auto raw = R"({"k":1,"list":[1,2]})"sv;
-  ce::event with_json = base_event();
-  with_json.datacontenttype = "application/json";
-  with_json.data = ce::json_text{.raw = std::string{raw}};
+  const ce::event with_json = base_event({.datacontenttype = "application/json"_mediatype,
+                                          .data = ce::json_text{.raw = std::string{raw}}});
   auto from_json = ce::http::to_message<C>(with_json, ce::content_mode::binary_mode);
   expect(from_json.has_value()) << label;
   if (from_json) {
     expect(ce::http::detail::to_text(from_json->body) == raw) << label;
     auto back = ce::http::from_message<C>(*from_json);
     expect(back.has_value()) << label;
-    if (back && std::holds_alternative<ce::json_text>(back->data)) {
-      expect(std::get<ce::json_text>(back->data).raw == raw) << label;
+    if (back && std::holds_alternative<ce::json_text>(back->data())) {
+      expect(std::get<ce::json_text>(back->data()).raw == raw) << label;
     }
   }
 
@@ -490,7 +486,7 @@ void check_binary_mode_body(std::string_view label) {
     auto back = ce::http::from_message<C>(*bare);
     expect(back.has_value()) << label;
     if (back) {
-      expect(std::holds_alternative<std::monostate>(back->data)) << label;
+      expect(std::holds_alternative<std::monostate>(back->data())) << label;
     }
   }
 }
@@ -505,9 +501,13 @@ void check_percent_encoding_roundtrip(std::string_view label) {
                               std::string{two_byte_utf8} + " " + std::string{three_byte_utf8} +
                               " " + std::string{four_byte_utf8};
 
-  ce::event subject = base_event();
-  subject.subject = awkward;
-  expect(subject.set_extension("trace", awkward).has_value()) << label;
+  const auto awkward_subject = ce::subject::make(awkward);
+  expect(awkward_subject.has_value()) << label;
+  if (!awkward_subject) {
+    return;
+  }
+  const ce::event subject =
+      base_event({.subject = *awkward_subject, .extensions = {{"trace"_ext, awkward}}});
 
   auto request = ce::http::to_message<C>(subject, ce::content_mode::binary_mode);
   expect(request.has_value()) << label;
@@ -541,7 +541,7 @@ void check_percent_encoding_roundtrip(std::string_view label) {
   auto back = ce::http::from_message<C>(*request);
   expect(back.has_value()) << label;
   if (back) {
-    expect(bool{back->subject == subject.subject}) << label;
+    expect(ce_test::equal(back->subject(), subject.subject())) << label;
     const auto* trace = back->extension("trace");
     expect(trace != nullptr) << label;
     if (trace != nullptr && std::holds_alternative<std::string>(*trace)) {
@@ -551,8 +551,7 @@ void check_percent_encoding_roundtrip(std::string_view label) {
 
   // Printable ASCII that needs no escaping is left alone, so the encoding is
   // minimal rather than blanket: a reader can still see what the value says.
-  ce::event plain = base_event();
-  plain.subject = "com.example/path?a=1&b=2";
+  const ce::event plain = base_event({.subject = "com.example/path?a=1&b=2"_subject});
   auto plain_request = ce::http::to_message<C>(plain, ce::content_mode::binary_mode);
   expect(plain_request.has_value()) << label;
   if (plain_request) {
@@ -586,25 +585,24 @@ void check_percent_decoding(std::string_view label) {
   };
 
   for (const auto& [encoded, decoded] : accepted) {
-    ce::message request = minimal_binary_message();
-    request.header_fields.set("ce-subject", std::string{encoded});
-    auto back = ce::http::from_message<C>(request);
+    auto back =
+        ce::http::from_message<C>(binary_message_with({"ce-subject", std::string{encoded}}));
     expect(back.has_value()) << label << ": " << encoded;
     if (!back) {
       continue;
     }
-    expect(back->subject.has_value()) << label << ": " << encoded;
-    if (back->subject) {
-      expect(*back->subject == decoded) << label << ": " << encoded << " gave " << *back->subject;
+    expect(back->subject().has_value()) << label << ": " << encoded;
+    if (back->subject()) {
+      expect(back->subject()->view() == decoded)
+          << label << ": " << encoded << " gave " << back->subject()->view();
     }
   }
 
   // An escape that runs off the end of the value, and one whose digits are not
   // hexadecimal, are both parse errors rather than a silent partial decode.
   for (const auto broken : {"abc%4"sv, "abc%"sv, "%"sv, "%ZZ"sv, "%4Z"sv, "%G0"sv}) {
-    ce::message request = minimal_binary_message();
-    request.header_fields.set("ce-subject", std::string{broken});
-    auto refused = ce::http::from_message<C>(request);
+    auto refused =
+        ce::http::from_message<C>(binary_message_with({"ce-subject", std::string{broken}}));
     expect(!refused.has_value()) << label << ": should reject " << broken;
     if (!refused) {
       expect(refused.error().code == ce::errc::parse_error)
@@ -635,9 +633,8 @@ void check_invalid_utf8_rejected(std::string_view label) {
   };
 
   for (const auto& [encoded, why] : ill_formed) {
-    ce::message request = minimal_binary_message();
-    request.header_fields.set("ce-subject", std::string{encoded});
-    auto refused = ce::http::from_message<C>(request);
+    auto refused =
+        ce::http::from_message<C>(binary_message_with({"ce-subject", std::string{encoded}}));
     expect(!refused.has_value()) << label << ": should reject " << why;
     if (!refused) {
       expect(refused.error().code == ce::errc::invalid_utf8)
@@ -649,9 +646,7 @@ void check_invalid_utf8_rejected(std::string_view label) {
   }
 
   // The same check guards an extension header, not only the context attributes.
-  ce::message extension_request = minimal_binary_message();
-  extension_request.header_fields.set("ce-trace", "%C0%80");
-  auto refused_extension = ce::http::from_message<C>(extension_request);
+  auto refused_extension = ce::http::from_message<C>(binary_message_with({"ce-trace", "%C0%80"}));
   expect(!refused_extension.has_value()) << label;
   if (!refused_extension) {
     expect(refused_extension.error().code == ce::errc::invalid_utf8) << label;
@@ -659,14 +654,13 @@ void check_invalid_utf8_rejected(std::string_view label) {
 
   // Well-formed multi-byte text is accepted, so the rejections above are about
   // ill-formedness and not about non-ASCII generally.
-  ce::message good = minimal_binary_message();
-  good.header_fields.set("ce-subject", "%C3%BC%E6%97%A5%F0%9F%98%80");
-  auto accepted = ce::http::from_message<C>(good);
+  auto accepted = ce::http::from_message<C>(
+      binary_message_with({"ce-subject", "%C3%BC%E6%97%A5%F0%9F%98%80"}));
   expect(accepted.has_value()) << label;
-  if (accepted && accepted->subject) {
+  if (accepted && accepted->subject()) {
     const std::string expected =
         std::string{two_byte_utf8} + std::string{three_byte_utf8} + std::string{four_byte_utf8};
-    expect(*accepted->subject == expected) << label;
+    expect(accepted->subject()->view() == expected) << label;
   }
 }
 
@@ -682,14 +676,15 @@ void check_extension_string_type(std::string_view label) {
     return;
   }
 
-  ce::event subject = base_event();
-  expect(subject.set_extension("seq", std::int32_t{7}).has_value()) << label;
-  expect(subject.set_extension("flag", true).has_value()) << label;
-  expect(subject.set_extension("off", false).has_value()) << label;
-  expect(subject.set_extension("tag", std::string{"x"}).has_value()) << label;
-  expect(subject.set_extension("schemaurl", ce::uri{"https://example.com/x"}).has_value()) << label;
-  expect(subject.set_extension("relref", ce::uri_ref{"/relative"}).has_value()) << label;
-  expect(subject.set_extension("seen", *parsed_time).has_value()) << label;
+  const ce::event subject = base_event({.extensions = {
+                                            {"seq"_ext, std::int32_t{7}},
+                                            {"flag"_ext, true},
+                                            {"off"_ext, false},
+                                            {"tag"_ext, std::string{"x"}},
+                                            {"schemaurl"_ext, ce::uri{"https://example.com/x"}},
+                                            {"relref"_ext, ce::uri_ref{"/relative"}},
+                                            {"seen"_ext, *parsed_time},
+                                        }});
 
   auto request = ce::http::to_message<C>(subject, ce::content_mode::binary_mode);
   expect(request.has_value()) << label;
@@ -715,7 +710,7 @@ void check_extension_string_type(std::string_view label) {
       {"relref"sv, "/relative"sv},
       {"seen"sv, "2018-04-05T17:31:00Z"sv},
   };
-  expect(back->extensions.size() == std::size(expected)) << label;
+  expect(back->extensions().size() == std::size(expected)) << label;
   for (const auto& [name, rendered] : expected) {
     const auto* held = back->extension(name);
     expect(held != nullptr) << label << ": " << name;
@@ -750,9 +745,8 @@ void check_not_a_cloudevent(std::string_view label) {
       {"application/x-www-form-urlencoded"sv, "a=1"sv},
   };
   for (const auto& [media_type, body] : passers_by) {
-    ce::message request;
-    request.header_fields.set("Content-Type", std::string{media_type});
-    request.body = ce::http::detail::to_bytes(body);
+    const ce::message request{.header_fields = {{"Content-Type", std::string{media_type}}},
+                              .body = ce::http::detail::to_bytes(body)};
     auto refused = ce::http::from_message<C>(request);
     expect(!refused.has_value()) << label << ": " << media_type;
     if (!refused) {
@@ -763,16 +757,15 @@ void check_not_a_cloudevent(std::string_view label) {
 
   // No Content-Type at all is the binary mode, and without ce-specversion it is
   // still a passer-by rather than a broken event.
-  ce::message bare;
+  const ce::message bare{};
   auto bare_refused = ce::http::from_message<C>(bare);
   expect(!bare_refused.has_value()) << label;
   if (!bare_refused) {
     expect(bare_refused.error().code == ce::errc::not_a_cloudevent) << label;
   }
   // Even carrying unrelated headers, as long as none of them is ce-specversion.
-  ce::message unrelated;
-  unrelated.header_fields.set("Authorization", "Bearer x");
-  unrelated.header_fields.set("X-Request-Id", "42");
+  const ce::message unrelated{
+      .header_fields = {{"Authorization", "Bearer x"}, {"X-Request-Id", "42"}}};
   auto unrelated_refused = ce::http::from_message<C>(unrelated);
   expect(!unrelated_refused.has_value()) << label;
   if (!unrelated_refused) {
@@ -782,10 +775,8 @@ void check_not_a_cloudevent(std::string_view label) {
   // The other side of the contract: a message that IS a CloudEvent and is broken
   // must NOT report not_a_cloudevent. Conflating the two changes what a receiver
   // does -- pass the request on, or answer the peer that its event is wrong.
-  ce::message missing_id;
-  missing_id.header_fields.set("ce-specversion", "1.0");
-  missing_id.header_fields.set("ce-source", "/s");
-  missing_id.header_fields.set("ce-type", "t");
+  const ce::message missing_id{
+      .header_fields = {{"ce-specversion", "1.0"}, {"ce-source", "/s"}, {"ce-type", "t"}}};
   auto broken_binary = ce::http::from_message<C>(missing_id);
   expect(!broken_binary.has_value()) << label;
   if (!broken_binary) {
@@ -793,9 +784,10 @@ void check_not_a_cloudevent(std::string_view label) {
     expect(broken_binary.error().code != ce::errc::not_a_cloudevent) << label;
   }
 
-  ce::message broken_structured;
-  broken_structured.header_fields.set("Content-Type", std::string{ce::json::content_type});
-  broken_structured.body = ce::http::detail::to_bytes(R"({"specversion":)");
+  const ce::message broken_structured{
+      .header_fields = {{"Content-Type", std::string{ce::json::content_type}}},
+      .body = ce::http::detail::to_bytes(R"({"specversion":)"),
+  };
   auto structured_error = ce::http::from_message<C>(broken_structured);
   expect(!structured_error.has_value()) << label;
   if (!structured_error) {
@@ -803,9 +795,7 @@ void check_not_a_cloudevent(std::string_view label) {
     expect(structured_error.error().code != ce::errc::not_a_cloudevent) << label;
   }
 
-  ce::message bad_time = minimal_binary_message();
-  bad_time.header_fields.set("ce-time", "not-a-timestamp");
-  auto time_error = ce::http::from_message<C>(bad_time);
+  auto time_error = ce::http::from_message<C>(binary_message_with({"ce-time", "not-a-timestamp"}));
   expect(!time_error.has_value()) << label;
   if (!time_error) {
     expect(time_error.error().code != ce::errc::not_a_cloudevent) << label;
@@ -813,13 +803,16 @@ void check_not_a_cloudevent(std::string_view label) {
 
   // And the positive control: with ce-specversion present under a content type
   // that selects the binary mode, the same shape of request decodes.
-  ce::message good = minimal_binary_message();
-  good.header_fields.set("Content-Type", "text/plain");
-  good.body = ce::http::detail::to_bytes("hello");
+  const ce::message good{.header_fields = {{"ce-specversion", "1.0"},
+                                           {"ce-id", "1"},
+                                           {"ce-source", "/s"},
+                                           {"ce-type", "t"},
+                                           {"Content-Type", "text/plain"}},
+                         .body = ce::http::detail::to_bytes("hello")};
   auto accepted = ce::http::from_message<C>(good);
   expect(accepted.has_value()) << label;
   if (accepted) {
-    expect(accepted->id == "1") << label;
+    expect(accepted->id().view() == "1"sv) << label;
   }
 }
 
@@ -844,16 +837,17 @@ void check_spec_examples(std::string_view label) {
 
   // Binary mode, section 3.1.5: the attributes are headers, the payload is the
   // body, and the header names arrive lower case as an HTTP peer sends them.
-  ce::message binary_request;
-  binary_request.header_fields.set("ce-specversion", "1.0");
-  binary_request.header_fields.set("ce-type", "com.example.someevent");
-  binary_request.header_fields.set("ce-time", "2018-04-05T03:56:24Z");
-  binary_request.header_fields.set("ce-id", "1234-1234-1234");
-  binary_request.header_fields.set("ce-source", "/mycontext/subcontext");
-  binary_request.header_fields.set("content-type", "application/json");
-  binary_request.header_fields.set("ce-exampleextension1", "value");
-  binary_request.header_fields.set("ce-exampleextension2", "5");
-  binary_request.body = ce::http::detail::to_bytes(R"({"much":"wow"})");
+  const ce::message binary_request{
+      .header_fields = {{"ce-specversion", "1.0"},
+                        {"ce-type", "com.example.someevent"},
+                        {"ce-time", "2018-04-05T03:56:24Z"},
+                        {"ce-id", "1234-1234-1234"},
+                        {"ce-source", "/mycontext/subcontext"},
+                        {"content-type", "application/json"},
+                        {"ce-exampleextension1", "value"},
+                        {"ce-exampleextension2", "5"}},
+      .body = ce::http::detail::to_bytes(R"({"much":"wow"})"),
+  };
 
   expect(ce::http::detect_content_mode(binary_request) == ce::content_mode::binary_mode) << label;
   auto from_binary = ce::http::from_message<C>(binary_request);
@@ -862,20 +856,21 @@ void check_spec_examples(std::string_view label) {
     expect(false) << label << ": " << from_binary.error().detail;
     return;
   }
-  expect(from_binary->specversion == "1.0") << label;
-  expect(from_binary->id == "1234-1234-1234") << label;
-  expect(from_binary->type == "com.example.someevent") << label;
-  expect(bool{from_binary->source == ce::uri_ref{"/mycontext/subcontext"}}) << label;
-  expect(bool{from_binary->datacontenttype == std::optional<std::string>{"application/json"}})
+  expect(from_binary->specversion().view() == "1.0"sv) << label;
+  expect(from_binary->id().view() == "1234-1234-1234"sv) << label;
+  expect(from_binary->type().view() == "com.example.someevent"sv) << label;
+  expect(from_binary->source().view() == "/mycontext/subcontext"sv) << label;
+  expect(from_binary->datacontenttype().has_value() &&
+         from_binary->datacontenttype()->view() == "application/json"sv)
       << label;
-  expect(from_binary->time.has_value()) << label;
-  if (from_binary->time) {
-    expect(ce::to_string(*from_binary->time) == "2018-04-05T03:56:24Z"sv) << label;
+  expect(from_binary->time().has_value()) << label;
+  if (from_binary->time()) {
+    expect(ce::to_string(*from_binary->time()) == "2018-04-05T03:56:24Z"sv) << label;
   }
-  expect(from_binary->extensions.size() == 2U) << label;
-  expect(std::holds_alternative<ce::json_text>(from_binary->data)) << label;
-  if (std::holds_alternative<ce::json_text>(from_binary->data)) {
-    expect(std::get<ce::json_text>(from_binary->data).raw == R"({"much":"wow"})"sv) << label;
+  expect(from_binary->extensions().size() == 2U) << label;
+  expect(std::holds_alternative<ce::json_text>(from_binary->data())) << label;
+  if (std::holds_alternative<ce::json_text>(from_binary->data())) {
+    expect(std::get<ce::json_text>(from_binary->data()).raw == R"({"much":"wow"})"sv) << label;
   }
 
   // Sending the decoded event back out reproduces the example's headers, so the
@@ -904,24 +899,24 @@ void check_spec_examples(std::string_view label) {
   }
 
   // Structured mode, section 3.2.4: the same event, wholly in the body.
-  ce::message structured_request;
-  structured_request.header_fields.set("content-type",
-                                       "application/cloudevents+json; charset=UTF-8");
-  structured_request.body = ce::http::detail::to_bytes(spec_structured_body);
+  const ce::message structured_request{
+      .header_fields = {{"content-type", "application/cloudevents+json; charset=UTF-8"}},
+      .body = ce::http::detail::to_bytes(spec_structured_body),
+  };
   expect(ce::http::detect_content_mode(structured_request) == ce::content_mode::structured)
       << label;
   auto from_structured = ce::http::from_message<C>(structured_request);
   expect(from_structured.has_value()) << label;
   if (from_structured) {
-    expect(from_structured->id == "1234-1234-1234") << label;
-    expect(from_structured->type == "com.example.someevent") << label;
-    expect(bool{from_structured->source == ce::uri_ref{"/mycontext/subcontext"}}) << label;
-    expect(from_structured->extensions.size() == 1U) << label;
+    expect(from_structured->id().view() == "1234-1234-1234"sv) << label;
+    expect(from_structured->type().view() == "com.example.someevent"sv) << label;
+    expect(from_structured->source().view() == "/mycontext/subcontext"sv) << label;
+    expect(from_structured->extensions().size() == 1U) << label;
     // The structured document and the binary headers describe one event, so the
     // two modes must land on the same value apart from the extension the binary
     // example carries in addition.
     ce::event aligned = *from_binary;
-    aligned.extensions.erase(std::string{"exampleextension2"});
+    expect(aligned.remove_extension("exampleextension2")) << label;
     expect(bool{*from_structured == aligned})
         << label << ": the two content modes disagree about the same event";
   }
@@ -929,10 +924,10 @@ void check_spec_examples(std::string_view label) {
   // Batched mode, section 3.3: the same event twice in one message.
   const std::string batch_body =
       "[" + std::string{spec_structured_body} + "," + std::string{spec_structured_body} + "]";
-  ce::message batch_request;
-  batch_request.header_fields.set("content-type",
-                                  "application/cloudevents-batch+json; charset=UTF-8");
-  batch_request.body = ce::http::detail::to_bytes(batch_body);
+  const ce::message batch_request{
+      .header_fields = {{"content-type", "application/cloudevents-batch+json; charset=UTF-8"}},
+      .body = ce::http::detail::to_bytes(batch_body),
+  };
   expect(ce::http::detect_content_mode(batch_request) == ce::content_mode::batched) << label;
   auto from_batch = ce::http::from_batch_message<C>(batch_request);
   expect(from_batch.has_value()) << label;
@@ -959,44 +954,34 @@ void check_ce_header_name_grammar(std::string_view label) {
            "ce-has space"sv,
            "ce-"sv,
        }) {
-    ce::message request;
-    request.header_fields.add("ce-specversion", "1.0");
-    request.header_fields.add("ce-id", "1");
-    request.header_fields.add("ce-source", "/s");
-    request.header_fields.add("ce-type", "t");
-    request.header_fields.add(std::string{name}, "x");
-
-    auto decoded = ce::http::from_message<C>(request);
+    auto decoded = ce::http::from_message<C>(binary_message_with({std::string{name}, "x"}));
     expect(!decoded.has_value()) << label << ": should reject header " << name;
     if (!decoded) {
       expect(decoded.error().code == ce::errc::invalid_attribute_name) << label << ": " << name;
     }
   }
 
-  // A header that is present but empty is a second way to reach an event that
-  // would not validate; the presence check alone does not catch it.
+  // A header that is present but empty is a second way to reach an event the
+  // encoder would refuse; the presence check alone does not catch it.
   {
-    ce::message empty_type;
-    empty_type.header_fields.add("ce-specversion", "1.0");
-    empty_type.header_fields.add("ce-id", "1");
-    empty_type.header_fields.add("ce-source", "/s");
-    empty_type.header_fields.add("ce-type", "");
+    const ce::message empty_type{.header_fields = {{"ce-specversion", "1.0"},
+                                                   {"ce-id", "1"},
+                                                   {"ce-source", "/s"},
+                                                   {"ce-type", ""}}};
     expect(!ce::http::from_message<C>(empty_type).has_value()) << label << ": empty ce-type";
   }
 
-  // A legal extension header still decodes, and what decodes re-encodes.
-  ce::message request;
-  request.header_fields.add("ce-specversion", "1.0");
-  request.header_fields.add("ce-id", "1");
-  request.header_fields.add("ce-source", "/s");
-  request.header_fields.add("ce-type", "t");
-  request.header_fields.add("ce-seq9", "x");
-
-  auto decoded = ce::http::from_message<C>(request);
+  // A legal extension header still decodes, what decodes re-encodes, and the
+  // re-encoded message decodes to the same event.
+  auto decoded = ce::http::from_message<C>(binary_message_with({"ce-seq9", "x"}));
   expect(decoded.has_value()) << label;
   if (decoded) {
-    expect(decoded->validate().has_value()) << label;
-    expect(ce::http::to_message<C>(*decoded, ce::content_mode::binary_mode).has_value()) << label;
+    const auto re_sent = ce::http::to_message<C>(*decoded, ce::content_mode::binary_mode);
+    expect(re_sent.has_value()) << label;
+    if (re_sent) {
+      const auto again = ce::http::from_message<C>(*re_sent);
+      expect(again.has_value() && bool{*again == *decoded}) << label;
+    }
   }
 }
 
@@ -1035,9 +1020,8 @@ const boost::ut::suite<"message-type-shape"> message_type_shape = [] {
     // not something a runtime assertion can see, so it is asserted here only as
     // far as the two member types go.
     static_assert(std::is_same_v<ce::raw_headers::entry, std::pair<std::string, std::string>>);
-    ce::message request;
-    request.header_fields.add("Content-Type", "text/plain");
-    request.body = ce::http::detail::to_bytes("payload");
+    const ce::message request{.header_fields = {{"Content-Type", "text/plain"}},
+                              .body = ce::http::detail::to_bytes("payload")};
     expect(request.header_fields.size() == 1U);
     expect(ce::http::detail::to_text(request.body) == "payload"sv);
   };
@@ -1561,8 +1545,7 @@ template <class Codec>
 void check_value_policy(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.subject = "a b";
+  const ce::event subject = base_event({.subject = "a b"_subject});
 
   // The default is unchanged and stays what the binding specification requires.
   auto conformant = ce::http::to_message<Codec>(subject, ce::content_mode::binary_mode);
@@ -1581,8 +1564,7 @@ void check_value_policy(std::string_view codec) {
 
   // A literal percent is what a Go sender puts on the wire. The conformant
   // reader refuses it as a truncated escape; the literal reader takes it.
-  ce::message from_go = minimal_binary_message();
-  from_go.header_fields.set("ce-subject", "100%");
+  const ce::message from_go = binary_message_with({"ce-subject", "100%"});
 
   auto strict = ce::http::from_message<Codec>(from_go);
   expect(!strict) << codec;
@@ -1590,18 +1572,19 @@ void check_value_policy(std::string_view codec) {
   auto lenient = ce::http::from_message<Codec, ce::http::literal_values>(from_go);
   expect(bool{lenient}) << codec;
   if (lenient) {
-    expect(bool{lenient->subject == std::optional<std::string>{"100%"}}) << codec;
+    expect(lenient->subject().has_value() && lenient->subject()->view() == "100%"sv) << codec;
   }
 
   // And the escape a conformant sender produced is NOT decoded under the
   // literal policy, which is exactly how Go misreads us. Naming the policy is
   // choosing that behaviour.
-  ce::message from_cpp = minimal_binary_message();
-  from_cpp.header_fields.set("ce-subject", "a%20b");
-  auto as_go_sees_it = ce::http::from_message<Codec, ce::http::literal_values>(from_cpp);
+  auto as_go_sees_it = ce::http::from_message<Codec, ce::http::literal_values>(
+      binary_message_with({"ce-subject", "a%20b"}));
   expect(bool{as_go_sees_it}) << codec;
   if (as_go_sees_it) {
-    expect(bool{as_go_sees_it->subject == std::optional<std::string>{"a%20b"}}) << codec;
+    expect(as_go_sees_it->subject().has_value() &&
+           as_go_sees_it->subject()->view() == "a%20b"sv)
+        << codec;
   }
 }
 
@@ -1616,8 +1599,14 @@ void check_literal_refuses_control_characters(std::string_view codec) {
   const std::string injected_values[] = {"a\rb", "a\nb", "a\r\nX-Evil: 1",
                                          std::string{"a\0b", 3}};
   for (const std::string& injected : injected_values) {
-    ce::event subject = base_event();
-    subject.subject = injected;
+    // Well-formed UTF-8, so `subject` holds it: refusing a line break is the
+    // value policy's rule, not the attribute's.
+    const auto made = ce::subject::make(injected);
+    expect(made.has_value()) << codec;
+    if (!made) {
+      continue;
+    }
+    const ce::event subject = base_event({.subject = *made});
     auto written = ce::http::to_message<Codec, ce::http::literal_values>(
         subject, ce::content_mode::binary_mode);
     expect(!written) << codec << " accepted a control character";
@@ -1627,8 +1616,7 @@ void check_literal_refuses_control_characters(std::string_view codec) {
   }
 
   // The conformant policy escapes them instead, which is equally safe.
-  ce::event subject = base_event();
-  subject.subject = "a\r\nX-Evil: 1";
+  const ce::event subject = base_event({.subject = "a\r\nX-Evil: 1"_subject});
   auto escaped = ce::http::to_message<Codec>(subject, ce::content_mode::binary_mode);
   expect(bool{escaped}) << codec;
   if (escaped) {

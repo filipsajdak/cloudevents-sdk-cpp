@@ -14,7 +14,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
 satisfied_by: [code:include/cloudevents/core.hpp]
-verified_by: [test:test/core_test.cpp::core-validate-required-non-empty]
+verified_by: [test:test/core_test.cpp::core-required-attributes-refuse-empty]
 owner: filip.sajdak
 version: 2
 ---

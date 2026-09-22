@@ -35,7 +35,31 @@ using ce::v1::errc;
 using ce::v1::error;
 using ce::v1::fail;
 using ce::v1::result;
+using ce::v1::static_error;
 using ce::v1::to_string_view;
+using ce::v1::widen;
+
+// --- context attribute types ------------------------------------------------
+// Without these a module consumer could name `event` and never build one: its
+// constructor takes nothing else (SWR-CORE-0014).
+using ce::v1::datacontenttype;
+using ce::v1::dataschema;
+using ce::v1::extension_name;
+using ce::v1::id;
+using ce::v1::source;
+using ce::v1::spec_version;
+using ce::v1::subject;
+using ce::v1::type;
+
+namespace literals {
+using ce::v1::literals::operator""_dataschema;
+using ce::v1::literals::operator""_ext;
+using ce::v1::literals::operator""_id;
+using ce::v1::literals::operator""_mediatype;
+using ce::v1::literals::operator""_source;
+using ce::v1::literals::operator""_subject;
+using ce::v1::literals::operator""_type;
+}  // namespace literals
 
 // --- core -------------------------------------------------------------------
 using ce::v1::attribute_value;

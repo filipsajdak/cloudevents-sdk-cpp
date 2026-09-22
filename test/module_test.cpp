@@ -44,7 +44,9 @@
 // is proven by reading the file. One list drives both, so the two cannot drift.
 
 #define CE_MODULE_EXPORTS(X)                                                                     \
-  X(errc) X(error) X(fail) X(result) X(to_string_view)                                           \
+  X(errc) X(error) X(fail) X(result) X(static_error) X(to_string_view) X(widen)                   \
+  X(datacontenttype) X(dataschema) X(extension_name) X(id) X(source) X(spec_version) X(subject)  \
+  X(type)                                                                                        \
   X(attribute_value) X(binary) X(content_mode) X(data_t) X(event) X(raw_headers)                     \
   X(is_json_content_type) X(json_text) X(lint_warning) X(message) X(parse_timestamp)             \
   X(reserved_name) X(timestamp) X(to_string) X(to_bytes) X(to_text) X(uri) X(uri_ref)\
@@ -85,6 +87,13 @@ constexpr std::array nested_exports{
     "ce::v1::nats::from_payload"sv,
     "ce::v1::nats::to_message"sv,
     "ce::v1::nats::from_message"sv,
+    "ce::v1::literals::operator\"\"_dataschema"sv,
+    "ce::v1::literals::operator\"\"_ext"sv,
+    "ce::v1::literals::operator\"\"_id"sv,
+    "ce::v1::literals::operator\"\"_mediatype"sv,
+    "ce::v1::literals::operator\"\"_source"sv,
+    "ce::v1::literals::operator\"\"_subject"sv,
+    "ce::v1::literals::operator\"\"_type"sv,
 };
 
 [[nodiscard]] auto read_module() -> std::string {

@@ -148,13 +148,16 @@ int main() {
 
   using format = ce::json_format<demo::codec>;
 
-  ce::event subject{
-      .id = "A234-1234-1234",
-      .source = ce::uri_ref{"https://example.test/orders"},
-      .type = "com.example.order.placed",
+  using namespace ce::literals;
+  const ce::event subject{
+      "A234-1234-1234"_id,
+      "https://example.test/orders"_source,
+      "com.example.order.placed"_type,
+      {
+          .datacontenttype = "application/json"_mediatype,
+          .data = ce::json_text{.raw = R"({"total":42})"},
+      },
   };
-  subject.datacontenttype = "application/json";
-  subject.data = ce::json_text{.raw = R"({"total":42})"};
 
   auto encoded = format::encode(subject);
   if (!encoded) {

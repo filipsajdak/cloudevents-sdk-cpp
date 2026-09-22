@@ -18,12 +18,12 @@
 // which consumer_no_nlohmann below is built to show.
 
 int main() {
-  ce::event subject{.id = "1", .source = ce::uri_ref{"/graph"}, .type = "t"};
-  if (!subject.validate()) {
+  using namespace ce::literals;
+  const ce::event subject{"1"_id, "/graph"_source, "t"_type};
+  if (subject.id().view() != "1") {
     return 1;
   }
-  ce::message request;
-  request.header_fields.add("ce-id", "1");
+  const ce::message request{.header_fields = {{"ce-id", "1"}}};
   if (!request.header_fields.contains("CE-ID")) {
     return 2;
   }

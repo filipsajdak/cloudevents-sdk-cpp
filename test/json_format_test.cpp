@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "codecs_under_test.hpp"
+#include "equality.hpp"
 #include "json_format_checks.hpp"
 #include "mini_codec.hpp"
 
@@ -36,13 +37,11 @@ using namespace std::string_view_literals;
 using nlohmann_codec = ce::codec::nlohmann_codec;
 using mini_codec = ce::test::mini_codec;
 
-/// A minimal event that passes validate(), built with ONE designated initializer.
-[[nodiscard]] auto base_event() -> ce::event {
-  return ce::event{
-      .id = "1",
-      .source = "/spec/test",
-      .type = "com.example.thing",
-  };
+using namespace ce::literals;
+
+/// A minimal event, built in one expression; the caller states the rest.
+[[nodiscard]] auto base_event(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
 }
 
 /// Encode `subject` and parse the result back into the codec's own DOM, so a
@@ -63,20 +62,21 @@ void check_entry_points(std::string_view label) {
   using namespace boost::ut;
   using format = ce::json_format<C>;
 
-  ce::event subject = base_event();
-  subject.datacontenttype = "application/json";
-  subject.subject = "s";
-  subject.dataschema = ce::uri{"https://example.com/schema"};
   const auto parsed_time = ce::parse_timestamp("2018-04-05T17:31:00Z");
   expect(parsed_time.has_value()) << label;
   if (!parsed_time) {
     return;
   }
-  subject.time = *parsed_time;
-  expect(subject.set_extension("seq", std::int32_t{7}).has_value()) << label;
-  expect(subject.set_extension("flag", true).has_value()) << label;
-  expect(subject.set_extension("tag", std::string{"x"}).has_value()) << label;
-  subject.data = ce::json_text{.raw = R"({"k":1})"};
+  const ce::event subject = base_event({
+      .datacontenttype = "application/json"_mediatype,
+      .dataschema = "https://example.com/schema"_dataschema,
+      .subject = "s"_subject,
+      .time = *parsed_time,
+      .extensions = {{"seq"_ext, std::int32_t{7}},
+                     {"flag"_ext, true},
+                     {"tag"_ext, std::string{"x"}}},
+      .data = ce::json_text{.raw = R"({"k":1})"},
+  });
 
   auto text = format::encode(subject);
   expect(text.has_value()) << label << ": encode";
@@ -90,18 +90,18 @@ void check_entry_points(std::string_view label) {
     expect(false) << label << ": " << back.error().detail;
     return;
   }
-  expect(back->id == subject.id) << label;
-  expect(back->type == subject.type) << label;
-  expect(bool{back->source == subject.source}) << label;
-  expect(back->specversion == "1.0") << label;
-  expect(back->subject == subject.subject) << label;
-  expect(back->datacontenttype == subject.datacontenttype) << label;
-  expect(bool{back->dataschema == subject.dataschema}) << label;
-  expect(back->time.has_value()) << label;
-  if (back->time) {
-    expect(ce::to_string(*back->time) == "2018-04-05T17:31:00Z") << label;
+  expect(back->id() == subject.id()) << label;
+  expect(back->type() == subject.type()) << label;
+  expect(bool{back->source() == subject.source()}) << label;
+  expect(back->specversion().view() == "1.0"sv) << label;
+  expect(ce_test::equal(back->subject(), subject.subject())) << label;
+  expect(ce_test::equal(back->datacontenttype(), subject.datacontenttype())) << label;
+  expect(ce_test::equal(back->dataschema(), subject.dataschema())) << label;
+  expect(back->time().has_value()) << label;
+  if (back->time()) {
+    expect(ce::to_string(*back->time()) == "2018-04-05T17:31:00Z") << label;
   }
-  expect(back->extensions.size() == 3U) << label;
+  expect(back->extensions().size() == 3U) << label;
 
   const std::vector<ce::event> many{subject, base_event()};
   auto batch_text = format::encode_batch(std::span<const ce::event>{many});
@@ -123,10 +123,9 @@ void check_entry_points(std::string_view label) {
   // A batch document that is not an array is rejected as such.
   auto not_an_array = format::decode_batch("{}");
   expect(!not_an_array.has_value()) << label;
-  // An invalid event never encodes.
-  ce::event invalid = base_event();
-  invalid.id.clear();
-  expect(!format::encode(invalid).has_value()) << label;
+  // An invalid event never encodes, because none can be built: the empty id the
+  // encoder used to refuse is refused where an id is made.
+  expect(!ce::id::make(""sv).has_value()) << label;
 }
 
 // --- SWR-JSON-0011: Integer attributes as JSON numbers ---------------------
@@ -138,10 +137,9 @@ void check_integer_attribute(std::string_view label) {
   constexpr auto lowest = std::numeric_limits<std::int32_t>::min();
   constexpr auto highest = std::numeric_limits<std::int32_t>::max();
 
-  ce::event subject = base_event();
-  expect(subject.set_extension("seq", std::int32_t{7}).has_value()) << label;
-  expect(subject.set_extension("low", lowest).has_value()) << label;
-  expect(subject.set_extension("high", highest).has_value()) << label;
+  const ce::event subject = base_event({.extensions = {{"seq"_ext, std::int32_t{7}},
+                                                       {"low"_ext, lowest},
+                                                       {"high"_ext, highest}}});
 
   auto document = encoded_document<C>(subject);
   expect(document.has_value()) << label;
@@ -237,8 +235,7 @@ void check_binary_attribute(std::string_view label) {
   using namespace boost::ut;
 
   const ce::binary octets{std::byte{0x00}, std::byte{0x01}, std::byte{0xFF}, std::byte{0x10}};
-  ce::event subject = base_event();
-  expect(subject.set_extension("blob", octets).has_value()) << label;
+  const ce::event subject = base_event({.extensions = {{"blob"_ext, octets}}});
 
   auto document = encoded_document<C>(subject);
   expect(document.has_value()) << label;
@@ -280,12 +277,13 @@ void check_textual_attributes(std::string_view label) {
     return;
   }
 
-  ce::event subject = base_event();
-  subject.dataschema = ce::uri{"https://example.com/schema"};
-  subject.time = *parsed_time;
-  expect(subject.set_extension("schemaurl", ce::uri{"https://example.com/x"}).has_value()) << label;
-  expect(subject.set_extension("relref", ce::uri_ref{"/relative/path"}).has_value()) << label;
-  expect(subject.set_extension("seen", *parsed_time).has_value()) << label;
+  const ce::event subject = base_event({
+      .dataschema = "https://example.com/schema"_dataschema,
+      .time = *parsed_time,
+      .extensions = {{"schemaurl"_ext, ce::uri{"https://example.com/x"}},
+                     {"relref"_ext, ce::uri_ref{"/relative/path"}},
+                     {"seen"_ext, *parsed_time}},
+  });
 
   auto document = encoded_document<C>(subject);
   expect(document.has_value()) << label;
@@ -323,12 +321,12 @@ void check_textual_attributes(std::string_view label) {
   }
   auto back = ce::json_format<C>::decode(*text);
   expect(back.has_value()) << label;
-  if (back && back->time) {
-    expect(ce::to_string(*back->time) == "2018-04-05T17:31:00Z") << label;
+  if (back && back->time()) {
+    expect(ce::to_string(*back->time()) == "2018-04-05T17:31:00Z") << label;
   }
   if (back) {
-    expect(bool{back->dataschema == subject.dataschema}) << label;
-    expect(bool{back->source == subject.source}) << label;
+    expect(ce_test::equal(back->dataschema(), subject.dataschema())) << label;
+    expect(bool{back->source() == subject.source()}) << label;
   }
 }
 
@@ -338,9 +336,9 @@ template <class C>
 void check_json_text_data(std::string_view label) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.datacontenttype = "application/json";
-  subject.data = ce::json_text{.raw = R"({"k":1,"list":[1,2]})"};
+  const ce::event subject =
+      base_event({.datacontenttype = "application/json"_mediatype,
+                  .data = ce::json_text{.raw = R"({"k":1,"list":[1,2]})"}});
 
   auto document = encoded_document<C>(subject);
   expect(document.has_value()) << label;
@@ -375,8 +373,7 @@ void check_json_text_data(std::string_view label) {
   }
 
   // Malformed json_text is the one thing the SDK validates about a payload.
-  ce::event broken = base_event();
-  broken.data = ce::json_text{.raw = "{not json"};
+  const ce::event broken = base_event({.data = ce::json_text{.raw = "{not json"}});
   auto refused = ce::json_format<C>::encode(broken);
   expect(!refused.has_value()) << label;
   if (!refused) {
@@ -389,8 +386,7 @@ void check_binary_data(std::string_view label) {
   using namespace boost::ut;
 
   const ce::binary octets{std::byte{1}, std::byte{2}, std::byte{0xFF}};
-  ce::event subject = base_event();
-  subject.data = octets;
+  const ce::event subject = base_event({.data = octets});
 
   auto document = encoded_document<C>(subject);
   expect(document.has_value()) << label;
@@ -412,9 +408,7 @@ void check_binary_data(std::string_view label) {
   }
 
   // An empty payload is still binary and still uses data_base64.
-  ce::event empty_payload = base_event();
-  empty_payload.data = ce::binary{};
-  auto empty_document = encoded_document<C>(empty_payload);
+  auto empty_document = encoded_document<C>(base_event({.data = ce::binary{}}));
   expect(empty_document.has_value()) << label;
   if (empty_document) {
     expect(C::find(*empty_document, "data_base64") != nullptr) << label;
@@ -433,9 +427,8 @@ template <class C>
 void check_string_data(std::string_view label) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.datacontenttype = "text/plain";
-  subject.data = std::string{"hello \"world\""};
+  const ce::event subject = base_event(
+      {.datacontenttype = "text/plain"_mediatype, .data = std::string{"hello \"world\""}});
 
   auto document = encoded_document<C>(subject);
   expect(document.has_value()) << label;
@@ -476,9 +469,9 @@ void check_decode_data_base64(std::string_view label) {
   if (!decoded) {
     return;
   }
-  expect(std::holds_alternative<ce::binary>(decoded->data)) << label;
-  if (std::holds_alternative<ce::binary>(decoded->data)) {
-    expect(std::get<ce::binary>(decoded->data) == octets) << label;
+  expect(std::holds_alternative<ce::binary>(decoded->data())) << label;
+  if (std::holds_alternative<ce::binary>(decoded->data())) {
+    expect(std::get<ce::binary>(decoded->data()) == octets) << label;
   }
 
   // Unpadded base64 from a peer decodes to the same octets.
@@ -491,8 +484,8 @@ void check_decode_data_base64(std::string_view label) {
       unpadded_source + R"("})";
   auto from_unpadded = format::decode(unpadded);
   expect(from_unpadded.has_value()) << label;
-  if (from_unpadded && std::holds_alternative<ce::binary>(from_unpadded->data)) {
-    expect(std::get<ce::binary>(from_unpadded->data) == ce::binary{std::byte{0xAB}}) << label;
+  if (from_unpadded && std::holds_alternative<ce::binary>(from_unpadded->data())) {
+    expect(std::get<ce::binary>(from_unpadded->data()) == ce::binary{std::byte{0xAB}}) << label;
   }
 
   // Invalid base64 arriving from a peer is a typed error, not a partial payload.
@@ -519,10 +512,10 @@ void check_decode_data_as_json_text(std::string_view label) {
       R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1}})");
   expect(decoded.has_value()) << label;
   if (decoded) {
-    expect(std::holds_alternative<ce::json_text>(decoded->data)) << label;
-    if (std::holds_alternative<ce::json_text>(decoded->data)) {
+    expect(std::holds_alternative<ce::json_text>(decoded->data())) << label;
+    if (std::holds_alternative<ce::json_text>(decoded->data())) {
       // The raw text must itself be well-formed JSON carrying the same value.
-      const auto& raw = std::get<ce::json_text>(decoded->data).raw;
+      const auto& raw = std::get<ce::json_text>(decoded->data()).raw;
       auto reparsed = C::parse(raw);
       expect(reparsed.has_value()) << label << ": " << raw;
       if (reparsed) {
@@ -553,7 +546,7 @@ void check_decode_data_as_json_text(std::string_view label) {
     auto typed = format::decode(document);
     expect(typed.has_value()) << label << ": " << document;
     if (typed) {
-      expect(std::holds_alternative<ce::json_text>(typed->data)) << label << ": " << document;
+      expect(std::holds_alternative<ce::json_text>(typed->data())) << label << ": " << document;
     }
   }
 
@@ -563,7 +556,7 @@ void check_decode_data_as_json_text(std::string_view label) {
       R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":"text/plain","data":5})");
   expect(numeric.has_value()) << label;
   if (numeric) {
-    expect(std::holds_alternative<ce::json_text>(numeric->data)) << label;
+    expect(std::holds_alternative<ce::json_text>(numeric->data())) << label;
   }
 }
 
@@ -582,24 +575,23 @@ void check_decode_string_data(std::string_view label) {
     if (!decoded) {
       continue;
     }
-    expect(std::holds_alternative<std::string>(decoded->data)) << label << ": " << content_type;
-    if (std::holds_alternative<std::string>(decoded->data)) {
-      expect(std::get<std::string>(decoded->data) == "hello") << label;
+    expect(std::holds_alternative<std::string>(decoded->data())) << label << ": " << content_type;
+    if (std::holds_alternative<std::string>(decoded->data())) {
+      expect(std::get<std::string>(decoded->data()) == "hello") << label;
     }
   }
 
   // The same payload round-trips: encode writes a JSON string, decode reads the
   // string back, and the content type is what decides.
-  ce::event subject = base_event();
-  subject.datacontenttype = "text/plain";
-  subject.data = std::string{"hello"};
+  const ce::event subject =
+      base_event({.datacontenttype = "text/plain"_mediatype, .data = std::string{"hello"}});
   auto text = format::encode(subject);
   expect(text.has_value()) << label;
   if (text) {
     auto back = format::decode(*text);
     expect(back.has_value()) << label;
-    if (back && std::holds_alternative<std::string>(back->data)) {
-      expect(std::get<std::string>(back->data) == "hello") << label;
+    if (back && std::holds_alternative<std::string>(back->data())) {
+      expect(std::get<std::string>(back->data()) == "hello") << label;
     }
   }
 }
@@ -655,7 +647,7 @@ void check_unknown_members_are_extensions(std::string_view label) {
 
   // Exactly the three unknown members, and none of the context attributes or
   // payload members alongside them.
-  expect(decoded->extensions.size() == 3U) << label;
+  expect(decoded->extensions().size() == 3U) << label;
   expect(decoded->extension("seq") != nullptr) << label;
   expect(decoded->extension("flag") != nullptr) << label;
   expect(decoded->extension("tag") != nullptr) << label;
@@ -669,7 +661,7 @@ void check_unknown_members_are_extensions(std::string_view label) {
       R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":"AA==","extra":1})");
   expect(with_binary.has_value()) << label;
   if (with_binary) {
-    expect(with_binary->extensions.size() == 1U) << label;
+    expect(with_binary->extensions().size() == 1U) << label;
     expect(with_binary->extension("extra") != nullptr) << label;
   }
 }
@@ -726,8 +718,8 @@ void check_extension_type_mapping(std::string_view label) {
   // The documented loss: a URI, a URI-reference, a Timestamp and a Binary
   // attribute all come back as std::string, because JSON carries only the text.
   // Recovering the richer type is what the typed extension structs are for.
-  ce::event subject = base_event();
-  expect(subject.set_extension("schemaurl", ce::uri{"https://example.com/x"}).has_value()) << label;
+  const ce::event subject =
+      base_event({.extensions = {{"schemaurl"_ext, ce::uri{"https://example.com/x"}}}});
   auto text = format::encode(subject);
   expect(text.has_value()) << label;
   if (text) {
@@ -844,25 +836,27 @@ void check_spec_examples(std::string_view label) {
     expect(false) << label << ": " << decoded.error().detail;
     return;
   }
-  expect(decoded->specversion == "1.0") << label;
-  expect(decoded->id == "A234-1234-1234") << label;
-  expect(decoded->type == "com.github.pull_request.opened") << label;
-  expect(bool{decoded->source == ce::uri_ref{"https://github.com/cloudevents/spec/pull"}}) << label;
-  expect(decoded->subject == std::optional<std::string>{"123"}) << label;
-  expect(decoded->datacontenttype == std::optional<std::string>{"text/xml"}) << label;
-  expect(decoded->time.has_value()) << label;
-  if (decoded->time) {
-    expect(ce::to_string(*decoded->time) == "2018-04-05T17:31:00Z") << label;
+  expect(decoded->specversion().view() == "1.0"sv) << label;
+  expect(decoded->id().view() == "A234-1234-1234"sv) << label;
+  expect(decoded->type().view() == "com.github.pull_request.opened"sv) << label;
+  expect(decoded->source().view() == "https://github.com/cloudevents/spec/pull"sv) << label;
+  expect(decoded->subject().has_value() && decoded->subject()->view() == "123"sv) << label;
+  expect(decoded->datacontenttype().has_value() &&
+         decoded->datacontenttype()->view() == "text/xml"sv)
+      << label;
+  expect(decoded->time().has_value()) << label;
+  if (decoded->time()) {
+    expect(ce::to_string(*decoded->time()) == "2018-04-05T17:31:00Z") << label;
   }
-  expect(decoded->extensions.size() == 2U) << label;
+  expect(decoded->extensions().size() == 2U) << label;
   const auto* other = decoded->extension("comexampleothervalue");
   expect(other != nullptr) << label;
   if (other != nullptr && std::holds_alternative<std::int32_t>(*other)) {
     expect(std::get<std::int32_t>(*other) == 5) << label;
   }
-  expect(std::holds_alternative<std::string>(decoded->data)) << label;
-  if (std::holds_alternative<std::string>(decoded->data)) {
-    expect(std::get<std::string>(decoded->data) == R"(<much wow="xml"/>)") << label;
+  expect(std::holds_alternative<std::string>(decoded->data())) << label;
+  if (std::holds_alternative<std::string>(decoded->data())) {
+    expect(std::get<std::string>(decoded->data()) == R"(<much wow="xml"/>)") << label;
   }
 
   // Re-encoding and decoding again must land on the same event: whitespace and
@@ -939,6 +933,16 @@ const boost::ut::suite<"json-format-entry-points"> format_entry_points = [] {
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_entry_points<C>(codec); };
   });
+
+  // The version is read first: a document claiming a version this SDK cannot
+  // read is not reported in terms of rules that belong to another version, even
+  // when every one of those rules is broken too (SWR-CORE-0018).
+  "an unsupported version is reported before any other rule"_test = [] {
+    const auto decoded = ce::json_format<nlohmann_codec>::decode(
+        R"({"specversion":"0.3","id":"","source":"","type":""})"sv);
+    expect(!decoded.has_value());
+    expect(!decoded.has_value() && decoded.error().code == ce::errc::unsupported_spec_version);
+  };
 
   "the spec's example event, single and batched, with nlohmann_codec"_test = [] {
     check_spec_examples<nlohmann_codec>("nlohmann_codec");
@@ -1063,11 +1067,15 @@ void check_extension_name_grammar(std::string_view label) {
       R"({"specversion":"1.0","id":"1","source":"/s","type":"t","seq9":"x"})");
   expect(ok.has_value()) << label;
 
-  // The invariant the fuzzer asserts: anything decode returns validates, so a
-  // document that decodes can always be encoded again.
+  // The invariant the fuzzer asserts: a document that decodes can always be
+  // encoded again, and the encoding decodes to the same event.
   if (ok) {
-    expect(ok->validate().has_value()) << label;
-    expect(format::encode(*ok).has_value()) << label;
+    const auto re_encoded = format::encode(*ok);
+    expect(re_encoded.has_value()) << label;
+    if (re_encoded) {
+      const auto again = format::decode(*re_encoded);
+      expect(again.has_value() && bool{*again == *ok}) << label;
+    }
   }
 }
 
@@ -1153,7 +1161,7 @@ const boost::ut::suite<"empty-batch-decodes-to-no-events"> empty_batch = [] {
 };
 
 // spec: SWR-JSON-0031
-const boost::ut::suite<"decoded-event-always-validates"> extension_name_grammar = [] {
+const boost::ut::suite<"decoded-event-always-re-encodes"> extension_name_grammar = [] {
   using namespace boost::ut;
 
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
@@ -1173,8 +1181,8 @@ void check_null_is_unset(std::string_view label) {
   if (decoded) {
     expect(decoded->extension("unsetextension") == nullptr)
         << label << ": a null extension must not become an attribute";
-    expect(decoded->extensions.empty()) << label;
-    expect(decoded->validate().has_value()) << label;
+    expect(decoded->extensions().empty()) << label;
+    expect(format::encode(*decoded).has_value()) << label;
   }
 
   // A null OPTIONAL context attribute is unset too, and an absent one and an
@@ -1186,8 +1194,8 @@ void check_null_is_unset(std::string_view label) {
   expect(omitted.has_value()) << label;
   if (explicit_null && omitted) {
     expect(bool{*explicit_null == *omitted}) << label;
-    expect(!explicit_null->subject.has_value()) << label;
-    expect(!explicit_null->time.has_value()) << label;
+    expect(!explicit_null->subject().has_value()) << label;
+    expect(!explicit_null->time().has_value()) << label;
   }
 
   // data is the documented exception: an explicit null payload is distinct from
@@ -1203,7 +1211,7 @@ void check_null_is_unset(std::string_view label) {
   if (mixed) {
     expect(mixed->extension("gone") == nullptr) << label;
     expect(mixed->extension("kept") != nullptr) << label;
-    expect(mixed->extensions.size() == 1_ul) << label;
+    expect(mixed->extensions().size() == 1_ul) << label;
   }
 }
 

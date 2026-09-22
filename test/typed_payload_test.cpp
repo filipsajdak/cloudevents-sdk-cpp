@@ -28,8 +28,10 @@ using namespace std::string_view_literals;
 using nlohmann_codec = ce::codec::nlohmann_codec;
 using mini_codec = ce::test::mini_codec;
 
-[[nodiscard]] auto minimal() -> ce::event {
-  return ce::event{.id = "id-1", .source = ce::uri_ref{"/spec/test"}, .type = "com.example.thing"};
+using namespace ce::literals;
+
+[[nodiscard]] auto minimal(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"id-1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
 }
 
 struct reading {
@@ -93,13 +95,13 @@ void check_payload_roundtrip(std::string_view label) {
 
   // The event states what it carries, so a peer that only reads attributes can
   // tell the payload is JSON.
-  expect(subject.datacontenttype.has_value()) << label;
-  if (subject.datacontenttype) {
-    expect(ce::is_json_content_type(*subject.datacontenttype)) << label;
+  expect(subject.datacontenttype().has_value()) << label;
+  if (subject.datacontenttype()) {
+    expect(ce::is_json_content_type(subject.datacontenttype()->view())) << label;
   }
   // Stored as json_text, not as an escaped string: the encoded event must carry
   // one document rather than a JSON string holding a document.
-  expect(std::holds_alternative<ce::json_text>(subject.data)) << label;
+  expect(std::holds_alternative<ce::json_text>(subject.data())) << label;
 
   auto read = ce::data_as<reading, C>(subject);
   expect(read.has_value()) << label;
@@ -151,9 +153,9 @@ void check_payload_absent_members(std::string_view label) {
 
   // A document that omits a member leaves the field at its default. An optional
   // that is absent and an optional that is explicitly null mean the same thing.
-  ce::event subject = minimal();
-  subject.datacontenttype = "application/json";
-  subject.data = ce::json_text{.raw = R"({"sensor":"s-1","celsius":3})"};
+  const ce::event subject =
+      minimal({.datacontenttype = "application/json"_mediatype,
+               .data = ce::json_text{.raw = R"({"sensor":"s-1","celsius":3})"}});
 
   auto read = ce::data_as<reading, C>(subject);
   expect(read.has_value()) << label;
@@ -166,9 +168,9 @@ void check_payload_absent_members(std::string_view label) {
     expect(!read->calibrated) << label;
   }
 
-  ce::event explicit_null = minimal();
-  explicit_null.datacontenttype = "application/json";
-  explicit_null.data = ce::json_text{.raw = R"({"sensor":"s","celsius":1,"note":null})"};
+  const ce::event explicit_null =
+      minimal({.datacontenttype = "application/json"_mediatype,
+               .data = ce::json_text{.raw = R"({"sensor":"s","celsius":1,"note":null})"}});
   auto null_read = ce::data_as<reading, C>(explicit_null);
   expect(null_read.has_value()) << label;
   if (null_read) {
@@ -189,8 +191,7 @@ void check_payload_failures(std::string_view label) {
   }
 
   // Bytes are refused rather than guessed at.
-  ce::event binary = minimal();
-  binary.data = ce::binary{std::byte{0x00}, std::byte{0x01}};
+  const ce::event binary = minimal({.data = ce::binary{std::byte{0x00}, std::byte{0x01}}});
   auto from_binary = ce::data_as<reading, C>(binary);
   expect(!from_binary.has_value()) << label;
   if (!from_binary) {
@@ -200,21 +201,22 @@ void check_payload_failures(std::string_view label) {
   // Text whose datacontenttype does not claim JSON is refused too, and the same
   // text with a JSON content type is accepted - so the refusal is about the
   // declaration, not the bytes.
-  ce::event text = minimal();
-  text.datacontenttype = "text/plain";
-  text.data = std::string{R"({"sensor":"s-1","celsius":1})"};
+  const std::string payload_text{R"({"sensor":"s-1","celsius":1})"};
+  const ce::event text =
+      minimal({.datacontenttype = "text/plain"_mediatype, .data = payload_text});
   auto from_text = ce::data_as<reading, C>(text);
   expect(!from_text.has_value()) << label;
   if (!from_text) {
     expect(from_text.error().code == ce::errc::type_mismatch) << label;
   }
-  text.datacontenttype = "application/json";
-  expect(ce::data_as<reading, C>(text).has_value()) << label;
+  const ce::event declared_json =
+      minimal({.datacontenttype = "application/json"_mediatype, .data = payload_text});
+  expect(ce::data_as<reading, C>(declared_json).has_value()) << label;
 
   // A member of the wrong JSON type names the member rather than the payload.
-  ce::event wrong = minimal();
-  wrong.datacontenttype = "application/json";
-  wrong.data = ce::json_text{.raw = R"({"sensor":7,"celsius":1})"};
+  const ce::event wrong =
+      minimal({.datacontenttype = "application/json"_mediatype,
+               .data = ce::json_text{.raw = R"({"sensor":7,"celsius":1})"}});
   auto mistyped = ce::data_as<reading, C>(wrong);
   expect(!mistyped.has_value()) << label;
   if (!mistyped) {
@@ -223,9 +225,8 @@ void check_payload_failures(std::string_view label) {
   }
 
   // A JSON document that is not an object cannot be a described struct.
-  ce::event array = minimal();
-  array.datacontenttype = "application/json";
-  array.data = ce::json_text{.raw = "[1,2,3]"};
+  const ce::event array = minimal(
+      {.datacontenttype = "application/json"_mediatype, .data = ce::json_text{.raw = "[1,2,3]"}});
   auto from_array = ce::data_as<reading, C>(array);
   expect(!from_array.has_value()) << label;
   if (!from_array) {
@@ -233,9 +234,8 @@ void check_payload_failures(std::string_view label) {
   }
 
   // Unparseable text is a parse error, distinct from a type mismatch.
-  ce::event broken = minimal();
-  broken.datacontenttype = "application/json";
-  broken.data = ce::json_text{.raw = R"({"sensor":)"};
+  const ce::event broken = minimal({.datacontenttype = "application/json"_mediatype,
+                                    .data = ce::json_text{.raw = R"({"sensor":)"}});
   auto unparsed = ce::data_as<reading, C>(broken);
   expect(!unparsed.has_value()) << label;
   if (!unparsed) {
@@ -245,9 +245,8 @@ void check_payload_failures(std::string_view label) {
 
   // An integer too large for the declared field is refused rather than wrapped:
   // a silently truncated value would make the struct disagree with the document.
-  ce::event huge = minimal();
-  huge.datacontenttype = "application/json";
-  huge.data = ce::json_text{.raw = R"({"value":2147483648})"};
+  const ce::event huge = minimal({.datacontenttype = "application/json"_mediatype,
+                                  .data = ce::json_text{.raw = R"({"value":2147483648})"}});
   auto overflowed = ce::data_as<narrow, C>(huge);
   expect(!overflowed.has_value()) << label;
   if (!overflowed) {
@@ -255,9 +254,8 @@ void check_payload_failures(std::string_view label) {
     expect(overflowed.error().where == "value") << label;
   }
   // The largest value that does fit is still accepted.
-  ce::event edge = minimal();
-  edge.datacontenttype = "application/json";
-  edge.data = ce::json_text{.raw = R"({"value":2147483647})"};
+  const ce::event edge = minimal({.datacontenttype = "application/json"_mediatype,
+                                  .data = ce::json_text{.raw = R"({"value":2147483647})"}});
   auto at_edge = ce::data_as<narrow, C>(edge);
   expect(at_edge.has_value()) << label;
   if (at_edge) {

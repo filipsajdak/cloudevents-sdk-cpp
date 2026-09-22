@@ -40,6 +40,7 @@ ce_add_test(core_test SOURCES core_test.cpp)
 ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(static_error_test SOURCES static_error_test.cpp)
 ce_add_test(attribute_types_test SOURCES attribute_types_test.cpp)
+ce_add_test(event_builder_test SOURCES event_builder_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
 # The binding core names no codec, so this suite runs in a build with none.

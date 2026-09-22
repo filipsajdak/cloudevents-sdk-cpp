@@ -21,19 +21,19 @@ namespace ce::inline v1 {
 /// The payload must be JSON: either `json_text`, or a string whose
 /// `datacontenttype` says it is JSON. Bytes are refused rather than guessed at.
 template<described T, json::json_codec Codec>
-[[nodiscard]] auto data_as(const event& subject) -> result<T> {
+[[nodiscard]] auto data_as(const event& cloud_event) -> result<T> {
   const std::string* text = nullptr;
 
-  if (const auto* stored = std::get_if<json_text>(&subject.data)) {
+  if (const auto* stored = std::get_if<json_text>(&cloud_event.data)) {
     text = &stored->raw;
-  } else if (const auto* plain = std::get_if<std::string>(&subject.data)) {
-    if (!subject.datacontenttype || !is_json_content_type(*subject.datacontenttype)) {
+  } else if (const auto* plain = std::get_if<std::string>(&cloud_event.data)) {
+    if (!cloud_event.datacontenttype || !is_json_content_type(*cloud_event.datacontenttype)) {
       return fail(errc::type_mismatch,
                   "the payload is text but datacontenttype does not say it is JSON",
                   "data");
     }
     text = plain;
-  } else if (std::holds_alternative<std::monostate>(subject.data)) {
+  } else if (std::holds_alternative<std::monostate>(cloud_event.data)) {
     return fail(errc::missing_required_attribute, "the event carries no payload", "data");
   } else {
     return fail(errc::type_mismatch, "a binary payload is not a described type", "data");
@@ -58,10 +58,10 @@ template<described T, json::json_codec Codec>
 /// The payload is stored as `json_text` and `datacontenttype` is set to
 /// `application/json`, so the event states what it carries.
 template<described T, json::json_codec Codec>
-auto set_data(event& subject, const T& value) -> result<void> {
+auto set_data(event& cloud_event, const T& value) -> result<void> {
   auto document = to_json_value<Codec>(value);
-  subject.data = json_text{.raw = Codec::dump(document)};
-  subject.datacontenttype = "application/json";
+  cloud_event.data = json_text{.raw = Codec::dump(document)};
+  cloud_event.datacontenttype = "application/json";
   return {};
 }
 
@@ -77,14 +77,14 @@ class event_of {
   using codec_type = Codec;
 
   event_of() = default;
-  explicit event_of(event subject) : event_{std::move(subject)} {}
+  explicit event_of(event cloud_event) : event_{std::move(cloud_event)} {}
 
   /// \brief Build a typed view whose payload is already written.
-  [[nodiscard]] static auto with_data(event subject, const T& value) -> result<event_of> {
-    if (auto stored = ce::v1::set_data<T, Codec>(subject, value); !stored) {
+  [[nodiscard]] static auto with_data(event cloud_event, const T& value) -> result<event_of> {
+    if (auto stored = ce::v1::set_data<T, Codec>(cloud_event, value); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
-    return event_of{std::move(subject)};
+    return event_of{std::move(cloud_event)};
   }
 
   [[nodiscard]] auto data() const -> result<T> { return data_as<T, Codec>(event_); }

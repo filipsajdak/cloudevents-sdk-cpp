@@ -162,8 +162,26 @@ const boost::ut::suite<"config-inline-namespace-v1"> config_inline_namespace_v1 
     static_assert(std::is_same_v<ce::failure, ce::v1::failure>);
     static_assert(std::is_same_v<ce::event, ce::v1::event>);
     static_assert(std::is_same_v<ce::timestamp, ce::v1::timestamp>);
-    static_assert(std::is_same_v<decltype(ce::fail), decltype(ce::v1::fail)>);
-    expect(true);
+    static_assert(std::is_same_v<ce::static_error, ce::v1::static_error>);
+
+    // fail is an overload set, so decltype on the bare name is ambiguous. The
+    // address of one overload taken through both spellings says more than a type
+    // comparison would: not the same signature, the same function.
+    //
+    // Compared at run time through named pointers rather than in a static_assert.
+    // gcc resolves both spellings to one declaration during folding and then
+    // reports the static_assert as -Wtautological-compare, which is the compiler
+    // agreeing with the assertion by refusing to let it be written.
+    using from_errc = ce::failure (*)(ce::errc, std::string, std::string);
+    using from_diagnosis = ce::failure (*)(const ce::static_error&);
+
+    const auto errc_through_ce = static_cast<from_errc>(&ce::fail);
+    const auto errc_through_v1 = static_cast<from_errc>(&ce::v1::fail);
+    expect(errc_through_ce == errc_through_v1);
+
+    const auto diagnosis_through_ce = static_cast<from_diagnosis>(&ce::fail);
+    const auto diagnosis_through_v1 = static_cast<from_diagnosis>(&ce::v1::fail);
+    expect(diagnosis_through_ce == diagnosis_through_v1);
   };
 };
 

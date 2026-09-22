@@ -89,8 +89,8 @@ static_assert(binding::binding_traits<kafka_traits>);
 /// batch mode, and a record carrying an array under a batch content type would be
 /// something no other SDK's consumer reads.
 template <json::json_codec Codec>
-[[nodiscard]] auto to_message(const event& subject, content_mode mode) -> result<message> {
-  if (auto valid = subject.validate(); !valid) {
+[[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
+  if (auto valid = cloud_event.validate(); !valid) {
     return fail(valid.error().code, valid.error().detail, valid.error().where);
   }
 
@@ -99,15 +99,15 @@ template <json::json_codec Codec>
   }
 
   if (mode == content_mode::structured) {
-    return binding::encode_structured<detail::kafka_traits, Codec>(subject);
+    return binding::encode_structured<detail::kafka_traits, Codec>(cloud_event);
   }
 
   message out;
-  if (auto written = binding::write_attributes<detail::kafka_traits>(subject, out.header_fields);
+  if (auto written = binding::write_attributes<detail::kafka_traits>(cloud_event, out.header_fields);
       !written) {
     return fail(written.error().code, written.error().detail, written.error().where);
   }
-  binding::write_body(subject, out);
+  binding::write_body(cloud_event, out);
   return out;
 }
 
@@ -133,23 +133,23 @@ template <json::json_codec Codec>
                 "no ce_specversion header and no CloudEvents content type");
   }
 
-  auto subject = binding::read_attributes<detail::kafka_traits>(incoming.header_fields);
-  if (!subject) {
-    return fail(subject.error().code, subject.error().detail, subject.error().where);
+  auto cloud_event = binding::read_attributes<detail::kafka_traits>(incoming.header_fields);
+  if (!cloud_event) {
+    return fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
   }
 
   if (const std::string* declared = incoming.header_fields.find_exact(detail::content_type_header);
       declared != nullptr) {
-    subject->datacontenttype = *declared;
+    cloud_event->datacontenttype = *declared;
   }
 
-  binding::read_body(incoming.body, *subject);
+  binding::read_body(incoming.body, *cloud_event);
 
-  if (auto valid = subject->validate(); !valid) {
+  if (auto valid = cloud_event->validate(); !valid) {
     return fail(valid.error().code, valid.error().detail, valid.error().where);
   }
 
-  return std::move(*subject);
+  return std::move(*cloud_event);
 }
 
 /// \brief A Kafka record: the message, plus the key that decides its partition.
@@ -169,8 +169,8 @@ struct record {
 /// cannot move an attribute out of the event: the specification requires
 /// `partitionkey` to travel with the event even when it also becomes the key.
 template <class T>
-concept key_mapper = requires(const event& subject) {
-  { T::key_of(subject) } -> std::same_as<std::optional<std::string>>;
+concept key_mapper = requires(const event& cloud_event) {
+  { T::key_of(cloud_event) } -> std::same_as<std::optional<std::string>>;
 };
 
 /// \brief The default: no key, so the broker partitions round-robin.
@@ -182,8 +182,8 @@ struct no_key_mapper {
 
 /// \brief The mapper the binding specification asks every implementation to offer.
 struct partitionkey_mapper {
-  [[nodiscard]] static auto key_of(const event& subject) -> std::optional<std::string> {
-    const attribute_value* stored = subject.extension("partitionkey");
+  [[nodiscard]] static auto key_of(const event& cloud_event) -> std::optional<std::string> {
+    const attribute_value* stored = cloud_event.extension("partitionkey");
     if (stored == nullptr) {
       return std::nullopt;
     }
@@ -196,12 +196,12 @@ struct partitionkey_mapper {
 /// The key mapper is a defaulted template parameter, so opting in is naming one
 /// and the default costs nothing.
 template <json::json_codec Codec, key_mapper Keys = no_key_mapper>
-[[nodiscard]] auto to_record(const event& subject, content_mode mode) -> result<record> {
-  auto laid_out = to_message<Codec>(subject, mode);
+[[nodiscard]] auto to_record(const event& cloud_event, content_mode mode) -> result<record> {
+  auto laid_out = to_message<Codec>(cloud_event, mode);
   if (!laid_out) {
     return fail(laid_out.error().code, laid_out.error().detail, laid_out.error().where);
   }
-  return record{.value = std::move(*laid_out), .key = Keys::key_of(subject)};
+  return record{.value = std::move(*laid_out), .key = Keys::key_of(cloud_event)};
 }
 
 }  // namespace ce::inline v1::kafka

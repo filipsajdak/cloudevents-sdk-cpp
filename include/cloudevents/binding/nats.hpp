@@ -17,9 +17,9 @@
 /// all a pre-2.2 server can carry. `to_message` and `from_message` are the
 /// general form, and a caller on 2.2 or later wants those.
 ///
-/// **The subject is yours.** The specification defines no mapping from an event
-/// to a NATS subject, so this binding does not invent one. Publishing to a
-/// subject is the application's, exactly as issuing an HTTP request is.
+/// **The cloud_event is yours.** The specification defines no mapping from an event
+/// to a NATS cloud_event, so this binding does not invent one. Publishing to a
+/// cloud_event is the application's, exactly as issuing an HTTP request is.
 
 #include <string>
 #include <string_view>
@@ -39,8 +39,8 @@ namespace ce::inline v1::nats {
 ///
 /// `ce::to_bytes` converts it where a client wants bytes.
 template <json::json_codec Codec>
-[[nodiscard]] auto to_payload(const event& subject) -> result<std::string> {
-  return json_format<Codec>::encode(subject);
+[[nodiscard]] auto to_payload(const event& cloud_event) -> result<std::string> {
+  return json_format<Codec>::encode(cloud_event);
 }
 
 /// \brief Read an event from a NATS message payload.
@@ -50,7 +50,7 @@ template <json::json_codec Codec>
 /// a content type or a `ce_specversion` header to consult; a NATS payload carries
 /// neither, so an unrelated JSON document is indistinguishable from a corrupt
 /// event and every failure here is a parse or validation error. A caller who
-/// needs the distinction has to carry it in the subject.
+/// needs the distinction has to carry it in the cloud_event.
 template <json::json_codec Codec>
 [[nodiscard]] auto from_payload(std::string_view payload) -> result<event> {
   return json_format<Codec>::decode(payload);
@@ -114,8 +114,8 @@ static_assert(binding::binding_traits<nats_traits>);
 /// attributes in headers. `content_mode::batched` is refused: the binding
 /// defines no batch mode.
 template <json::json_codec Codec>
-[[nodiscard]] auto to_message(const event& subject, content_mode mode) -> result<message> {
-  if (auto valid = subject.validate(); !valid) {
+[[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
+  if (auto valid = cloud_event.validate(); !valid) {
     return fail(valid.error().code, valid.error().detail, valid.error().where);
   }
 
@@ -124,15 +124,15 @@ template <json::json_codec Codec>
   }
 
   if (mode == content_mode::structured) {
-    return binding::encode_structured<detail::nats_traits, Codec>(subject);
+    return binding::encode_structured<detail::nats_traits, Codec>(cloud_event);
   }
 
   message out;
-  if (auto written = binding::write_attributes<detail::nats_traits>(subject, out.header_fields);
+  if (auto written = binding::write_attributes<detail::nats_traits>(cloud_event, out.header_fields);
       !written) {
     return fail(written.error().code, written.error().detail, written.error().where);
   }
-  binding::write_body(subject, out);
+  binding::write_body(cloud_event, out);
   return out;
 }
 
@@ -152,17 +152,17 @@ template <json::json_codec Codec>
                 "no ce-specversion header and no CloudEvents content type");
   }
 
-  auto subject = binding::read_attributes<detail::nats_traits>(incoming.header_fields);
-  if (!subject) {
-    return fail(subject.error().code, subject.error().detail, subject.error().where);
+  auto cloud_event = binding::read_attributes<detail::nats_traits>(incoming.header_fields);
+  if (!cloud_event) {
+    return fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
   }
 
-  binding::read_body(incoming.body, *subject);
+  binding::read_body(incoming.body, *cloud_event);
 
-  if (auto valid = subject->validate(); !valid) {
+  if (auto valid = cloud_event->validate(); !valid) {
     return fail(valid.error().code, valid.error().detail, valid.error().where);
   }
-  return std::move(*subject);
+  return std::move(*cloud_event);
 }
 
 }  // namespace ce::inline v1::nats

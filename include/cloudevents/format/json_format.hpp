@@ -31,31 +31,31 @@ struct json_format {
   // --- encode --------------------------------------------------------------
 
   /// \brief Build the JSON document for one event.
-  [[nodiscard]] static auto to_value(const event& subject) -> result<value> {
-    if (auto valid = subject.validate(); !valid) {
+  [[nodiscard]] static auto to_value(const event& cloud_event) -> result<value> {
+    if (auto valid = cloud_event.validate(); !valid) {
       return fail(valid.error().code, valid.error().detail, valid.error().where);
     }
 
     auto root = Codec::make_object();
-    Codec::set(root, "specversion", Codec::make_string(subject.specversion));
-    Codec::set(root, "id", Codec::make_string(subject.id));
-    Codec::set(root, "source", Codec::make_string(subject.source.view()));
-    Codec::set(root, "type", Codec::make_string(subject.type));
+    Codec::set(root, "specversion", Codec::make_string(cloud_event.specversion));
+    Codec::set(root, "id", Codec::make_string(cloud_event.id));
+    Codec::set(root, "source", Codec::make_string(cloud_event.source.view()));
+    Codec::set(root, "type", Codec::make_string(cloud_event.type));
 
-    if (subject.datacontenttype) {
-      Codec::set(root, "datacontenttype", Codec::make_string(*subject.datacontenttype));
+    if (cloud_event.datacontenttype) {
+      Codec::set(root, "datacontenttype", Codec::make_string(*cloud_event.datacontenttype));
     }
-    if (subject.dataschema) {
-      Codec::set(root, "dataschema", Codec::make_string(subject.dataschema->view()));
+    if (cloud_event.dataschema) {
+      Codec::set(root, "dataschema", Codec::make_string(cloud_event.dataschema->view()));
     }
-    if (subject.subject) {
-      Codec::set(root, "subject", Codec::make_string(*subject.subject));
+    if (cloud_event.subject) {
+      Codec::set(root, "subject", Codec::make_string(*cloud_event.subject));
     }
-    if (subject.time) {
-      Codec::set(root, "time", Codec::make_string(to_string(*subject.time)));
+    if (cloud_event.time) {
+      Codec::set(root, "time", Codec::make_string(to_string(*cloud_event.time)));
     }
 
-    for (const auto& [name, attribute] : subject.extensions) {
+    for (const auto& [name, attribute] : cloud_event.extensions) {
       auto encoded = encode_attribute(attribute);
       if (!encoded) {
         return fail(encoded.error().code, encoded.error().detail, name);
@@ -63,7 +63,7 @@ struct json_format {
       Codec::set(root, name, std::move(*encoded));
     }
 
-    if (auto stored = encode_data(root, subject.data); !stored) {
+    if (auto stored = encode_data(root, cloud_event.data); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
 
@@ -71,8 +71,8 @@ struct json_format {
   }
 
   /// \brief Serialize one event.
-  [[nodiscard]] static auto encode(const event& subject) -> result<std::string> {
-    auto document = to_value(subject);
+  [[nodiscard]] static auto encode(const event& cloud_event) -> result<std::string> {
+    auto document = to_value(cloud_event);
     if (!document) {
       return fail(document.error().code, document.error().detail, document.error().where);
     }
@@ -82,8 +82,8 @@ struct json_format {
   /// \brief Serialize a batch. An empty batch is a valid empty array.
   [[nodiscard]] static auto encode_batch(std::span<const event> events) -> result<std::string> {
     auto array = Codec::make_array();
-    for (const auto& subject : events) {
-      auto document = to_value(subject);
+    for (const auto& cloud_event : events) {
+      auto document = to_value(cloud_event);
       if (!document) {
         return fail(document.error().code, document.error().detail, document.error().where);
       }
@@ -100,7 +100,7 @@ struct json_format {
       return fail(errc::parse_error, "a CloudEvent must be a JSON object");
     }
 
-    event subject{.id = {}, .source = {}, .type = {}};
+    event cloud_event{.id = {}, .source = {}, .type = {}};
 
     auto required = [&](std::string_view name, auto assign) -> result<void> {
       const auto* member = Codec::find(document, name);
@@ -116,22 +116,22 @@ struct json_format {
       return {};
     };
 
-    if (auto read = required("specversion", [&](std::string_view v) { subject.specversion = v; });
+    if (auto read = required("specversion", [&](std::string_view v) { cloud_event.specversion = v; });
         !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (subject.specversion != "1.0") {
+    if (cloud_event.specversion != "1.0") {
       return fail(errc::unsupported_spec_version, "this SDK implements CloudEvents 1.0 only",
                   "specversion");
     }
-    if (auto read = required("id", [&](std::string_view v) { subject.id = v; }); !read) {
+    if (auto read = required("id", [&](std::string_view v) { cloud_event.id = v; }); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto read = required("source", [&](std::string_view v) { subject.source = uri_ref{std::string{v}}; });
+    if (auto read = required("source", [&](std::string_view v) { cloud_event.source = uri_ref{std::string{v}}; });
         !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto read = required("type", [&](std::string_view v) { subject.type = v; }); !read) {
+    if (auto read = required("type", [&](std::string_view v) { cloud_event.type = v; }); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
 
@@ -151,14 +151,14 @@ struct json_format {
     if (!content) {
       return fail(content.error().code, content.error().detail, content.error().where);
     }
-    subject.datacontenttype = *content;
+    cloud_event.datacontenttype = *content;
 
     auto schema = optional_string("dataschema");
     if (!schema) {
       return fail(schema.error().code, schema.error().detail, schema.error().where);
     }
     if (*schema) {
-      subject.dataschema = uri{**schema};
+      cloud_event.dataschema = uri{**schema};
     }
 
     auto subject_attribute = optional_string("subject");
@@ -166,7 +166,7 @@ struct json_format {
       return fail(subject_attribute.error().code, subject_attribute.error().detail,
                   subject_attribute.error().where);
     }
-    subject.subject = *subject_attribute;
+    cloud_event.subject = *subject_attribute;
 
     if (auto time_text = optional_string("time"); !time_text) {
       return fail(time_text.error().code, time_text.error().detail, time_text.error().where);
@@ -175,10 +175,10 @@ struct json_format {
       if (!parsed) {
         return fail(parsed.error().code, parsed.error().detail, "time");
       }
-      subject.time = *parsed;
+      cloud_event.time = *parsed;
     }
 
-    if (auto stored = decode_data(document, subject); !stored) {
+    if (auto stored = decode_data(document, cloud_event); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
 
@@ -211,7 +211,7 @@ struct json_format {
         extension_error = fail(decoded.error().code, decoded.error().detail, std::string{name});
         return;
       }
-      subject.extensions.insert_or_assign(std::string{name}, std::move(*decoded));
+      cloud_event.extensions.insert_or_assign(std::string{name}, std::move(*decoded));
     });
     if (!extension_error) {
       return fail(extension_error.error().code, extension_error.error().detail,
@@ -220,11 +220,11 @@ struct json_format {
 
     // The decoder must not hand back an event the encoder would refuse, so the
     // same document cannot decode and then fail to re-encode.
-    if (auto valid = subject.validate(); !valid) {
+    if (auto valid = cloud_event.validate(); !valid) {
       return fail(valid.error().code, valid.error().detail, valid.error().where);
     }
 
-    return subject;
+    return cloud_event;
   }
 
   /// \brief Read one event from JSON text.
@@ -252,12 +252,12 @@ struct json_format {
       if (!element_error) {
         return;
       }
-      auto subject = from_value(element);
-      if (!subject) {
-        element_error = fail(subject.error().code, subject.error().detail, subject.error().where);
+      auto cloud_event = from_value(element);
+      if (!cloud_event) {
+        element_error = fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
         return;
       }
-      events.push_back(std::move(*subject));
+      events.push_back(std::move(*cloud_event));
     });
     if (!element_error) {
       return fail(element_error.error().code, element_error.error().detail,
@@ -356,7 +356,7 @@ struct json_format {
         data);
   }
 
-  [[nodiscard]] static auto decode_data(const value& document, event& subject) -> result<void> {
+  [[nodiscard]] static auto decode_data(const value& document, event& cloud_event) -> result<void> {
     const auto* data = Codec::find(document, "data");
     const auto* data_base64 = Codec::find(document, "data_base64");
 
@@ -374,7 +374,7 @@ struct json_format {
       if (!decoded) {
         return fail(decoded.error().code, decoded.error().detail, "data_base64");
       }
-      subject.data = std::move(*decoded);
+      cloud_event.data = std::move(*decoded);
       return {};
     }
 
@@ -385,17 +385,17 @@ struct json_format {
     // A JSON string under `data` is the payload itself when the content type says
     // it is not JSON. Otherwise the member is carried through as JSON.
     const bool declared_non_json =
-        subject.datacontenttype && !is_json_content_type(*subject.datacontenttype);
+        cloud_event.datacontenttype && !is_json_content_type(*cloud_event.datacontenttype);
     if (declared_non_json && Codec::kind_of(*data) == json::kind::string) {
       auto text = Codec::as_string(*data);
       if (!text) {
         return fail(errc::invalid_attribute_value, "data must be a JSON string", "data");
       }
-      subject.data = std::string{*text};
+      cloud_event.data = std::string{*text};
       return {};
     }
 
-    subject.data = json_text{.raw = Codec::dump(*data)};
+    cloud_event.data = json_text{.raw = Codec::dump(*data)};
     return {};
   }
 };

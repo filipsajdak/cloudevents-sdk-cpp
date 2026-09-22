@@ -138,7 +138,7 @@ template <binding_traits T>
       failure = fail(encoded.error().code, encoded.error().detail, std::string{name});
       return;
     }
-    detail::put<T>(into, std::string{T::attribute_prefix} + std::string{name}, std::move(*encoded));
+    detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
   };
 
   put_attribute("specversion", spec_version_of(cloud_event));
@@ -207,7 +207,7 @@ template <binding_traits T>
     if (!detail::carries_prefix<T>(name)) {
       continue;
     }
-    const std::string attribute = detail::attribute_name_of<T>(name);
+    std::string attribute = detail::attribute_name_of<T>(name);
 
     auto decoded = T::decode_value(raw_value);
     if (!decoded) {
@@ -240,20 +240,20 @@ template <binding_traits T>
     }
 
     if (attribute == "specversion") {
-      cloud_event.specversion = *decoded;
+      cloud_event.specversion = std::move(*decoded);
     } else if (attribute == "id") {
-      cloud_event.id = *decoded;
+      cloud_event.id = std::move(*decoded);
       saw_id = true;
     } else if (attribute == "source") {
-      cloud_event.source = uri_ref{*decoded};
+      cloud_event.source = uri_ref{std::move(*decoded)};
       saw_source = true;
     } else if (attribute == "type") {
-      cloud_event.type = *decoded;
+      cloud_event.type = std::move(*decoded);
       saw_type = true;
     } else if (attribute == "dataschema") {
-      cloud_event.dataschema = uri{*decoded};
+      cloud_event.dataschema = uri{std::move(*decoded)};
     } else if (attribute == "subject") {
-      cloud_event.subject = *decoded;
+      cloud_event.subject = std::move(*decoded);
     } else if (attribute == "time") {
       auto parsed = parse_timestamp(*decoded);
       if (!parsed) {
@@ -272,7 +272,8 @@ template <binding_traits T>
       }
       // The wire form carries no type, so an extension arrives as a string. The
       // typed extension structs are what recover the declared type.
-      cloud_event.extensions.insert_or_assign(attribute, attribute_value{*decoded});
+      cloud_event.extensions.insert_or_assign(std::move(attribute),
+                                              attribute_value{std::move(*decoded)});
     }
   }
 

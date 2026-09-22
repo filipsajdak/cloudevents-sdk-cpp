@@ -153,14 +153,14 @@ struct json_format {
     if (!content) {
       return fail(content.error().code, content.error().detail, content.error().where);
     }
-    cloud_event.datacontenttype = *content;
+    cloud_event.datacontenttype = std::move(*content);
 
     auto schema = optional_string("dataschema");
     if (!schema) {
       return fail(schema.error().code, schema.error().detail, schema.error().where);
     }
     if (*schema) {
-      cloud_event.dataschema = uri{**schema};
+      cloud_event.dataschema = uri{std::move(**schema)};
     }
 
     auto subject_attribute = optional_string("subject");
@@ -168,7 +168,7 @@ struct json_format {
       return fail(subject_attribute.error().code, subject_attribute.error().detail,
                   subject_attribute.error().where);
     }
-    cloud_event.subject = *subject_attribute;
+    cloud_event.subject = std::move(*subject_attribute);
 
     if (auto time_text = optional_string("time"); !time_text) {
       return fail(time_text.error().code, time_text.error().detail, time_text.error().where);

@@ -14,7 +14,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
 satisfied_by: [code:include/cloudevents/detail/timestamp.hpp]
-verified_by: [test:test/attribute_types_test.cpp::timestamp-refuses-more-digits-than-it-can-express]
+verified_by: [test:test/timestamp_test.cpp::timestamp-refuses-more-digits-than-it-can-express]
 owner: filip.sajdak
 version: 1
 ---

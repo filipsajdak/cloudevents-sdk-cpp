@@ -21,6 +21,7 @@
 #include <cloudevents/describe.hpp>
 #include <cloudevents/detail/config.hpp>
 #include <cloudevents/detail/timestamp.hpp>
+#include <cloudevents/detail/validated_string.hpp>
 #include <cloudevents/result.hpp>
 
 namespace ce::inline v1 {
@@ -222,6 +223,186 @@ inline constexpr std::string_view reserved_names[] = {
   const auto subtype = match.get<2>().to_view();
   return detail::iequals(subtype, "json") || detail::iends_with(subtype, "+json");
 }
+
+namespace detail {
+
+/// \brief The rules the context attributes are built from.
+///
+/// One `check` per attribute, `constexpr` so the same function serves the
+/// compile-time literal path and the run-time factory. It returns a diagnosis
+/// rather than a result: the compile-time path has no value to carry, because its
+/// failure mode is a compile error (SWR-CORE-0026).
+
+/// Non-empty and encodable. Nothing beyond that: `datacontenttype` and
+/// `dataschema` have their own rules, and `source` is deliberately exempt from
+/// RFC 3986 (SWR-CORE-0025).
+template <errc Empty>
+[[nodiscard]] constexpr auto check_text(std::string_view text, std::string_view attribute,
+                                        std::string_view empty_detail) noexcept
+    -> std::optional<static_error> {
+  if (text.empty()) {
+    return static_error{.code = Empty, .detail = empty_detail, .where = attribute};
+  }
+  if (!is_valid_utf8(text)) {
+    return static_error{
+        .code = errc::invalid_utf8,
+        .detail = "an attribute value must be well-formed UTF-8",
+        .where = attribute,
+    };
+  }
+  return {};
+}
+
+struct id_policy {
+  static constexpr std::string_view attribute = "id";
+  [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
+      -> std::optional<static_error> {
+    return check_text<errc::missing_required_attribute>(text, attribute, "id must be non-empty");
+  }
+};
+
+struct source_policy {
+  static constexpr std::string_view attribute = "source";
+  [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
+      -> std::optional<static_error> {
+    return check_text<errc::missing_required_attribute>(text, attribute,
+                                                        "source must be non-empty");
+  }
+};
+
+struct type_policy {
+  static constexpr std::string_view attribute = "type";
+  [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
+      -> std::optional<static_error> {
+    return check_text<errc::missing_required_attribute>(text, attribute, "type must be non-empty");
+  }
+};
+
+struct subject_policy {
+  static constexpr std::string_view attribute = "subject";
+  [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
+      -> std::optional<static_error> {
+    return check_text<errc::invalid_attribute_value>(text, attribute,
+                                                     "subject is present but empty");
+  }
+};
+
+struct dataschema_policy {
+  static constexpr std::string_view attribute = "dataschema";
+  [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
+      -> std::optional<static_error> {
+    return check_text<errc::invalid_attribute_value>(text, attribute,
+                                                     "dataschema is present but empty");
+  }
+};
+
+struct datacontenttype_policy {
+  static constexpr std::string_view attribute = "datacontenttype";
+  [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
+      -> std::optional<static_error> {
+    if (const auto refused =
+            check_text<errc::invalid_attribute_value>(text, attribute,
+                                                      "datacontenttype is present but empty");
+        refused) {
+      return refused;
+    }
+    if (!ctre::match<content_type_pattern>(text)) {
+      return static_error{
+          .code = errc::invalid_content_type,
+          .detail = "not a valid media type",
+          .where = attribute,
+      };
+    }
+    return {};
+  }
+};
+
+struct extension_name_policy {
+  static constexpr std::string_view attribute = "extension";
+  [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
+      -> std::optional<static_error> {
+    if (!ce::v1::valid_attribute_name(text)) {
+      return static_error{
+          .code = errc::invalid_attribute_name,
+          .detail = "extension names must match [a-z0-9]+",
+          .where = attribute,
+      };
+    }
+    if (ce::v1::reserved_name(text)) {
+      return static_error{
+          .code = errc::reserved_attribute_name,
+          .detail = "an extension may not redefine a context attribute",
+          .where = attribute,
+      };
+    }
+    return {};
+  }
+};
+
+}  // namespace detail
+
+/// \brief The context attributes, each unable to hold a value the specification
+/// forbids (SWR-CORE-0026).
+using id = detail::validated_string<detail::id_policy>;
+using source = detail::validated_string<detail::source_policy>;
+using type = detail::validated_string<detail::type_policy>;
+using subject = detail::validated_string<detail::subject_policy>;
+using dataschema = detail::validated_string<detail::dataschema_policy>;
+using datacontenttype = detail::validated_string<detail::datacontenttype_policy>;
+using extension_name = detail::validated_string<detail::extension_name_policy>;
+
+/// \brief `specversion`, as the one value this SDK implements.
+///
+/// A type with a single inhabitant rather than a string: the produce side then
+/// cannot express a version that does not exist, and the only rule left concerns
+/// text arriving from a peer (SWR-CORE-0018).
+class spec_version {
+ public:
+  constexpr spec_version() noexcept = default;
+
+  [[nodiscard]] static auto make(std::string_view text) -> result<spec_version> {
+    if (text != "1.0") {
+      return fail(errc::unsupported_spec_version, "this SDK implements CloudEvents 1.0 only",
+                  "specversion");
+    }
+    return spec_version{};
+  }
+
+  [[nodiscard]] constexpr auto view() const noexcept -> std::string_view { return "1.0"; }
+
+  [[nodiscard]] friend auto operator==(spec_version, spec_version) noexcept -> bool = default;
+};
+
+/// \brief Attribute literals, checked when the translation unit is compiled.
+///
+/// A literal is the only ergonomic compile-time form: `f("abc")` where `f` takes
+/// `ce::id` needs two user-defined conversions and does not compile, and no
+/// arrangement removes that (SWR-CORE-0027).
+namespace literals {
+
+consteval auto operator""_id(const char* text, std::size_t size) {
+  return detail::literal<detail::id_policy>{text, size};
+}
+consteval auto operator""_source(const char* text, std::size_t size) {
+  return detail::literal<detail::source_policy>{text, size};
+}
+consteval auto operator""_type(const char* text, std::size_t size) {
+  return detail::literal<detail::type_policy>{text, size};
+}
+consteval auto operator""_subject(const char* text, std::size_t size) {
+  return detail::literal<detail::subject_policy>{text, size};
+}
+consteval auto operator""_dataschema(const char* text, std::size_t size) {
+  return detail::literal<detail::dataschema_policy>{text, size};
+}
+consteval auto operator""_mediatype(const char* text, std::size_t size) {
+  return detail::literal<detail::datacontenttype_policy>{text, size};
+}
+consteval auto operator""_ext(const char* text, std::size_t size) {
+  return detail::literal<detail::extension_name_policy>{text, size};
+}
+
+}  // namespace literals
 
 namespace detail {
 

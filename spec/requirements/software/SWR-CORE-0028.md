@@ -17,7 +17,9 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
 satisfied_by: [code:include/cloudevents/result.hpp]
-verified_by: [test:test/static_error_test.cpp::static-error-survives-constant-evaluation]
+verified_by:
+  - test:test/static_error_test.cpp::static-error-survives-constant-evaluation
+  - test:test/static_error_test.cpp::static-error-widens-into-error
 owner: filip.sajdak
 version: 1
 ---

@@ -39,6 +39,7 @@ ce_add_test(config_test SOURCES config_test.cpp)
 ce_add_test(core_test SOURCES core_test.cpp)
 ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(static_error_test SOURCES static_error_test.cpp)
+ce_add_test(attribute_types_test SOURCES attribute_types_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
 # The binding core names no codec, so this suite runs in a build with none.
@@ -119,6 +120,20 @@ target_link_libraries(warning_scope_probe PRIVATE ce::core ce::warnings)
 add_test(NAME warning-scope-probe-must-not-compile
   COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target warning_scope_probe)
 set_tests_properties(warning-scope-probe-must-not-compile PROPERTIES
+  WILL_FAIL TRUE
+  LABELS "guard")
+
+# SWR-CORE-0027 says an invalid attribute literal rejects the translation unit
+# rather than producing a value. Nothing inside a running program can witness
+# that, because a program containing the offending line cannot be built. Same
+# shape as the probe above, and the same reason try_compile will not do: the
+# literal has to meet the real ce::core.
+add_executable(attribute_literal_probe EXCLUDE_FROM_ALL attribute_literal_probe.cpp)
+target_link_libraries(attribute_literal_probe PRIVATE ce::core ce::warnings)
+
+add_test(NAME attribute-literal-probe-must-not-compile
+  COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target attribute_literal_probe)
+set_tests_properties(attribute-literal-probe-must-not-compile PROPERTIES
   WILL_FAIL TRUE
   LABELS "guard")
 

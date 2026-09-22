@@ -729,4 +729,53 @@ struct event {
   }
 };
 
+/// \name Migration scaffolding
+///
+/// Reading an attribute through a free function, so the ~300 read sites can move
+/// off the public members before `event` becomes a class. A member accessor
+/// cannot serve that purpose: C++ forbids a data member and a member function
+/// sharing a name, so `event` can never carry both `id` and `id()`, and the
+/// migration has nowhere to land.
+///
+/// These are temporary. Once `event` is a class they become one-line forwards to
+/// its accessors, and the commit after that replaces every call with the accessor
+/// and deletes them. They carry no requirement because nothing outside this pull
+/// request ever sees them.
+/// \{
+[[nodiscard]] inline auto id_of(const event& from) noexcept -> const std::string& {
+  return from.id;
+}
+[[nodiscard]] inline auto source_of(const event& from) noexcept -> const uri_ref& {
+  return from.source;
+}
+[[nodiscard]] inline auto type_of(const event& from) noexcept -> const std::string& {
+  return from.type;
+}
+[[nodiscard]] inline auto spec_version_of(const event& from) noexcept -> const std::string& {
+  return from.specversion;
+}
+[[nodiscard]] inline auto datacontenttype_of(const event& from) noexcept
+    -> const std::optional<std::string>& {
+  return from.datacontenttype;
+}
+[[nodiscard]] inline auto dataschema_of(const event& from) noexcept -> const std::optional<uri>& {
+  return from.dataschema;
+}
+[[nodiscard]] inline auto subject_of(const event& from) noexcept
+    -> const std::optional<std::string>& {
+  return from.subject;
+}
+[[nodiscard]] inline auto time_of(const event& from) noexcept
+    -> const std::optional<timestamp>& {
+  return from.time;
+}
+[[nodiscard]] inline auto extensions_of(const event& from) noexcept
+    -> const std::map<std::string, attribute_value, std::less<>>& {
+  return from.extensions;
+}
+[[nodiscard]] inline auto data_of(const event& from) noexcept -> const data_t& {
+  return from.data;
+}
+/// \}
+
 }  // namespace ce::inline v1

@@ -190,7 +190,19 @@ template <binding_traits T>
 /// The event is returned without its datacontenttype, its payload or a
 /// `validate()` call: those need the body, which is the caller's to supply.
 template <binding_traits T>
-[[nodiscard]] auto read_attributes(const raw_headers& fields) -> result<event> {
+[[nodiscard]] auto read_attributes(const raw_headers& delivered) -> result<event> {
+  // The ingress gate. `raw_headers::find` returns the first field of a name
+  // while the loop below lets the last one win, so a message carrying `ce-id`
+  // twice decoded differently from how the content mode was detected. Refusing
+  // it here removes the disagreement rather than picking a winner (SWR-MSG-0004).
+  auto adopted = headers::adopt(delivered, T::case_sensitive_names
+                                               ? name_matching::case_sensitive
+                                               : name_matching::case_insensitive);
+  if (!adopted) {
+    return fail(adopted.error().code, adopted.error().detail, adopted.error().where);
+  }
+  const headers& fields = *adopted;
+
   event cloud_event{.id = {}, .source = {}, .type = {}};
   bool saw_id = false;
   bool saw_source = false;

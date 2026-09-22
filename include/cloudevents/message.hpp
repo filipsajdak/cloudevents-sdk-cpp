@@ -100,6 +100,85 @@ class raw_headers {
   std::vector<entry> entries_;
 };
 
+/// \brief How a binding decides whether two field names are one name.
+///
+/// HTTP field names are case-insensitive; Kafka record headers, AMQP
+/// application-properties and MQTT user properties are not. Which rule applies
+/// decides whether `ce-id` and `CE-ID` are the same attribute arriving twice or
+/// two different fields, so it is an argument rather than an assumption.
+enum class name_matching : std::uint8_t {
+  case_sensitive,
+  case_insensitive,
+};
+
+/// \brief Fields that hold at most one of any name (SWR-MSG-0003).
+///
+/// What a transport delivers is `raw_headers`, which carries whatever arrived.
+/// This is what the SDK is willing to work from: a set in which no name appears
+/// twice, so no code downstream has to decide which of two `ce-id` fields it
+/// meant. There is no `add`, because a second field of the same name is the
+/// state this type exists to exclude.
+class headers {
+ public:
+  using entry = raw_headers::entry;
+
+  headers() = default;
+
+  /// \brief Adopt what a transport delivered, or say why it cannot be adopted.
+  ///
+  /// A repeated field name is a repeated CloudEvents attribute - the binding
+  /// prefixes every attribute, so two fields carrying one attribute are two
+  /// fields of one name. HTTP binding section 3.1.3 makes that malformed, and
+  /// picking either one silently is a guess about which peer was right
+  /// (SWR-MSG-0004).
+  [[nodiscard]] static auto adopt(const raw_headers& delivered, name_matching matching)
+      -> result<headers> {
+    headers adopted;
+    for (const auto& [name, value] : delivered) {
+      const bool already = matching == name_matching::case_sensitive
+                               ? adopted.fields_.contains_exact(name)
+                               : adopted.fields_.contains(name);
+      if (already) {
+        return fail(errc::invalid_argument,
+                    "two fields carry the same attribute, so which one is meant is undecidable",
+                    name);
+      }
+      adopted.fields_.add(name, value);
+    }
+    return adopted;
+  }
+
+  void set(std::string name, std::string value) {
+    fields_.set_exact(std::move(name), std::move(value));
+  }
+
+  [[nodiscard]] auto find(std::string_view name) const noexcept -> const std::string* {
+    return fields_.find(name);
+  }
+  [[nodiscard]] auto find_exact(std::string_view name) const noexcept -> const std::string* {
+    return fields_.find_exact(name);
+  }
+  [[nodiscard]] auto contains(std::string_view name) const noexcept -> bool {
+    return fields_.contains(name);
+  }
+  [[nodiscard]] auto contains_exact(std::string_view name) const noexcept -> bool {
+    return fields_.contains_exact(name);
+  }
+
+  [[nodiscard]] auto begin() const noexcept { return fields_.begin(); }
+  [[nodiscard]] auto end() const noexcept { return fields_.end(); }
+  [[nodiscard]] auto size() const noexcept -> std::size_t { return fields_.size(); }
+  [[nodiscard]] auto empty() const noexcept -> bool { return fields_.empty(); }
+
+  /// \brief The fields, back in the permissive form a transport takes.
+  [[nodiscard]] auto to_raw() const -> const raw_headers& { return fields_; }
+
+  friend auto operator==(const headers&, const headers&) -> bool = default;
+
+ private:
+  raw_headers fields_;
+};
+
 /// \brief What a binding produces and consumes.
 struct message {
   raw_headers header_fields = {};

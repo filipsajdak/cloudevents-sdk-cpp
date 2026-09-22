@@ -171,7 +171,7 @@ inline constexpr unsigned two_octet_padding = 2;
   }
 
   binary out;
-  out.reserve((body.size() / detail::quantum_characters) * detail::quantum_octets +
+  out.reserve(((body.size() / detail::quantum_characters) * detail::quantum_octets) +
               detail::max_padding_characters);
 
   std::uint32_t accumulator = 0;

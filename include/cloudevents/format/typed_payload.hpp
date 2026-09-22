@@ -67,7 +67,7 @@ template<described T, json::json_codec Codec>
 template<described T, json::json_codec Codec>
 void set_data(event& cloud_event, const T& value) {
   using namespace ce::literals;
-  auto document = to_json_value<Codec>(value);
+  const auto document = to_json_value<Codec>(value);
   cloud_event.set_data(json_text{.raw = Codec::dump(document)}, "application/json"_mediatype);
 }
 

@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -136,7 +137,7 @@ template <class Capture>
 [[nodiscard]] constexpr auto to_int(Capture capture) noexcept -> int {
   int value = 0;
   for (const char digit : capture) {
-    value = value * decimal_radix + (digit - '0');
+    value = (value * decimal_radix) + (digit - '0');
   }
   return value;
 }
@@ -268,8 +269,8 @@ template <class Capture>
     // braces rather than the guard it once was.
     std::array<char, detail::max_fractional_digits> rendered{};
     auto remaining = nanos.count();
-    for (auto digit = rendered.rbegin(); digit != rendered.rend(); ++digit) {
-      *digit = static_cast<char>('0' + remaining % detail::decimal_radix);
+    for (char& digit : rendered | std::views::reverse) {
+      digit = static_cast<char>('0' + (remaining % detail::decimal_radix));
       remaining /= detail::decimal_radix;
     }
     const auto shown = std::min<std::size_t>(value.fractional_digits.count(), rendered.size());

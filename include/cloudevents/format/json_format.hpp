@@ -23,7 +23,7 @@ namespace ce::inline v1 {
 /// \brief Encodes and decodes events in the JSON format.
 template <json::json_codec Codec>
 struct json_format {
-  using value = typename Codec::value;
+  using value = Codec::value;
 
   static constexpr std::string_view content_type = json::content_type;
   static constexpr std::string_view batch_content_type = json::batch_content_type;
@@ -100,7 +100,7 @@ struct json_format {
 
     event::builder under_construction{};
 
-    auto required = [&](std::string_view name, auto assign) -> result<void> {
+    const auto required = [&](std::string_view name, auto assign) -> result<void> {
       const auto* member = Codec::find(document, name);
       if (member == nullptr) {
         return fail(errc::missing_required_attribute, "required attribute is absent",

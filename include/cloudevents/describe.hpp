@@ -138,20 +138,20 @@ template <described T>
 
 /// \brief Call `visit(wire_name, member)` for each member, in declaration order.
 template <described T, class F>
-constexpr void for_each_field(T& object, F&& visit) {
+constexpr void for_each_field(T& object, const F& visit) {
   std::apply(
       [&object, &visit](auto... member) {
-        (static_cast<void>(visit(member.name, object.*(member.ptr))), ...);
+        (static_cast<void>(visit(member.name, object.*member.ptr)), ...);
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());
 }
 
 /// \brief Call `visit(wire_name, member)` for each member of a const object.
 template <described T, class F>
-constexpr void for_each_field(const T& object, F&& visit) {
+constexpr void for_each_field(const T& object, const F& visit) {
   std::apply(
       [&object, &visit](auto... member) {
-        (static_cast<void>(visit(member.name, object.*(member.ptr))), ...);
+        (static_cast<void>(visit(member.name, object.*member.ptr)), ...);
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());
 }
@@ -167,7 +167,7 @@ template <described T>
       [&supported](auto... member) {
         ((supported = supported &&
                       detail::supported_field<
-                          std::remove_cvref_t<decltype(std::declval<T&>().*(member.ptr))>>),
+                          std::remove_cvref_t<decltype(std::declval<T&>().*member.ptr)>>),
          ...);
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());

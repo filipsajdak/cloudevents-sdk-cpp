@@ -37,7 +37,7 @@ template<class U>
 inline constexpr bool is_json_map<std::map<std::string, U>> = true;
 
 template<json::json_codec Codec, class F>
-[[nodiscard]] auto field_to_json(const F& field) -> typename Codec::value {
+[[nodiscard]] auto field_to_json(const F& field) -> Codec::value {
   if constexpr (is_json_optional<F>) {
     return field ? field_to_json<Codec>(*field) : Codec::make_null();
   } else if constexpr (is_json_vector<F>) {
@@ -73,7 +73,7 @@ template<json::json_codec Codec, class F>
       return {};
     }
     typename F::value_type inner{};
-    if (auto read = field_from_json<Codec>(held, where, inner); !read) {
+    if (const auto read = field_from_json<Codec>(held, where, inner); !read) {
       return read;
     }
     out = std::move(inner);
@@ -84,12 +84,12 @@ template<json::json_codec Codec, class F>
     }
     result<void> element_error{};
     out.clear();
-    Codec::for_each_element(held, [&](const typename Codec::value& element) {
+    Codec::for_each_element(held, [&](const Codec::value& element) {
       if (!element_error) {
         return;
       }
       typename F::value_type inner{};
-      if (auto read = field_from_json<Codec>(element, where, inner); !read) {
+      if (const auto read = field_from_json<Codec>(element, where, inner); !read) {
         element_error = read;
         return;
       }
@@ -102,12 +102,12 @@ template<json::json_codec Codec, class F>
     }
     result<void> member_error{};
     out.clear();
-    Codec::for_each_member(held, [&](std::string_view key, const typename Codec::value& member) {
+    Codec::for_each_member(held, [&](std::string_view key, const Codec::value& member) {
       if (!member_error) {
         return;
       }
       typename F::mapped_type inner{};
-      if (auto read = field_from_json<Codec>(member, key, inner); !read) {
+      if (const auto read = field_from_json<Codec>(member, key, inner); !read) {
         member_error = read;
         return;
       }
@@ -156,7 +156,7 @@ template<json::json_codec Codec, class F>
 
 /// \brief Build the JSON document for a described struct.
 template<json::json_codec Codec, described T>
-[[nodiscard]] auto to_json_value(const T& held) -> typename Codec::value {
+[[nodiscard]] auto to_json_value(const T& held) -> Codec::value {
   static_assert(members_supported<T>(),
                 "a described type used as JSON must declare only bool, int32_t, int64_t, "
                 "double, std::string, or an optional, vector or string-keyed map of those");

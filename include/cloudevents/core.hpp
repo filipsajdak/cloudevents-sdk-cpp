@@ -430,7 +430,7 @@ class spec_version {
     return spec_version{};
   }
 
-  [[nodiscard]] constexpr auto view() const noexcept -> std::string_view { return "1.0"; }
+  [[nodiscard]] static constexpr auto view() noexcept -> std::string_view { return "1.0"; }
 
   [[nodiscard]] friend auto operator==(spec_version, spec_version) noexcept -> bool = default;
 };
@@ -504,7 +504,7 @@ struct extension_value_type<std::optional<U>> {
   using type = U;
 };
 template <class F>
-using extension_value_t = typename extension_value_type<std::remove_cvref_t<F>>::type;
+using extension_value_t = extension_value_type<std::remove_cvref_t<F>>::type;
 
 template <class F>
 inline constexpr bool is_optional_field = false;
@@ -535,7 +535,7 @@ template <extension_field F>
     if (text == "false") {
       return false;
     }
-    return fail(errc::type_mismatch, "expected \"true\" or \"false\"", std::string{where});
+    return fail(errc::type_mismatch, R"(expected "true" or "false")", std::string{where});
   } else if constexpr (std::is_same_v<value_type, std::int32_t>) {
     std::int32_t parsed = 0;
     const char* const first = std::to_address(text.begin());
@@ -679,7 +679,7 @@ class event {
   [[nodiscard]] auto id() const noexcept -> const ce::id& { return id_; }
   [[nodiscard]] auto source() const noexcept -> const ce::source& { return source_; }
   [[nodiscard]] auto type() const noexcept -> const ce::type& { return type_; }
-  [[nodiscard]] auto specversion() const noexcept -> spec_version { return {}; }
+  [[nodiscard]] static auto specversion() noexcept -> spec_version { return {}; }
 
   [[nodiscard]] auto datacontenttype() const noexcept -> const std::optional<ce::datacontenttype>& {
     return rest_.datacontenttype;

@@ -141,23 +141,23 @@ template <binding_traits T>
     detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
   };
 
-  put_attribute("specversion", spec_version_of(cloud_event).view());
-  put_attribute("id", id_of(cloud_event).view());
-  put_attribute("source", source_of(cloud_event).view());
-  put_attribute("type", type_of(cloud_event).view());
+  put_attribute("specversion", cloud_event.specversion().view());
+  put_attribute("id", cloud_event.id().view());
+  put_attribute("source", cloud_event.source().view());
+  put_attribute("type", cloud_event.type().view());
   // Bound once rather than called twice. Two calls are two expressions as far
   // as a reader or a checker is concerned, and nothing says the second yields
   // the engaged optional the first one tested.
-  if (const auto& schema = dataschema_of(cloud_event); schema) {
+  if (const auto& schema = cloud_event.dataschema(); schema) {
     put_attribute("dataschema", schema->view());
   }
-  if (const auto& named = subject_of(cloud_event); named) {
+  if (const auto& named = cloud_event.subject(); named) {
     put_attribute("subject", named->view());
   }
-  if (const auto& when = time_of(cloud_event); when) {
+  if (const auto& when = cloud_event.time(); when) {
     put_attribute("time", to_string(*when));
   }
-  for (const auto& [name, attribute] : extensions_of(cloud_event)) {
+  for (const auto& [name, attribute] : cloud_event.extensions()) {
     put_attribute(name.view(), render_attribute(attribute));
   }
 
@@ -169,7 +169,7 @@ template <binding_traits T>
   // appear under the prefix, or a receiver sees the same attribute twice, and it
   // is not encoded there: it is a media type, not an attribute value. Where the
   // binding maps it like any other attribute, it is encoded like one.
-  if (const auto& media_type = datacontenttype_of(cloud_event); media_type) {
+  if (const auto& media_type = cloud_event.datacontenttype(); media_type) {
     if constexpr (detail::content_type_policy<T>::as_attribute) {
       put_attribute("datacontenttype", media_type->view());
     } else {
@@ -324,7 +324,7 @@ inline void write_body(const event& cloud_event, message& into) {
           into.body = to_bytes(held.raw);
         }
       },
-      data_of(cloud_event));
+      cloud_event.data());
 }
 
 /// \brief The message body, as the payload.

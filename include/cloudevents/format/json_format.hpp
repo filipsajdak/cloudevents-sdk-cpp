@@ -33,27 +33,27 @@ struct json_format {
   /// \brief Build the JSON document for one event.
   [[nodiscard]] static auto to_value(const event& cloud_event) -> result<value> {
     auto root = Codec::make_object();
-    Codec::set(root, "specversion", Codec::make_string(spec_version_of(cloud_event).view()));
-    Codec::set(root, "id", Codec::make_string(id_of(cloud_event).view()));
-    Codec::set(root, "source", Codec::make_string(source_of(cloud_event).view()));
-    Codec::set(root, "type", Codec::make_string(type_of(cloud_event).view()));
+    Codec::set(root, "specversion", Codec::make_string(cloud_event.specversion().view()));
+    Codec::set(root, "id", Codec::make_string(cloud_event.id().view()));
+    Codec::set(root, "source", Codec::make_string(cloud_event.source().view()));
+    Codec::set(root, "type", Codec::make_string(cloud_event.type().view()));
 
     // Bound once rather than called twice: nothing says the second call yields
     // the engaged optional the first one tested.
-    if (const auto& media_type = datacontenttype_of(cloud_event); media_type) {
+    if (const auto& media_type = cloud_event.datacontenttype(); media_type) {
       Codec::set(root, "datacontenttype", Codec::make_string(media_type->view()));
     }
-    if (const auto& schema = dataschema_of(cloud_event); schema) {
+    if (const auto& schema = cloud_event.dataschema(); schema) {
       Codec::set(root, "dataschema", Codec::make_string(schema->view()));
     }
-    if (const auto& named = subject_of(cloud_event); named) {
+    if (const auto& named = cloud_event.subject(); named) {
       Codec::set(root, "subject", Codec::make_string(named->view()));
     }
-    if (const auto& when = time_of(cloud_event); when) {
+    if (const auto& when = cloud_event.time(); when) {
       Codec::set(root, "time", Codec::make_string(to_string(*when)));
     }
 
-    for (const auto& [name, attribute] : extensions_of(cloud_event)) {
+    for (const auto& [name, attribute] : cloud_event.extensions()) {
       auto encoded = encode_attribute(attribute);
       if (!encoded) {
         return fail(encoded.error().code, encoded.error().detail, name.str());
@@ -61,7 +61,7 @@ struct json_format {
       Codec::set(root, name.view(), std::move(*encoded));
     }
 
-    if (auto stored = encode_data(root, data_of(cloud_event)); !stored) {
+    if (auto stored = encode_data(root, cloud_event.data()); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
 

@@ -143,24 +143,30 @@ namespace utf8 {
 inline constexpr unsigned char ascii_limit = 0x80U;
 
 /// A continuation byte matches `10xxxxxx`.
+///
+/// The payload masks are `std::uint32_t`, not `unsigned char`, because they are
+/// combined with the accumulating code point. Two `unsigned char` operands both
+/// promote to `int`, which would make the assembly below signed arithmetic on
+/// values that are not signed - the bare `0x3FU` this replaced was `unsigned
+/// int` by suffix and did not.
 inline constexpr unsigned char continuation_mask = 0xC0U;
 inline constexpr unsigned char continuation_marker = 0x80U;
-inline constexpr unsigned char continuation_payload = 0x3FU;
+inline constexpr std::uint32_t continuation_payload = 0x3FU;
 inline constexpr unsigned int continuation_bits = 6U;
 
 /// A lead byte announces its length in its high bits, and carries the rest of
 /// the code point in the low bits the matching payload mask keeps.
 inline constexpr unsigned char two_byte_mask = 0xE0U;
 inline constexpr unsigned char two_byte_marker = 0xC0U;
-inline constexpr unsigned char two_byte_payload = 0x1FU;
+inline constexpr std::uint32_t two_byte_payload = 0x1FU;
 
 inline constexpr unsigned char three_byte_mask = 0xF0U;
 inline constexpr unsigned char three_byte_marker = 0xE0U;
-inline constexpr unsigned char three_byte_payload = 0x0FU;
+inline constexpr std::uint32_t three_byte_payload = 0x0FU;
 
 inline constexpr unsigned char four_byte_mask = 0xF8U;
 inline constexpr unsigned char four_byte_marker = 0xF0U;
-inline constexpr unsigned char four_byte_payload = 0x07U;
+inline constexpr std::uint32_t four_byte_payload = 0x07U;
 
 /// The smallest code point each length is allowed to encode. A sequence below
 /// its own floor is an overlong encoding: a second spelling of a character that

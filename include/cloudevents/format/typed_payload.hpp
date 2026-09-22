@@ -27,7 +27,8 @@ template<described T, json::json_codec Codec>
   if (const auto* stored = std::get_if<json_text>(&data_of(cloud_event))) {
     text = &stored->raw;
   } else if (const auto* plain = std::get_if<std::string>(&data_of(cloud_event))) {
-    if (!datacontenttype_of(cloud_event) || !is_json_content_type(*datacontenttype_of(cloud_event))) {
+    const auto& media_type = datacontenttype_of(cloud_event);
+    if (!media_type || !is_json_content_type(*media_type)) {
       return fail(errc::type_mismatch,
                   "the payload is text but datacontenttype does not say it is JSON",
                   "data");

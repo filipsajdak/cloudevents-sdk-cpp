@@ -145,14 +145,17 @@ template <binding_traits T>
   put_attribute("id", id_of(cloud_event));
   put_attribute("source", source_of(cloud_event).view());
   put_attribute("type", type_of(cloud_event));
-  if (dataschema_of(cloud_event)) {
-    put_attribute("dataschema", dataschema_of(cloud_event)->view());
+  // Bound once rather than called twice. Two calls are two expressions as far
+  // as a reader or a checker is concerned, and nothing says the second yields
+  // the engaged optional the first one tested.
+  if (const auto& schema = dataschema_of(cloud_event); schema) {
+    put_attribute("dataschema", schema->view());
   }
-  if (subject_of(cloud_event)) {
-    put_attribute("subject", *subject_of(cloud_event));
+  if (const auto& named = subject_of(cloud_event); named) {
+    put_attribute("subject", *named);
   }
-  if (time_of(cloud_event)) {
-    put_attribute("time", to_string(*time_of(cloud_event)));
+  if (const auto& when = time_of(cloud_event); when) {
+    put_attribute("time", to_string(*when));
   }
   for (const auto& [name, attribute] : extensions_of(cloud_event)) {
     put_attribute(name, render_attribute(attribute));
@@ -166,11 +169,11 @@ template <binding_traits T>
   // appear under the prefix, or a receiver sees the same attribute twice, and it
   // is not encoded there: it is a media type, not an attribute value. Where the
   // binding maps it like any other attribute, it is encoded like one.
-  if (datacontenttype_of(cloud_event)) {
+  if (const auto& media_type = datacontenttype_of(cloud_event); media_type) {
     if constexpr (detail::content_type_policy<T>::as_attribute) {
-      put_attribute("datacontenttype", *datacontenttype_of(cloud_event));
+      put_attribute("datacontenttype", *media_type);
     } else {
-      detail::put<T>(into, std::string{T::content_type_header}, *datacontenttype_of(cloud_event));
+      detail::put<T>(into, std::string{T::content_type_header}, *media_type);
     }
   }
   return failure;
@@ -311,7 +314,8 @@ inline void read_body(const binary& body, event& into) {
   if (body.empty()) {
     return;
   }
-  if (datacontenttype_of(into) && is_json_content_type(*datacontenttype_of(into))) {
+  const auto& media_type = datacontenttype_of(into);
+  if (media_type && is_json_content_type(*media_type)) {
     into.data = json_text{.raw = to_text(body)};
   } else {
     into.data = body;

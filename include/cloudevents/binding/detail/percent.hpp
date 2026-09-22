@@ -94,7 +94,16 @@ inline constexpr int not_a_hex_digit = -1;
     if (high < 0 || low < 0) {
       return fail(errc::parse_error, "percent escape is not hexadecimal", std::string{text});
     }
-    out.push_back(static_cast<char>((high << 4) | low));
+    // Assembled unsigned. hex_value returns int because it reports "not a hex
+    // digit" as -1, and shifting a signed value into the high bit of a byte is
+    // implementation-defined once the result passes CHAR_MAX. Every compiler
+    // this is built with does the obvious thing, which is why it has never
+    // produced a wrong byte - but percent_decode reads from an untrusted peer,
+    // and the rest of it checks lengths, escapes and encoding precisely because
+    // of that.
+    const auto byte =
+        static_cast<unsigned>(high) << hex_shift | static_cast<unsigned>(low);
+    out.push_back(static_cast<char>(static_cast<unsigned char>(byte)));
     index += 2;
   }
   if (!ce::v1::detail::is_valid_utf8(out)) {

@@ -35,6 +35,9 @@ struct nlohmann_codec {
 
   [[nodiscard]] static auto dump(const value& held) -> std::string { return held.dump(); }
 
+  // Parentheses, not braces: `return {x};` on nlohmann::json selects its
+  // initializer_list constructor and builds a one-element array.
+  // NOLINTBEGIN(modernize-return-braced-init-list)
   [[nodiscard]] static auto make_null() -> value { return value(nullptr); }
   [[nodiscard]] static auto make_bool(bool boolean) -> value { return value(boolean); }
   [[nodiscard]] static auto make_int(std::int64_t integer) -> value { return value(integer); }
@@ -42,10 +45,13 @@ struct nlohmann_codec {
   [[nodiscard]] static auto make_string(std::string_view text) -> value {
     return value(std::string{text});
   }
+  // NOLINTEND(modernize-return-braced-init-list)
   [[nodiscard]] static auto make_array() -> value { return value::array(); }
   [[nodiscard]] static auto make_object() -> value { return value::object(); }
 
   static void set(value& object, std::string_view key, value member) {
+    // An object's operator[] inserts or replaces a member; there is no index.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     object[std::string{key}] = std::move(member);
   }
 

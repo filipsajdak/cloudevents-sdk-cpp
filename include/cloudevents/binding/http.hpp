@@ -44,6 +44,12 @@ using ce::v1::binding::detail::needs_escape;
 using ce::v1::binding::detail::percent_decode;
 using ce::v1::binding::detail::percent_encode;
 
+/// Control characters, which a literal header value may not carry: a CR or LF
+/// would let a value end the header and begin another. Space is printable and
+/// permitted here, so the bound is U+0020 rather than percent.hpp's U+0021.
+inline constexpr unsigned char first_printable_ascii = 0x20U;
+inline constexpr unsigned char delete_character = 0x7FU;
+
 /// \brief What the shared binding core needs to know about HTTP.
 ///
 /// A named namespace, not an anonymous one: an anonymous namespace in a header
@@ -111,8 +117,8 @@ struct percent_encoded_values {
 struct literal_values {
   [[nodiscard]] static auto encode(std::string_view text) -> result<std::string> {
     for (const char character : text) {
-      if (static_cast<unsigned char>(character) < 0x20U ||
-          static_cast<unsigned char>(character) == 0x7FU) {
+      if (static_cast<unsigned char>(character) < detail::first_printable_ascii ||
+          static_cast<unsigned char>(character) == detail::delete_character) {
         return fail(errc::invalid_argument,
                     "a literal header value may not contain a control character");
       }

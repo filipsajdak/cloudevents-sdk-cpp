@@ -33,6 +33,16 @@ inline constexpr std::size_t max_fractional_digits = 9;
 
 inline constexpr int decimal_radix = 10;
 
+/// The last value each field of an RFC 3339 time-of-day may hold. `leap_second`
+/// is 60 rather than 59 because RFC 3339 section 5.6 admits a leap second on
+/// consume; it folds onto the following second and does not round-trip.
+inline constexpr int last_hour = 23;
+inline constexpr int last_minute = 59;
+inline constexpr int leap_second = 60;
+
+/// Minutes in an hour, for splitting a numeric offset into its two fields.
+inline constexpr int minutes_per_hour = 60;
+
 /// \brief The diagnostic for a literal digit count no instant can express.
 ///
 /// Declared and never defined, as in `detail::literal`: reaching it inside a
@@ -106,7 +116,7 @@ template <class Capture>
 [[nodiscard]] constexpr auto to_int(Capture capture) noexcept -> int {
   int value = 0;
   for (const char digit : capture) {
-    value = value * 10 + (digit - '0');
+    value = value * decimal_radix + (digit - '0');
   }
   return value;
 }
@@ -142,10 +152,10 @@ template <class Capture>
   if (!detail::is_valid_date(year, month, day)) {
     return fail(errc::invalid_timestamp, "no such calendar date", std::string{text});
   }
-  if (hour > 23 || minute > 59) {
+  if (hour > detail::last_hour || minute > detail::last_minute) {
     return fail(errc::invalid_timestamp, "hour or minute out of range", std::string{text});
   }
-  if (second > 60) {
+  if (second > detail::leap_second) {
     return fail(errc::invalid_timestamp, "second out of range", std::string{text});
   }
 
@@ -175,7 +185,7 @@ template <class Capture>
     form = offset_form::numeric;
     const int offset_hour = detail::to_int(match.get<10>());
     const int offset_minute = detail::to_int(match.get<11>());
-    if (offset_hour > 23 || offset_minute > 59) {
+    if (offset_hour > detail::last_hour || offset_minute > detail::last_minute) {
       return fail(errc::invalid_timestamp, "offset out of range", std::string{text});
     }
     offset = std::chrono::hours{offset_hour} + std::chrono::minutes{offset_minute};
@@ -260,7 +270,8 @@ template <class Capture>
                      static_cast<int>(ymd.year()), static_cast<unsigned>(ymd.month()),
                      static_cast<unsigned>(ymd.day()), hours.count(), minutes.count(),
                      seconds.count(), fraction, offset_minutes < 0 ? '-' : '+',
-                     offset_magnitude / 60, offset_magnitude % 60);
+                     offset_magnitude / detail::minutes_per_hour,
+                     offset_magnitude % detail::minutes_per_hour);
 }
 
 }  // namespace ce::inline v1

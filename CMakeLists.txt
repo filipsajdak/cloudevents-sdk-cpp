@@ -52,6 +52,10 @@ include(CeWarnings)
 include(CeCodecs)
 include(CeDependencies)
 
+# clang-tidy reads the real compile flags from here, so the lint sees the
+# configuration the suites are actually built with.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # ---------------------------------------------------------------------------
 # Targets
 # ---------------------------------------------------------------------------
@@ -127,6 +131,7 @@ endif()
 if(CE_BUILD_TESTING)
   enable_testing()
   add_subdirectory(test)
+  include(CeTidy)
 endif()
 
 if(CE_BUILD_FUZZERS)

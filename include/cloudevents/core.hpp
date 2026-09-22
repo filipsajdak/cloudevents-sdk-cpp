@@ -834,4 +834,22 @@ class event {
   options rest_;
 };
 
+namespace detail {
+
+/// \brief Make an attribute from the text a decoder read and put it in its slot.
+///
+/// The attribute's own factory is the only thing that can refuse the text, so a
+/// decoder never checks a rule itself (SWR-CORE-0026).
+template <class Attribute, class Text>
+[[nodiscard]] auto store_attribute(std::optional<Attribute>& slot, Text&& text) -> result<void> {
+  auto made = Attribute::make(std::forward<Text>(text));
+  if (!made) {
+    return fail(made.error().code, made.error().detail, made.error().where);
+  }
+  slot = std::move(*made);
+  return {};
+}
+
+}  // namespace detail
+
 }  // namespace ce::inline v1

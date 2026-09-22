@@ -66,55 +66,62 @@ template<json::json_codec Codec, class F>
 template<json::json_codec Codec, class F>
 [[nodiscard]] auto field_from_json(const typename Codec::value& held,
                                    std::string_view where,
+                                   F& out) -> result<void>;
+
+/// A JSON array into a std::vector field, element by element.
+template<json::json_codec Codec, class F>
+[[nodiscard]] auto array_from_json(const typename Codec::value& held,
+                                   std::string_view where,
                                    F& out) -> result<void> {
-  if constexpr (is_json_optional<F>) {
-    if (Codec::kind_of(held) == json::kind::null) {
-      out.reset();
-      return {};
+  if (Codec::kind_of(held) != json::kind::array) {
+    return fail(errc::type_mismatch, "expected a JSON array", std::string{where});
+  }
+  result<void> outcome{};
+  out.clear();
+  Codec::for_each_element(held, [&](const Codec::value& element) {
+    if (!outcome) {
+      return;
     }
     typename F::value_type inner{};
-    if (const auto read = field_from_json<Codec>(held, where, inner); !read) {
-      return read;
+    if (const auto read = field_from_json<Codec>(element, where, inner); !read) {
+      outcome = read;
+      return;
     }
-    out = std::move(inner);
-    return {};
-  } else if constexpr (is_json_vector<F>) {
-    if (Codec::kind_of(held) != json::kind::array) {
-      return fail(errc::type_mismatch, "expected a JSON array", std::string{where});
+    out.push_back(std::move(inner));
+  });
+  return outcome;
+}
+
+/// A JSON object into a std::map field, member by member.
+template<json::json_codec Codec, class F>
+[[nodiscard]] auto object_from_json(const typename Codec::value& held,
+                                    std::string_view where,
+                                    F& out) -> result<void> {
+  if (Codec::kind_of(held) != json::kind::object) {
+    return fail(errc::type_mismatch, "expected a JSON object", std::string{where});
+  }
+  result<void> outcome{};
+  out.clear();
+  Codec::for_each_member(held, [&](std::string_view key, const Codec::value& member) {
+    if (!outcome) {
+      return;
     }
-    result<void> element_error{};
-    out.clear();
-    Codec::for_each_element(held, [&](const Codec::value& element) {
-      if (!element_error) {
-        return;
-      }
-      typename F::value_type inner{};
-      if (const auto read = field_from_json<Codec>(element, where, inner); !read) {
-        element_error = read;
-        return;
-      }
-      out.push_back(std::move(inner));
-    });
-    return element_error;
-  } else if constexpr (is_json_map<F>) {
-    if (Codec::kind_of(held) != json::kind::object) {
-      return fail(errc::type_mismatch, "expected a JSON object", std::string{where});
+    typename F::mapped_type inner{};
+    if (const auto read = field_from_json<Codec>(member, key, inner); !read) {
+      outcome = read;
+      return;
     }
-    result<void> member_error{};
-    out.clear();
-    Codec::for_each_member(held, [&](std::string_view key, const Codec::value& member) {
-      if (!member_error) {
-        return;
-      }
-      typename F::mapped_type inner{};
-      if (const auto read = field_from_json<Codec>(member, key, inner); !read) {
-        member_error = read;
-        return;
-      }
-      out.insert_or_assign(std::string{key}, std::move(inner));
-    });
-    return member_error;
-  } else if constexpr (std::is_same_v<F, bool>) {
+    out.insert_or_assign(std::string{key}, std::move(inner));
+  });
+  return outcome;
+}
+
+/// A JSON scalar into a bool, string, double or integer field.
+template<json::json_codec Codec, class F>
+[[nodiscard]] auto scalar_from_json(const typename Codec::value& held,
+                                    std::string_view where,
+                                    F& out) -> result<void> {
+  if constexpr (std::is_same_v<F, bool>) {
     auto read = Codec::as_bool(held);
     if (!read) {
       return fail(errc::type_mismatch, "expected a JSON boolean", std::string{where});
@@ -149,6 +156,30 @@ template<json::json_codec Codec, class F>
     }
     out = static_cast<F>(*read);
     return {};
+  }
+}
+
+template<json::json_codec Codec, class F>
+[[nodiscard]] auto field_from_json(const typename Codec::value& held,
+                                   std::string_view where,
+                                   F& out) -> result<void> {
+  if constexpr (is_json_optional<F>) {
+    if (Codec::kind_of(held) == json::kind::null) {
+      out.reset();
+      return {};
+    }
+    typename F::value_type inner{};
+    if (const auto read = field_from_json<Codec>(held, where, inner); !read) {
+      return read;
+    }
+    out = std::move(inner);
+    return {};
+  } else if constexpr (is_json_vector<F>) {
+    return array_from_json<Codec>(held, where, out);
+  } else if constexpr (is_json_map<F>) {
+    return object_from_json<Codec>(held, where, out);
+  } else {
+    return scalar_from_json<Codec>(held, where, out);
   }
 }
 

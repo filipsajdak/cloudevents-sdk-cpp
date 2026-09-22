@@ -95,6 +95,67 @@ template <binding_traits T>
   return name;
 }
 
+/// \brief Put one decoded prefixed field into the event under construction.
+///
+/// The attribute's own factory is the only thing that refuses its text, so each
+/// branch is the attribute it names and nothing else.
+template <binding_traits T>
+[[nodiscard]] auto apply_attribute(event::builder& into, std::string attribute, std::string value)
+    -> result<void> {
+  if (attribute == "datacontenttype") {
+    if constexpr (content_type_policy<T>::as_attribute) {
+      return ce::v1::detail::store_attribute(into.rest.datacontenttype, std::move(value));
+    } else {
+      // Where the binding carries the media type in its own content-type field,
+      // a prefixed datacontenttype is a field the binding does not define, and
+      // the refusal says where it belongs (SWR-BIND-0005).
+      return fail(errc::invalid_argument,
+                  "this binding carries datacontenttype in its content-type field, "
+                  "not as a prefixed attribute",
+                  std::move(attribute));
+    }
+  }
+  if (attribute == "specversion") {
+    if (auto version = spec_version::make(value); !version) {
+      return fail(version.error().code, version.error().detail, version.error().where);
+    }
+    return {};
+  }
+  if (attribute == "id") {
+    return ce::v1::detail::store_attribute(into.id, std::move(value));
+  }
+  if (attribute == "source") {
+    return ce::v1::detail::store_attribute(into.source, std::move(value));
+  }
+  if (attribute == "type") {
+    return ce::v1::detail::store_attribute(into.type, std::move(value));
+  }
+  if (attribute == "dataschema") {
+    return ce::v1::detail::store_attribute(into.rest.dataschema, std::move(value));
+  }
+  if (attribute == "subject") {
+    return ce::v1::detail::store_attribute(into.rest.subject, std::move(value));
+  }
+  if (attribute == "time") {
+    auto parsed = parse_timestamp(value);
+    if (!parsed) {
+      return fail(parsed.error().code, parsed.error().detail, "time");
+    }
+    into.rest.time = *parsed;
+    return {};
+  }
+  // Same rule as the JSON format: a prefixed field whose name is not one the
+  // spec allows cannot become an extension, or reading would return an event
+  // that writing then refuses. The wire form carries no type, so an extension
+  // arrives as a string; the typed extension structs recover the declared type.
+  auto extension = extension_name::make(std::move(attribute));
+  if (!extension) {
+    return fail(extension.error().code, extension.error().detail, extension.error().where);
+  }
+  into.rest.extensions.insert_or_assign(std::move(*extension), attribute_value{std::move(value)});
+  return {};
+}
+
 }  // namespace detail
 
 /// \brief An attribute in the text form every binding puts on the wire.
@@ -141,7 +202,7 @@ template <binding_traits T>
     detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
   };
 
-  put_attribute("specversion", cloud_event.specversion().view());
+  put_attribute("specversion", spec_version::view());
   put_attribute("id", cloud_event.id().view());
   put_attribute("source", cloud_event.source().view());
   put_attribute("type", cloud_event.type().view());
@@ -200,21 +261,6 @@ template <binding_traits T>
   const headers& fields = *adopted;
 
   event::builder under_construction{};
-  result<void> header_error{};
-
-  // Every context attribute is made the same way: the wire text goes to the
-  // attribute's own factory, which is the only thing that can refuse it.
-  const auto store = [&header_error]<class Attribute>(std::optional<Attribute>& slot,
-                                                      std::string text) {
-    auto made = Attribute::make(std::move(text));
-    if (!made) {
-      header_error = fail(made.error().code, made.error().detail, made.error().where);
-      return false;
-    }
-    slot = std::move(*made);
-    return true;
-  };
-
   for (const auto& [name, raw_value] : fields) {
     if (!detail::carries_prefix<T>(name)) {
       continue;
@@ -223,88 +269,13 @@ template <binding_traits T>
 
     auto decoded = T::decode_value(raw_value);
     if (!decoded) {
-      header_error = fail(decoded.error().code, decoded.error().detail, attribute);
-      break;
+      return fail(decoded.error().code, decoded.error().detail, attribute);
     }
-
-    // Hoisted out of the chain below rather than joined to it with &&: mixing a
-    // compile-time constant into a runtime condition is C4127 under MSVC's /W4,
-    // and `if constexpr` is what actually expresses "this branch does not exist
-    // for that binding".
-    if constexpr (detail::content_type_policy<T>::as_attribute) {
-      if (attribute == "datacontenttype") {
-        if (!store(under_construction.rest.datacontenttype, std::move(*decoded))) {
-          break;
-        }
-        continue;
-      }
-    } else {
-      // Where the binding carries the media type in its own content-type field,
-      // a prefixed datacontenttype is a field the binding does not define. It
-      // used to fall through to the extension branch, which accepted the name,
-      // stored it, and left validate() to refuse it later as a reserved name -
-      // a complaint about the name rather than about where it arrived.
-      if (attribute == "datacontenttype") {
-        header_error = fail(errc::invalid_argument,
-                            "this binding carries datacontenttype in its content-type field, "
-                            "not as a prefixed attribute",
-                            attribute);
-        break;
-      }
+    if (auto applied = detail::apply_attribute<T>(under_construction, std::move(attribute),
+                                                  std::move(*decoded));
+        !applied) {
+      return fail(applied.error().code, applied.error().detail, applied.error().where);
     }
-
-    if (attribute == "specversion") {
-      auto version = spec_version::make(*decoded);
-      if (!version) {
-        header_error = fail(version.error().code, version.error().detail, version.error().where);
-        break;
-      }
-    } else if (attribute == "id") {
-      if (!store(under_construction.id, std::move(*decoded))) {
-        break;
-      }
-    } else if (attribute == "source") {
-      if (!store(under_construction.source, std::move(*decoded))) {
-        break;
-      }
-    } else if (attribute == "type") {
-      if (!store(under_construction.type, std::move(*decoded))) {
-        break;
-      }
-    } else if (attribute == "dataschema") {
-      if (!store(under_construction.rest.dataschema, std::move(*decoded))) {
-        break;
-      }
-    } else if (attribute == "subject") {
-      if (!store(under_construction.rest.subject, std::move(*decoded))) {
-        break;
-      }
-    } else if (attribute == "time") {
-      auto parsed = parse_timestamp(*decoded);
-      if (!parsed) {
-        header_error = fail(parsed.error().code, parsed.error().detail, "time");
-        break;
-      }
-      under_construction.rest.time = *parsed;
-    } else {
-      // Same rule as the JSON format: a prefixed field whose name is not one the
-      // spec allows cannot become an extension, or reading would return an event
-      // that writing then refuses. `extension_name` is where that rule lives now.
-      auto extension = extension_name::make(std::move(attribute));
-      if (!extension) {
-        header_error =
-            fail(extension.error().code, extension.error().detail, extension.error().where);
-        break;
-      }
-      // The wire form carries no type, so an extension arrives as a string. The
-      // typed extension structs are what recover the declared type.
-      under_construction.rest.extensions.insert_or_assign(std::move(*extension),
-                                                          attribute_value{std::move(*decoded)});
-    }
-  }
-
-  if (!header_error) {
-    return fail(header_error.error().code, header_error.error().detail, header_error.error().where);
   }
   return under_construction;
 }

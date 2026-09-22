@@ -46,6 +46,7 @@ ce_add_test(base64_test SOURCES base64_test.cpp)
 ce_add_test(binding_core_test SOURCES binding_core_test.cpp)
 ce_add_test(message_headers_test SOURCES message_headers_test.cpp)
 ce_add_test(http_encoding_test SOURCES http_encoding_test.cpp)
+ce_add_test(timestamp_test SOURCES timestamp_test.cpp)
 
 ce_add_test(module_test SOURCES module_test.cpp)
 # CE_MODULE_IN_DEFAULT_BUILD carries the option's value rather than a constant,
@@ -136,6 +137,18 @@ target_link_libraries(attribute_literal_probe PRIVATE ce::core ce::warnings)
 add_test(NAME attribute-literal-probe-must-not-compile
   COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target attribute_literal_probe)
 set_tests_properties(attribute-literal-probe-must-not-compile PROPERTIES
+  WILL_FAIL TRUE
+  LABELS "guard")
+
+# SWR-CORE-0030: a literal fractional-digit count above nine is refused when the
+# translation unit is compiled, so no running program can contain the line that
+# would assert it.
+add_executable(timestamp_digits_probe EXCLUDE_FROM_ALL timestamp_digits_probe.cpp)
+target_link_libraries(timestamp_digits_probe PRIVATE ce::core ce::warnings)
+
+add_test(NAME timestamp-digits-probe-must-not-compile
+  COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target timestamp_digits_probe)
+set_tests_properties(timestamp-digits-probe-must-not-compile PROPERTIES
   WILL_FAIL TRUE
   LABELS "guard")
 

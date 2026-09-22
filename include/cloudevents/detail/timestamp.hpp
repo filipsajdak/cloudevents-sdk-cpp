@@ -25,6 +25,61 @@ enum class offset_form : std::uint8_t {
   numeric,
 };
 
+namespace detail {
+
+/// The most fractional digits a nanosecond-resolution instant can express, and
+/// the upper bound the RFC 3339 grammar below admits.
+inline constexpr std::size_t max_fractional_digits = 9;
+
+inline constexpr int decimal_radix = 10;
+
+/// \brief The diagnostic for a literal digit count no instant can express.
+///
+/// Declared and never defined, as in `detail::literal`: reaching it inside a
+/// constant expression is the error, and its name is the message.
+[[noreturn]] void this_digit_count_is_more_than_a_nanosecond_instant_can_express();
+
+}  // namespace detail
+
+/// \brief How many digits followed the decimal point, 0 through 9.
+///
+/// A count, not an integer. `to_string` divided a place value down one decade
+/// per digit, so a tenth digit divided by zero; the count was a public
+/// `std::uint8_t` and every value from 10 to 255 was reachable by hand. The
+/// renderer no longer divides, and this is the other half: the state stops
+/// existing rather than being survivable (SWR-CORE-0030).
+class fraction_digits {
+ public:
+  constexpr fraction_digits() noexcept = default;
+
+  /// A literal count is checked when the translation unit is compiled, which
+  /// keeps `.fractional_digits = 3` in a designated initializer working.
+  // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
+  consteval fraction_digits(int count) : count_{static_cast<std::uint8_t>(count)} {
+    if (count < 0 || count > static_cast<int>(detail::max_fractional_digits)) {
+      detail::this_digit_count_is_more_than_a_nanosecond_instant_can_express();
+    }
+  }
+
+  [[nodiscard]] static auto make(std::size_t count) -> result<fraction_digits> {
+    if (count > detail::max_fractional_digits) {
+      return fail(errc::invalid_attribute_value,
+                  "a nanosecond instant expresses at most nine fractional digits",
+                  std::to_string(count));
+    }
+    fraction_digits out;
+    out.count_ = static_cast<std::uint8_t>(count);
+    return out;
+  }
+
+  [[nodiscard]] constexpr auto count() const noexcept -> std::uint8_t { return count_; }
+
+  friend auto operator==(fraction_digits, fraction_digits) noexcept -> bool = default;
+
+ private:
+  std::uint8_t count_ = 0;
+};
+
 /// \brief An RFC 3339 instant, plus enough of its spelling to reproduce it.
 struct timestamp {
   /// The instant, normalised to UTC.
@@ -34,18 +89,12 @@ struct timestamp {
   /// How the offset was written, so `Z` and `+00:00` stay distinguishable.
   offset_form form = offset_form::utc_designator;
   /// Digits after the decimal point in the source, 0 through 9.
-  std::uint8_t fractional_digits = 0;
+  fraction_digits fractional_digits = {};
 
   friend auto operator==(const timestamp&, const timestamp&) -> bool = default;
 };
 
 namespace detail {
-
-/// The most fractional digits a nanosecond-resolution instant can express, and
-/// the upper bound the RFC 3339 grammar below admits.
-inline constexpr std::size_t max_fractional_digits = 9;
-
-inline constexpr int decimal_radix = 10;
 
 /// The one definition of the grammar. The sign class must escape the dash: CTRE
 /// rejects a bare `-` inside a character class.
@@ -100,11 +149,18 @@ template <class Capture>
     return fail(errc::invalid_timestamp, "second out of range", std::string{text});
   }
 
-  std::uint8_t fractional_digits = 0;
+  fraction_digits fractional_digits{};
   std::chrono::nanoseconds subsecond{0};
   if (const auto fraction = match.get<7>(); fraction) {
     const auto digits = fraction.to_view();
-    fractional_digits = static_cast<std::uint8_t>(digits.size());
+    // The grammar above admits one to nine digits, so this cannot fail. It is
+    // still asked rather than asserted: the bound belongs to the type, and a
+    // change to the pattern should be reported here rather than truncated.
+    auto counted = fraction_digits::make(digits.size());
+    if (!counted) {
+      return fail(counted.error().code, counted.error().detail, std::string{text});
+    }
+    fractional_digits = *counted;
     auto place = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::milliseconds{100});
     for (const char digit : digits) {
@@ -175,17 +231,18 @@ template <class Capture>
                                                                           minutes - seconds);
 
   std::string fraction;
-  if (value.fractional_digits > 0) {
+  if (value.fractional_digits.count() > 0) {
     // Rendered as the full nanosecond field and then truncated, rather than by
-    // dividing down a place value: the place value reaches zero on the tenth
-    // digit, and `fractional_digits` is a public field any caller can set.
+    // dividing down a place value that reaches zero on the tenth digit. The
+    // count can no longer exceed nine, so the truncation below is now belt and
+    // braces rather than the guard it once was.
     std::array<char, detail::max_fractional_digits> rendered{};
     auto remaining = nanos.count();
     for (auto digit = rendered.rbegin(); digit != rendered.rend(); ++digit) {
       *digit = static_cast<char>('0' + remaining % detail::decimal_radix);
       remaining /= detail::decimal_radix;
     }
-    const auto shown = std::min<std::size_t>(value.fractional_digits, rendered.size());
+    const auto shown = std::min<std::size_t>(value.fractional_digits.count(), rendered.size());
     fraction.reserve(shown + 1);
     fraction.push_back('.');
     fraction.append(rendered.data(), shown);

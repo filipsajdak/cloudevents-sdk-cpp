@@ -961,6 +961,43 @@ They are the correct API for a server before NATS 2.2, which cannot carry
 headers at all, and `ce::v1` is frozen: `SWR-BUILD-0006` permits adding to it
 and not removing from it. A caller on 2.2 or later wants the message pair.
 
+## D-TIDY-1: The tidy target lands before the tidy gate, and the baseline is 469
+
+`.clang-tidy` has been in this repository since M0, with a curated check set,
+`WarningsAsErrors: '*'`, and a named reason beside every exclusion. **Nothing ever
+ran it.** No CI job, no CMake target, no hook. Measured 2026-09-22: the first run
+of the existing configuration over the existing headers reports **469 findings**.
+
+That is the cost of a lint nobody invokes. The configuration is not wrong - it is
+careful, and its exclusions are well argued - but a standard that is never
+checked is a statement of intent, and the tree drifted past it for the project's
+whole life without anyone being able to see it happening.
+
+So this is split. The `tidy` target lands now: it makes the number knowable and
+lets anyone reproduce it. The gate does not, because the only ways to make CI
+green today are to fix 469 findings in one change or to switch off the checks
+that report them - and `.clang-tidy`'s own header says what happens then: "A lint
+that fails on the code it is meant to guard gets switched off."
+
+The findings sort into three kinds, and each needs a different answer:
+
+- **Real.** `bugprone-unchecked-optional-access` (26, concentrated in
+  `binding/common.hpp`) and `bugprone-signed-bitwise` (3, at `percent.hpp:97`,
+  which is the `(high << 4) | low` the audit already flagged as
+  implementation-defined above 0x7F). These get fixed.
+- **Satisfiable by being clearer.** `pro-bounds-avoid-unchecked-container-access`
+  (75) is mostly the guarded index arithmetic in the UTF-8 walker and
+  `percent_decode`. The guard is real; the checker cannot see it. Restructuring
+  to express the bound is better code, not a workaround.
+- **Wrong for this codebase.** Whatever remains gets disabled with a reason
+  beside it, in the style the file already uses.
+
+`readability-magic-numbers` and `cppcoreguidelines-avoid-magic-numbers` stay
+disabled until that triage is done. The constants they would have found are named
+now, but turning the checks on before the other 469 are answered would put a red
+job in CI on its first day, which is how a gate earns a reputation for being
+ignorable.
+
 ## D-CORE-6: The timestamp fraction is rendered whole, then truncated
 
 `to_string` built the fractional digits by dividing a place value that started at

@@ -5,10 +5,14 @@
 ///
 /// Strict on produce, tolerant on consume.
 
+#include <algorithm>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -125,13 +129,17 @@ inline constexpr std::string_view reserved_names[] = {
 /// \brief True when a string ends with a suffix, compared case-insensitively.
 [[nodiscard]] constexpr auto iends_with(std::string_view text, std::string_view suffix) noexcept
     -> bool {
-  return text.size() >= suffix.size() && iequals(text.substr(text.size() - suffix.size()), suffix);
+  return text.size() >= suffix.size() &&
+         std::ranges::equal(
+             text | std::views::drop(static_cast<std::ptrdiff_t>(text.size() - suffix.size())),
+             suffix, {}, ascii_lower, ascii_lower);
 }
 
 [[nodiscard]] constexpr auto starts_with_ignoring_case(std::string_view text,
                                                        std::string_view prefix) noexcept -> bool {
   return text.size() >= prefix.size() &&
-         ce::detail::iequals(text.substr(0, prefix.size()), prefix);
+         std::ranges::equal(text | std::views::take(static_cast<std::ptrdiff_t>(prefix.size())),
+                            prefix, {}, ascii_lower, ascii_lower);
 }
 
 /// The UTF-8 encoding, as the tables in Unicode 15 chapter 3 state it. Each

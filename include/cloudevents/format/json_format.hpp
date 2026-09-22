@@ -190,10 +190,12 @@ struct json_format {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
 
-    if (auto time_text = optional_string("time"); !time_text) {
+    const auto time_text = optional_string("time");
+    if (!time_text) {
       return fail(time_text.error().code, time_text.error().detail, time_text.error().where);
-    } else if (*time_text) {
-      auto parsed = parse_timestamp(**time_text);
+    }
+    if (const auto& present = *time_text; present) {
+      auto parsed = parse_timestamp(*present);
       if (!parsed) {
         return fail(parsed.error().code, parsed.error().detail, "time");
       }

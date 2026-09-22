@@ -32,16 +32,17 @@ enum class describe_backend : std::uint8_t { macro, reflection };
 template <std::size_t N>
 struct name {
   // A std::string_view is not a structural type, so it cannot be an annotation.
-  char value[N];
+  // std::array is, and it copies whole rather than element by element.
+  std::array<char, N> value{};
 
-  consteval explicit(false) name(const char (&text)[N]) {
-    for (std::size_t i = 0; i < N; ++i) {
-      value[i] = text[i];
-    }
-  }
+  // The parameter stays a reference to a C array: that is the type of a string
+  // literal, and the only form from which N can be deduced.
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
+  consteval explicit(false) name(const char (&text)[N]) : value{std::to_array(text)} {}
 };
 
 template <std::size_t N>
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
 name(const char (&)[N]) -> name<N>;
 
 /// \brief Annotation excluding a member from the description.

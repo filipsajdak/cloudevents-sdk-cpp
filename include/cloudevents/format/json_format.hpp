@@ -42,17 +42,19 @@ struct json_format {
     Codec::set(root, "source", Codec::make_string(source_of(cloud_event).view()));
     Codec::set(root, "type", Codec::make_string(type_of(cloud_event)));
 
-    if (datacontenttype_of(cloud_event)) {
-      Codec::set(root, "datacontenttype", Codec::make_string(*datacontenttype_of(cloud_event)));
+    // Bound once rather than called twice: nothing says the second call yields
+    // the engaged optional the first one tested.
+    if (const auto& media_type = datacontenttype_of(cloud_event); media_type) {
+      Codec::set(root, "datacontenttype", Codec::make_string(*media_type));
     }
-    if (dataschema_of(cloud_event)) {
-      Codec::set(root, "dataschema", Codec::make_string(dataschema_of(cloud_event)->view()));
+    if (const auto& schema = dataschema_of(cloud_event); schema) {
+      Codec::set(root, "dataschema", Codec::make_string(schema->view()));
     }
-    if (subject_of(cloud_event)) {
-      Codec::set(root, "subject", Codec::make_string(*subject_of(cloud_event)));
+    if (const auto& named = subject_of(cloud_event); named) {
+      Codec::set(root, "subject", Codec::make_string(*named));
     }
-    if (time_of(cloud_event)) {
-      Codec::set(root, "time", Codec::make_string(to_string(*time_of(cloud_event))));
+    if (const auto& when = time_of(cloud_event); when) {
+      Codec::set(root, "time", Codec::make_string(to_string(*when)));
     }
 
     for (const auto& [name, attribute] : extensions_of(cloud_event)) {
@@ -384,8 +386,8 @@ struct json_format {
 
     // A JSON string under `data` is the payload itself when the content type says
     // it is not JSON. Otherwise the member is carried through as JSON.
-    const bool declared_non_json =
-        datacontenttype_of(cloud_event) && !is_json_content_type(*datacontenttype_of(cloud_event));
+    const auto& media_type = datacontenttype_of(cloud_event);
+    const bool declared_non_json = media_type && !is_json_content_type(*media_type);
     if (declared_non_json && Codec::kind_of(*data) == json::kind::string) {
       auto text = Codec::as_string(*data);
       if (!text) {

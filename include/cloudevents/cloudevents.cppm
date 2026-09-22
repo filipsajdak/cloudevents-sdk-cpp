@@ -43,7 +43,7 @@ using ce::v1::binary;
 using ce::v1::content_mode;
 using ce::v1::data_t;
 using ce::v1::event;
-using ce::v1::headers;
+using ce::v1::raw_headers;
 using ce::v1::is_json_content_type;
 using ce::v1::json_text;
 using ce::v1::lint_warning;

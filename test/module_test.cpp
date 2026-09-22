@@ -45,7 +45,7 @@
 
 #define CE_MODULE_EXPORTS(X)                                                                     \
   X(errc) X(error) X(fail) X(result) X(to_string_view)                                           \
-  X(attribute_value) X(binary) X(content_mode) X(data_t) X(event) X(headers)                     \
+  X(attribute_value) X(binary) X(content_mode) X(data_t) X(event) X(raw_headers)                     \
   X(is_json_content_type) X(json_text) X(lint_warning) X(message) X(parse_timestamp)             \
   X(reserved_name) X(timestamp) X(to_string) X(to_bytes) X(to_text) X(uri) X(uri_ref)\
   X(valid_attribute_name)           \

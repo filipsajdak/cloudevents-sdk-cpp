@@ -137,7 +137,7 @@ CE_DESCRIBE(order, total, currency, paid, tags);
 [[nodiscard]] auto typed_event() -> const ce::event& {
   static const ce::event subject = [] {
     ce::event out{.id = "A234", .source = ce::uri_ref{"/orders"}, .type = "com.example.order"};
-    (void)ce::set_data<order, nlohmann_codec>(
+    ce::set_data<order, nlohmann_codec>(
         out, order{.total = 4299, .currency = "EUR", .paid = true, .tags = {"eu", "priority"}});
     return out;
   }();
@@ -158,9 +158,8 @@ void typed_payload_write(benchmark::State& state) {
   const order payload{.total = 4299, .currency = "EUR", .paid = true, .tags = {"eu", "priority"}};
   for (auto _ : state) {
     ce::event subject{.id = "A234", .source = ce::uri_ref{"/orders"}, .type = "com.example.order"};
-    auto stored = ce::set_data<order, C>(subject, payload);
+    ce::set_data<order, C>(subject, payload);
     benchmark::DoNotOptimize(subject);
-    benchmark::DoNotOptimize(stored);
   }
 }
 

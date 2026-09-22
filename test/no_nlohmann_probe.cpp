@@ -78,10 +78,12 @@ auto probe() -> report {
   // The typed payload accessors, over the same user-supplied codec.
   ce::event typed{.id = "2", .source = "/spec/test", .type = "com.example.parcel"};
   const parcel sent{.label = "crate", .weight = 12};
-  const bool stored = ce::set_data<parcel, ce::test::mini_codec>(typed, sent).has_value();
+  // set_data cannot fail, so there is no longer a result to check: writing the
+  // payload and reading it back is the whole round trip.
+  ce::set_data<parcel, ce::test::mini_codec>(typed, sent);
   auto read = ce::data_as<parcel, ce::test::mini_codec>(typed);
   const bool payload_round_tripped =
-      stored && read.has_value() && read->label == sent.label && read->weight == sent.weight;
+      read.has_value() && read->label == sent.label && read->weight == sent.weight;
 
   // The typed extension layer, which is core and needs no codec at all.
   ce::event tagged{.id = "3", .source = "/spec/test", .type = "com.example.traced"};

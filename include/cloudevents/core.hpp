@@ -575,7 +575,10 @@ struct event {
   friend auto operator==(const event&, const event&) -> bool = default;
 
   /// \brief Set an extension attribute, rejecting an invalid or reserved name.
-  auto set_extension(std::string name, attribute_value value) -> result<void> {
+  ///
+  /// Discarding the result loses the refusal, and the event then carries no
+  /// extension where the caller believes it set one.
+  [[nodiscard]] auto set_extension(std::string name, attribute_value value) -> result<void> {
     if (!valid_attribute_name(name)) {
       return fail(errc::invalid_attribute_name,
                   "extension names must match [a-z0-9]+", name);
@@ -642,7 +645,7 @@ struct event {
   /// survive the next encode with its type intact. A `nullopt` optional removes
   /// the attribute, so the event matches the struct exactly afterwards.
   template <described Ext>
-  auto set(const Ext& value) -> result<void> {
+  [[nodiscard]] auto set(const Ext& value) -> result<void> {
     static_assert(detail::extension_fields_supported<Ext>(),
                   "an extension struct may only declare bool, int32_t, std::string, uri, "
                   "uri_ref or timestamp fields, optionally wrapped in std::optional");

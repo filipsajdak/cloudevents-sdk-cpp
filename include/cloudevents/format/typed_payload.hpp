@@ -57,12 +57,17 @@ template<described T, json::json_codec Codec>
 ///
 /// The payload is stored as `json_text` and `datacontenttype` is set to
 /// `application/json`, so the event states what it carries.
+///
+/// Returns nothing. It used to return `result<void>` and ended `return {};` on
+/// every path, so every caller wrote error handling for a failure that could not
+/// happen. `to_json_value` is total over a described type - the describe seam
+/// refuses anything else with a static_assert - and dumping a DOM the codec just
+/// built cannot fail either.
 template<described T, json::json_codec Codec>
-auto set_data(event& cloud_event, const T& value) -> result<void> {
+void set_data(event& cloud_event, const T& value) {
   auto document = to_json_value<Codec>(value);
   cloud_event.data = json_text{.raw = Codec::dump(document)};
   cloud_event.datacontenttype = "application/json";
-  return {};
 }
 
 /// \brief A typed view over an event: the payload type is part of the type.
@@ -80,21 +85,19 @@ class event_of {
   explicit event_of(event cloud_event) : event_{std::move(cloud_event)} {}
 
   /// \brief Build a typed view whose payload is already written.
-  [[nodiscard]] static auto with_data(event cloud_event, const T& value) -> result<event_of> {
-    if (auto stored = ce::v1::set_data<T, Codec>(cloud_event, value); !stored) {
-      return fail(stored.error().code, stored.error().detail, stored.error().where);
-    }
+  [[nodiscard]] static auto with_data(event cloud_event, const T& value) -> event_of {
+    ce::v1::set_data<T, Codec>(cloud_event, value);
     return event_of{std::move(cloud_event)};
   }
 
   [[nodiscard]] auto data() const -> result<T> { return data_as<T, Codec>(event_); }
 
-  auto set_data(const T& value) -> result<void> {
-    return ce::v1::set_data<T, Codec>(event_, value);
-  }
+  void set_data(const T& value) { ce::v1::set_data<T, Codec>(event_, value); }
 
+  /// Const only. A mutable reference let a caller replace the payload with one
+  /// of another type, which is the compile-time contract this class exists to
+  /// hold - breakable with no cast and nothing to notice it.
   [[nodiscard]] auto underlying() const noexcept -> const event& { return event_; }
-  [[nodiscard]] auto underlying() noexcept -> event& { return event_; }
 
   [[nodiscard]] auto validate() const -> result<void> { return event_.validate(); }
 

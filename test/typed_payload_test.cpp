@@ -89,7 +89,7 @@ void check_payload_roundtrip(std::string_view label) {
   ce::event subject = minimal();
   const reading sent = sample();
 
-  expect(ce::set_data<reading, C>(subject, sent).has_value()) << label;
+  ce::set_data<reading, C>(subject, sent);
 
   // The event states what it carries, so a peer that only reads attributes can
   // tell the payload is JSON.
@@ -125,7 +125,7 @@ void check_payload_through_the_wire(std::string_view label) {
 
   ce::event subject = minimal();
   const reading sent = sample();
-  expect(ce::set_data<reading, C>(subject, sent).has_value()) << label;
+  ce::set_data<reading, C>(subject, sent);
 
   auto encoded = format::encode(subject);
   expect(encoded.has_value()) << label;
@@ -326,7 +326,7 @@ const boost::ut::suite<"typed-payload-layering"> payload_layering = [] {
     // of ce::event. Calling them as free functions is what pins that.
     ce::event subject = minimal();
     const reading sent = sample();
-    expect(ce::set_data<reading, nlohmann_codec>(subject, sent).has_value());
+    ce::set_data<reading, nlohmann_codec>(subject, sent);
     expect(ce::data_as<reading, nlohmann_codec>(subject).has_value());
 
     static_assert(!carries_typed_payload_member<ce::event>,

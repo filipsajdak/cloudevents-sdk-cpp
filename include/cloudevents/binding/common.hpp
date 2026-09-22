@@ -76,15 +76,6 @@ void put(raw_headers& into, std::string name, std::string value) {
 }
 
 template <binding_traits T>
-[[nodiscard]] auto look_up(const raw_headers& fields, std::string_view name) -> const std::string* {
-  if constexpr (T::case_sensitive_names) {
-    return fields.find_exact(name);
-  } else {
-    return fields.find(name);
-  }
-}
-
-template <binding_traits T>
 [[nodiscard]] auto carries_prefix(std::string_view name) -> bool {
   if constexpr (T::case_sensitive_names) {
     return name.starts_with(std::string_view{T::attribute_prefix});

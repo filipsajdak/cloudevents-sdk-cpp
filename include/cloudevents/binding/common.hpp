@@ -138,7 +138,7 @@ template <binding_traits T>
       failure = fail(encoded.error().code, encoded.error().detail, std::string{name});
       return;
     }
-    detail::put<T>(into, std::string{T::attribute_prefix} + std::string{name}, std::move(*encoded));
+    detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
   };
 
   put_attribute("specversion", spec_version_of(cloud_event));

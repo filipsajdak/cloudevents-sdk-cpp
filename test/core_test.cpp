@@ -372,7 +372,11 @@ const boost::ut::suite<"core-timestamp-representation"> core_timestamp_represent
                                  std::chrono::sys_time<std::chrono::nanoseconds>>);
     static_assert(std::is_same_v<decltype(ce::timestamp::offset), std::chrono::minutes>);
     static_assert(std::is_same_v<decltype(ce::timestamp::form), ce::offset_form>);
-    static_assert(std::is_same_v<decltype(ce::timestamp::fractional_digits), std::uint8_t>);
+    // A count, not an integer: the digit count carries its own bound, because a
+    // tenth digit is one no nanosecond instant can express (SWR-CORE-0030).
+    static_assert(
+        std::is_same_v<decltype(ce::timestamp::fractional_digits), ce::fraction_digits>);
+    static_assert(std::is_same_v<decltype(ce::fraction_digits{}.count()), std::uint8_t>);
     expect(true);
   };
 
@@ -395,7 +399,7 @@ const boost::ut::suite<"core-timestamp-representation"> core_timestamp_represent
     };
     expect(epoch.offset == std::chrono::minutes{0});
     expect(epoch.form == ce::offset_form::utc_designator);
-    expect(epoch.fractional_digits == 0U);
+    expect(epoch.fractional_digits.count() == 0U);
     expect(ce::to_string(epoch) == "1970-01-01T00:00:00Z");
   };
 };
@@ -494,25 +498,12 @@ const boost::ut::suite<"core-timestamp-roundtrip"> core_timestamp_roundtrip = []
     expect(round_trips("2018-04-05T17:31:00+05:30"sv));  // half-hour offset
   };
 
-  // `fractional_digits` is a public field of an aggregate, so a caller can set a
-  // count no nanosecond instant can express. Rendering one divided a place value
-  // that had already reached zero.
-  "a digit count beyond nanosecond resolution renders instead of dividing by zero"_test = [] {
-    const auto parsed = ce::parse_timestamp("2018-04-05T17:31:00.123456789Z"sv);
-    expect(parsed.has_value());
-    if (!parsed) {
-      return;
-    }
-    for (std::uint8_t digits = 10; digits < 20; ++digits) {
-      auto beyond = *parsed;
-      beyond.fractional_digits = digits;
-      expect(ce::to_string(beyond) == "2018-04-05T17:31:00.123456789Z")
-          << "fractional_digits = " << digits;
-    }
-
-    auto every_digit = *parsed;
-    every_digit.fractional_digits = 255;
-    expect(ce::to_string(every_digit) == "2018-04-05T17:31:00.123456789Z");
+  // The nine-digit field renders whole. A count above nine used to be settable
+  // and divided a place value that had reached zero; it is now unconstructible,
+  // and timestamp_test holds that. What is left to check here is the rendering.
+  "every digit the instant carries is rendered"_test = [] {
+    expect(round_trips("2018-04-05T17:31:00.123456789Z"sv));
+    expect(round_trips("2018-04-05T17:31:00.000000001Z"sv));
   };
 
   // Truncation keeps the leading digits, so a shorter count is a prefix of the

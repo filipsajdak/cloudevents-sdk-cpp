@@ -447,8 +447,8 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
     expect(from_cpp->time->offset == std::chrono::minutes{120});
 
     // Nanosecond precision survives everywhere.
-    expect(from_go->time->fractional_digits == 9_u);
-    expect(from_java->time->fractional_digits == 9_u);
+    expect(from_go->time->fractional_digits.count() == 9_u);
+    expect(from_java->time->fractional_digits.count() == 9_u);
 
     // And the pinned consequence: same instant, not equal.
     expect(!(*from_go->time == *from_java->time))

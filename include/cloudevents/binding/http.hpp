@@ -80,7 +80,16 @@ concept value_policy = requires(std::string_view text) {
 /// Binding spec section 3.1.3.2: space, double-quote, percent and anything
 /// outside U+0021-U+007E are percent-encoded.
 struct percent_encoded_values {
+  /// Checked on the way out as well as in (SWR-HTTP-0017). Percent-encoding an
+  /// ill-formed sequence produces a field a conformant receiver refuses, so
+  /// without this the fault is reported to the peer that did not commit it, at a
+  /// point where it can neither fix nor attribute it. `decode` has always
+  /// checked; producing what this SDK would itself refuse to read is the
+  /// asymmetry.
   [[nodiscard]] static auto encode(std::string_view text) -> result<std::string> {
+    if (!detail::is_valid_utf8(text)) {
+      return fail(errc::invalid_utf8, "an attribute value must be well-formed UTF-8");
+    }
     return detail::percent_encode(text);
   }
 

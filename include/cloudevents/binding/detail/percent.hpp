@@ -18,17 +18,30 @@
 
 namespace ce::inline v1::binding::detail {
 
+/// The printable ASCII range the binding specification names, exclusive of
+/// space at its lower end: U+0021 through U+007E.
+inline constexpr unsigned char first_printable = 0x21;
+inline constexpr unsigned char last_printable = 0x7E;
+
+/// A byte splits into two hex digits of four bits each.
+inline constexpr unsigned hex_shift = 4U;
+inline constexpr unsigned hex_mask = 0x0FU;
+inline constexpr unsigned hex_radix = 10U;
+
+/// Not a hex digit. Negative so it cannot be mistaken for a value.
+inline constexpr int not_a_hex_digit = -1;
+
 /// \brief True when a byte must be percent-encoded in a header value.
 ///
 /// The binding requires escaping anything outside printable ASCII, plus space,
 /// double quote and percent. Space is excluded by the printable-range test, and
 /// percent has to be escaped or decoding could not tell an escape from a literal.
 [[nodiscard]] constexpr auto needs_escape(unsigned char byte) noexcept -> bool {
-  return byte < 0x21 || byte > 0x7E || byte == '"' || byte == '%';
+  return byte < first_printable || byte > last_printable || byte == '"' || byte == '%';
 }
 
 [[nodiscard]] constexpr auto hex_digit(unsigned value) noexcept -> char {
-  return static_cast<char>(value < 10 ? '0' + value : 'A' + (value - 10));
+  return static_cast<char>(value < hex_radix ? '0' + value : 'A' + (value - hex_radix));
 }
 
 [[nodiscard]] constexpr auto hex_value(char character) noexcept -> int {
@@ -36,12 +49,12 @@ namespace ce::inline v1::binding::detail {
     return character - '0';
   }
   if (character >= 'a' && character <= 'f') {
-    return character - 'a' + 10;
+    return character - 'a' + static_cast<int>(hex_radix);
   }
   if (character >= 'A' && character <= 'F') {
-    return character - 'A' + 10;
+    return character - 'A' + static_cast<int>(hex_radix);
   }
-  return -1;
+  return not_a_hex_digit;
 }
 
 /// \brief Percent-encode a header value, treating it as UTF-8 bytes.
@@ -52,8 +65,8 @@ namespace ce::inline v1::binding::detail {
     const auto byte = static_cast<unsigned char>(character);
     if (needs_escape(byte)) {
       out.push_back('%');
-      out.push_back(hex_digit(byte >> 4U));
-      out.push_back(hex_digit(byte & 0x0FU));
+      out.push_back(hex_digit(byte >> hex_shift));
+      out.push_back(hex_digit(byte & hex_mask));
     } else {
       out.push_back(character);
     }

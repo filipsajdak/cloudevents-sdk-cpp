@@ -150,20 +150,20 @@ template <binding_traits T>
     detail::put<T>(into, std::string{T::attribute_prefix} + std::string{name}, std::move(*encoded));
   };
 
-  put_attribute("specversion", cloud_event.specversion);
-  put_attribute("id", cloud_event.id);
-  put_attribute("source", cloud_event.source.view());
-  put_attribute("type", cloud_event.type);
-  if (cloud_event.dataschema) {
-    put_attribute("dataschema", cloud_event.dataschema->view());
+  put_attribute("specversion", spec_version_of(cloud_event));
+  put_attribute("id", id_of(cloud_event));
+  put_attribute("source", source_of(cloud_event).view());
+  put_attribute("type", type_of(cloud_event));
+  if (dataschema_of(cloud_event)) {
+    put_attribute("dataschema", dataschema_of(cloud_event)->view());
   }
-  if (cloud_event.subject) {
-    put_attribute("subject", *cloud_event.subject);
+  if (subject_of(cloud_event)) {
+    put_attribute("subject", *subject_of(cloud_event));
   }
-  if (cloud_event.time) {
-    put_attribute("time", to_string(*cloud_event.time));
+  if (time_of(cloud_event)) {
+    put_attribute("time", to_string(*time_of(cloud_event)));
   }
-  for (const auto& [name, attribute] : cloud_event.extensions) {
+  for (const auto& [name, attribute] : extensions_of(cloud_event)) {
     put_attribute(name, render_attribute(attribute));
   }
 
@@ -175,11 +175,11 @@ template <binding_traits T>
   // appear under the prefix, or a receiver sees the same attribute twice, and it
   // is not encoded there: it is a media type, not an attribute value. Where the
   // binding maps it like any other attribute, it is encoded like one.
-  if (cloud_event.datacontenttype) {
+  if (datacontenttype_of(cloud_event)) {
     if constexpr (detail::content_type_policy<T>::as_attribute) {
-      put_attribute("datacontenttype", *cloud_event.datacontenttype);
+      put_attribute("datacontenttype", *datacontenttype_of(cloud_event));
     } else {
-      detail::put<T>(into, std::string{T::content_type_header}, *cloud_event.datacontenttype);
+      detail::put<T>(into, std::string{T::content_type_header}, *datacontenttype_of(cloud_event));
     }
   }
   return failure;
@@ -273,7 +273,7 @@ template <binding_traits T>
   if (!header_error) {
     return fail(header_error.error().code, header_error.error().detail, header_error.error().where);
   }
-  if (cloud_event.specversion != "1.0") {
+  if (spec_version_of(cloud_event) != "1.0") {
     return fail(errc::unsupported_spec_version, "this SDK implements CloudEvents 1.0 only",
                 "specversion");
   }
@@ -299,16 +299,16 @@ inline void write_body(const event& cloud_event, message& into) {
           into.body = to_bytes(held.raw);
         }
       },
-      cloud_event.data);
+      data_of(cloud_event));
 }
 
-/// \brief The message body, as the payload. Reads `into.datacontenttype`, so the
+/// \brief The message body, as the payload. Reads `datacontenttype_of(into)`, so the
 /// caller sets that first.
 inline void read_body(const binary& body, event& into) {
   if (body.empty()) {
     return;
   }
-  if (into.datacontenttype && is_json_content_type(*into.datacontenttype)) {
+  if (datacontenttype_of(into) && is_json_content_type(*datacontenttype_of(into))) {
     into.data = json_text{.raw = to_text(body)};
   } else {
     into.data = body;

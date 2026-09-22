@@ -37,25 +37,25 @@ struct json_format {
     }
 
     auto root = Codec::make_object();
-    Codec::set(root, "specversion", Codec::make_string(cloud_event.specversion));
-    Codec::set(root, "id", Codec::make_string(cloud_event.id));
-    Codec::set(root, "source", Codec::make_string(cloud_event.source.view()));
-    Codec::set(root, "type", Codec::make_string(cloud_event.type));
+    Codec::set(root, "specversion", Codec::make_string(spec_version_of(cloud_event)));
+    Codec::set(root, "id", Codec::make_string(id_of(cloud_event)));
+    Codec::set(root, "source", Codec::make_string(source_of(cloud_event).view()));
+    Codec::set(root, "type", Codec::make_string(type_of(cloud_event)));
 
-    if (cloud_event.datacontenttype) {
-      Codec::set(root, "datacontenttype", Codec::make_string(*cloud_event.datacontenttype));
+    if (datacontenttype_of(cloud_event)) {
+      Codec::set(root, "datacontenttype", Codec::make_string(*datacontenttype_of(cloud_event)));
     }
-    if (cloud_event.dataschema) {
-      Codec::set(root, "dataschema", Codec::make_string(cloud_event.dataschema->view()));
+    if (dataschema_of(cloud_event)) {
+      Codec::set(root, "dataschema", Codec::make_string(dataschema_of(cloud_event)->view()));
     }
-    if (cloud_event.subject) {
-      Codec::set(root, "subject", Codec::make_string(*cloud_event.subject));
+    if (subject_of(cloud_event)) {
+      Codec::set(root, "subject", Codec::make_string(*subject_of(cloud_event)));
     }
-    if (cloud_event.time) {
-      Codec::set(root, "time", Codec::make_string(to_string(*cloud_event.time)));
+    if (time_of(cloud_event)) {
+      Codec::set(root, "time", Codec::make_string(to_string(*time_of(cloud_event))));
     }
 
-    for (const auto& [name, attribute] : cloud_event.extensions) {
+    for (const auto& [name, attribute] : extensions_of(cloud_event)) {
       auto encoded = encode_attribute(attribute);
       if (!encoded) {
         return fail(encoded.error().code, encoded.error().detail, name);
@@ -63,7 +63,7 @@ struct json_format {
       Codec::set(root, name, std::move(*encoded));
     }
 
-    if (auto stored = encode_data(root, cloud_event.data); !stored) {
+    if (auto stored = encode_data(root, data_of(cloud_event)); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
 
@@ -120,7 +120,7 @@ struct json_format {
         !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (cloud_event.specversion != "1.0") {
+    if (spec_version_of(cloud_event) != "1.0") {
       return fail(errc::unsupported_spec_version, "this SDK implements CloudEvents 1.0 only",
                   "specversion");
     }
@@ -385,7 +385,7 @@ struct json_format {
     // A JSON string under `data` is the payload itself when the content type says
     // it is not JSON. Otherwise the member is carried through as JSON.
     const bool declared_non_json =
-        cloud_event.datacontenttype && !is_json_content_type(*cloud_event.datacontenttype);
+        datacontenttype_of(cloud_event) && !is_json_content_type(*datacontenttype_of(cloud_event));
     if (declared_non_json && Codec::kind_of(*data) == json::kind::string) {
       auto text = Codec::as_string(*data);
       if (!text) {

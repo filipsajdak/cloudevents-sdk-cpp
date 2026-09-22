@@ -16,11 +16,11 @@ using codec = ce::codec::nlohmann_codec;
 namespace {
 
 void describe(const ce::event& subject) {
-  std::printf("  id=%s type=%s source=%s\n", subject.id.c_str(), subject.type.c_str(),
-              std::string{subject.source.view()}.c_str());
+  std::printf("  id=%s type=%s source=%s\n", subject.id().str().c_str(),
+              subject.type().str().c_str(), subject.source().str().c_str());
 
-  if (subject.time) {
-    std::printf("  time=%s\n", ce::to_string(*subject.time).c_str());
+  if (subject.time()) {
+    std::printf("  time=%s\n", ce::to_string(*subject.time()).c_str());
   }
 
   // The payload is one of four things, and the variant says which rather than
@@ -38,7 +38,7 @@ void describe(const ce::event& subject) {
           std::printf("  data: JSON %s\n", payload.raw.c_str());
         }
       },
-      subject.data);
+      subject.data());
 
   // A typed extension restores the declared type even when the wire form lost
   // it, which binary mode always does.
@@ -46,8 +46,8 @@ void describe(const ce::event& subject) {
     std::printf("  traceparent=%s\n", tracing->traceparent.c_str());
   }
 
-  // Warnings the spec makes a SHOULD, kept out of validate() so they never
-  // reject an event the spec permits.
+  // Warnings the spec makes a SHOULD. They never reject an event: the spec
+  // permits every one of them.
   for (const auto& warning : subject.lint()) {
     std::printf("  lint: %s: %s\n", warning.attribute.c_str(), warning.message.c_str());
   }

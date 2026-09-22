@@ -115,10 +115,6 @@ static_assert(binding::binding_traits<nats_traits>);
 /// defines no batch mode.
 template <json::json_codec Codec>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
-  if (auto valid = cloud_event.validate(); !valid) {
-    return fail(valid.error().code, valid.error().detail, valid.error().where);
-  }
-
   if (mode == content_mode::batched) {
     return fail(errc::invalid_argument, "the NATS binding defines no batch mode");
   }
@@ -152,17 +148,16 @@ template <json::json_codec Codec>
                 "no ce-specversion header and no CloudEvents content type");
   }
 
-  auto cloud_event = binding::read_attributes<detail::nats_traits>(incoming.header_fields);
-  if (!cloud_event) {
-    return fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
+  auto under_construction = binding::read_attributes<detail::nats_traits>(incoming.header_fields);
+  if (!under_construction) {
+    return fail(under_construction.error().code, under_construction.error().detail,
+                under_construction.error().where);
   }
 
-  binding::read_body(incoming.body, *cloud_event);
+  under_construction->rest.data =
+      binding::read_body(incoming.body, under_construction->rest.datacontenttype);
 
-  if (auto valid = cloud_event->validate(); !valid) {
-    return fail(valid.error().code, valid.error().detail, valid.error().where);
-  }
-  return std::move(*cloud_event);
+  return std::move(*under_construction).build();
 }
 
 }  // namespace ce::inline v1::nats

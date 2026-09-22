@@ -14,19 +14,22 @@
 import cloudevents;
 
 int main() {
-  ce::event subject{.id = "id-1", .source = ce::uri_ref{"/module"}, .type = "com.example.module"};
-  subject.subject = "through the module";
+  // The literals are exported too, or a module consumer could name `event` and
+  // never build one.
+  using namespace ce::literals;
 
   auto parsed = ce::parse_timestamp("2026-09-20T12:34:56Z");
   if (!parsed) {
     return 1;
   }
-  subject.time = *parsed;
+  ce::event subject{"id-1"_id, "/module"_source, "com.example.module"_type,
+                    {.subject = "through the module"_subject, .time = *parsed}};
 
   if (!subject.set(ce::ext::tracing{.traceparent = "00-a-b-01", .tracestate = {}})) {
     return 2;
   }
-  if (!subject.validate()) {
+  // And the run-time factories, for text that is not a literal.
+  if (!ce::id::make(subject.id().view())) {
     return 3;
   }
 
@@ -36,7 +39,7 @@ int main() {
   if (!tracing || tracing->traceparent.compare("00-a-b-01") != 0) {
     return 4;
   }
-  if (ce::to_string(*subject.time).compare("2026-09-20T12:34:56Z") != 0) {
+  if (ce::to_string(*subject.time()).compare("2026-09-20T12:34:56Z") != 0) {
     return 5;
   }
   if (!ce::base64_encode(ce::binary{}).empty()) {

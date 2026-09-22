@@ -46,13 +46,19 @@ concept has_or_else = requires(T r) { r.or_else([](auto&&) { return T{}; }); };
 template <class T>
 concept has_transform = requires(T r) { r.transform([](auto&& v) { return v; }); };
 
-/// A minimal event that passes validate(), built with ONE designated initializer.
-[[nodiscard]] auto good_event() -> ce::event {
-  return ce::event{
-      .id = "1",
-      .source = "/spec/test",
-      .type = "com.example.thing",
-  };
+using namespace ce::literals;
+
+/// A minimal event, built in ONE expression from literals the compiler checked.
+/// The caller states every optional attribute it wants in `rest`.
+[[nodiscard]] auto good_event(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
+}
+
+/// True when `made` failed with `code`, naming `where`.
+template <class T>
+[[nodiscard]] auto refused(const ce::result<T>& made, ce::errc code, std::string_view where)
+    -> bool {
+  return !made.has_value() && made.error().code == code && made.error().where == where;
 }
 
 /// True when canonical input survives parse plus render byte for byte.
@@ -598,34 +604,42 @@ const boost::ut::suite<"core-data-t-variant"> core_data_t_variant = [] {
   // empty string, which is a different thing on the wire.
   "data defaults to absent"_test = [] {
     const auto event = good_event();
-    expect(std::holds_alternative<std::monostate>(event.data));
-    expect(event.data.index() == 0U);
+    expect(std::holds_alternative<std::monostate>(event.data()));
+    expect(event.data().index() == 0U);
   };
 
   "each alternative is reachable and keeps its bytes"_test = [] {
-    auto event = good_event();
+    const auto text = good_event({.data = std::string{"plain text"}});
+    expect(std::holds_alternative<std::string>(text.data()));
+    expect(std::get<std::string>(text.data()) == "plain text");
 
-    event.data = std::string{"plain text"};
-    expect(std::holds_alternative<std::string>(event.data));
-    expect(std::get<std::string>(event.data) == "plain text");
+    const auto bytes =
+        good_event({.data = ce::binary{std::byte{0x00}, std::byte{0x80}, std::byte{0xFF}}});
+    expect(std::holds_alternative<ce::binary>(bytes.data()));
+    expect(std::get<ce::binary>(bytes.data()).size() == 3U);
+    expect(std::get<ce::binary>(bytes.data())[1] == std::byte{0x80});
 
-    event.data = ce::binary{std::byte{0x00}, std::byte{0x80}, std::byte{0xFF}};
-    expect(std::holds_alternative<ce::binary>(event.data));
-    expect(std::get<ce::binary>(event.data).size() == 3U);
-    expect(std::get<ce::binary>(event.data)[1] == std::byte{0x80});
-
-    event.data = ce::json_text{.raw = R"({"a":1})"};
-    expect(std::holds_alternative<ce::json_text>(event.data));
+    const auto json = good_event({.data = ce::json_text{.raw = R"({"a":1})"}});
+    expect(std::holds_alternative<ce::json_text>(json.data()));
   };
 
   "data participates in event equality"_test = [] {
-    auto left = good_event();
-    auto right = good_event();
-    expect(left == right);
-    left.data = std::string{"x"};
-    expect(!(left == right));
-    right.data = std::string{"x"};
-    expect(left == right);
+    expect(good_event() == good_event());
+    expect(!(good_event({.data = std::string{"x"}}) == good_event()));
+    expect(good_event({.data = std::string{"x"}}) == good_event({.data = std::string{"x"}}));
+  };
+
+  // The one attribute that changes after construction, and it changes together
+  // with the media type describing it (SWR-CORE-0015).
+  "set_data replaces the payload and its media type together"_test = [] {
+    auto event = good_event({.datacontenttype = "text/plain"_mediatype});
+    event.set_data(ce::json_text{.raw = "1"}, "application/json"_mediatype);
+    expect(event == good_event({.datacontenttype = "application/json"_mediatype,
+                                .data = ce::json_text{.raw = "1"}}));
+
+    event.set_data(ce::binary{std::byte{0x01}}, std::nullopt);
+    expect(!event.datacontenttype().has_value());
+    expect(std::holds_alternative<ce::binary>(event.data()));
   };
 };
 
@@ -655,10 +669,8 @@ const boost::ut::suite<"core-json-text-codec-free"> core_json_text_codec_free = 
   // Core does not know what valid JSON is, so it cannot and must not reject this.
   // A decoder is where malformed input becomes a parse_error.
   "core stores malformed JSON without complaint"_test = [] {
-    auto event = good_event();
-    event.data = ce::json_text{.raw = "{not json at all"};
-    expect(event.validate().has_value());
-    expect(std::get<ce::json_text>(event.data).raw == "{not json at all");
+    const auto event = good_event({.data = ce::json_text{.raw = "{not json at all"}});
+    expect(std::get<ce::json_text>(event.data()).raw == "{not json at all");
   };
 
   "json_text compares by its bytes"_test = [] {
@@ -671,41 +683,42 @@ const boost::ut::suite<"core-json-text-codec-free"> core_json_text_codec_free = 
 const boost::ut::suite<"core-event-required-attributes"> core_event_required_attributes = [] {
   using namespace boost::ut;
 
-  // A public aggregate, per SPEC section 9 decision D1: validate() is the gate,
-  // not a constructor. Required attributes come first with no default member
-  // initializer, so a designated initializer that omits id fails to compile on GCC
-  // rather than producing an event that is silently invalid.
-  "the event is an aggregate built with one designated initializer"_test = [] {
-    static_assert(std::is_aggregate_v<ce::event>);
+  // No aggregate and no default: the only ways in take attributes that have
+  // already passed their rule, so there is no event to build that CloudEvents
+  // forbids and nothing left to check once it exists.
+  "the event is built from validated attributes, never as an aggregate"_test = [] {
+    static_assert(!std::is_aggregate_v<ce::event>);
+    static_assert(!std::is_default_constructible_v<ce::event>);
+    static_assert(std::is_constructible_v<ce::event, ce::id, ce::source, ce::type>);
+    static_assert(
+        std::is_constructible_v<ce::event, ce::id, ce::source, ce::type, ce::event::options>);
+    static_assert(!std::is_constructible_v<ce::event, std::string, std::string, std::string>);
+    static_assert(!std::is_constructible_v<ce::event, const char*, const char*, const char*>);
 
-    const ce::event event{
-        .id = "1",
-        .source = "/spec/test",
-        .type = "com.example.thing",
-    };
-    expect(event.id == "1");
-    expect(event.source == ce::uri_ref{"/spec/test"});
-    expect(event.type == "com.example.thing");
-    expect(event.validate().has_value());
+    const ce::event event{"1"_id, "/spec/test"_source, "com.example.thing"_type};
+    expect(event.id().view() == "1"sv);
+    expect(event.source().view() == "/spec/test"sv);
+    expect(event.type().view() == "com.example.thing"sv);
   };
 
-  "specversion defaults to the only version this SDK implements"_test = [] {
-    expect(good_event().specversion == "1.0");
+  "specversion is the only version this SDK implements"_test = [] {
+    static_assert(std::is_same_v<decltype(good_event().specversion()), ce::spec_version>);
+    expect(good_event().specversion().view() == "1.0"sv);
   };
 
-  "source is a URI-Reference, not a plain string"_test = [] {
-    static_assert(std::is_same_v<decltype(ce::event::source), ce::uri_ref>);
-    static_assert(std::is_same_v<decltype(ce::event::id), std::string>);
-    static_assert(std::is_same_v<decltype(ce::event::type), std::string>);
+  "each required attribute is its own type, not a plain string"_test = [] {
+    using event_ref = const ce::event&;
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().id()), const ce::id&>);
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().source()), const ce::source&>);
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().type()), const ce::type&>);
+    static_assert(!std::is_same_v<ce::id, ce::type>);
+    static_assert(!std::is_same_v<ce::source, std::string>);
     expect(true);
   };
 
-  "equality is value equality across the whole aggregate"_test = [] {
-    auto left = good_event();
-    auto right = good_event();
-    expect(left == right);
-    right.subject = "x";
-    expect(!(left == right));
+  "equality is value equality across the whole event"_test = [] {
+    expect(good_event() == good_event());
+    expect(!(good_event() == good_event({.subject = "x"_subject})));
   };
 };
 
@@ -715,44 +728,57 @@ const boost::ut::suite<"core-event-optional-attributes"> core_event_optional_att
 
   // Optional in the spec means optional in the type: std::optional distinguishes
   // absent from present-and-empty, which an empty string could not.
-  "the optional attributes are std::optional"_test = [] {
+  "the optional attributes are std::optional, behind const accessors"_test = [] {
+    using event_ref = const ce::event&;
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().datacontenttype()),
+                                 const std::optional<ce::datacontenttype>&>);
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().dataschema()),
+                                 const std::optional<ce::dataschema>&>);
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().subject()),
+                                 const std::optional<ce::subject>&>);
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().time()),
+                                 const std::optional<ce::timestamp>&>);
     static_assert(
-        std::is_same_v<decltype(ce::event::datacontenttype), std::optional<std::string>>);
-    static_assert(std::is_same_v<decltype(ce::event::dataschema), std::optional<ce::uri>>);
-    static_assert(std::is_same_v<decltype(ce::event::subject), std::optional<std::string>>);
-    static_assert(std::is_same_v<decltype(ce::event::time), std::optional<ce::timestamp>>);
+        std::is_same_v<decltype(std::declval<event_ref>().data()), const ce::data_t&>);
+    static_assert(std::is_same_v<decltype(std::declval<event_ref>().extensions()),
+                                 const ce::event::extension_map&>);
+    static_assert(std::is_same_v<ce::event::extension_map,
+                                 std::map<ce::extension_name, ce::attribute_value, std::less<>>>);
     expect(true);
   };
 
   "they default to absent"_test = [] {
     const auto event = good_event();
-    expect(!event.datacontenttype.has_value());
-    expect(!event.dataschema.has_value());
-    expect(!event.subject.has_value());
-    expect(!event.time.has_value());
-    expect(event.validate().has_value());
+    expect(!event.datacontenttype().has_value());
+    expect(!event.dataschema().has_value());
+    expect(!event.subject().has_value());
+    expect(!event.time().has_value());
   };
 
-  "a present optional attribute is carried and validated"_test = [] {
-    auto event = good_event();
-    event.datacontenttype = "application/json";
-    event.dataschema = ce::uri{"https://example.com/schema.json"};
-    event.subject = "ok";
-    expect(event.validate().has_value());
-    expect(*event.datacontenttype == "application/json");
-    expect(event.dataschema->str() == "https://example.com/schema.json");
-    expect(*event.subject == "ok");
+  "a present optional attribute is carried"_test = [] {
+    const auto event = good_event({
+        .datacontenttype = "application/json"_mediatype,
+        .dataschema = "https://example.com/schema.json"_dataschema,
+        .subject = "ok"_subject,
+    });
+    expect(event.datacontenttype().has_value() &&
+           event.datacontenttype()->view() == "application/json"sv);
+    expect(event.dataschema().has_value() &&
+           event.dataschema()->view() == "https://example.com/schema.json"sv);
+    expect(event.subject().has_value() && event.subject()->view() == "ok"sv);
   };
 
   // Timestamps are chrono-typed all the way into the event, so time is an instant
   // rather than a string that has to be re-parsed by every reader.
   "time is a parsed timestamp, not text"_test = [] {
-    auto event = good_event();
     const auto parsed = ce::parse_timestamp("2018-04-05T17:31:00Z"sv);
     expect(parsed.has_value());
-    event.time = *parsed;
-    expect(event.validate().has_value());
-    expect(ce::to_string(*event.time) == "2018-04-05T17:31:00Z");
+    if (!parsed) {
+      return;
+    }
+    const auto event = good_event({.time = *parsed});
+    expect(event.time().has_value() &&
+           ce::to_string(*event.time()) == "2018-04-05T17:31:00Z");
   };
 };
 
@@ -762,9 +788,25 @@ const boost::ut::suite<"core-extension-accessors"> core_extension_accessors = []
 
   "set_extension stores a value that extension() finds"_test = [] {
     auto event = good_event();
-    expect(event.set_extension("traceparent", std::string{"00-x-y-01"}).has_value());
+    event.set_extension("traceparent"_ext, std::string{"00-x-y-01"});
     expect(event.extension("traceparent") != nullptr);
     expect(std::get<std::string>(*event.extension("traceparent")) == "00-x-y-01");
+  };
+
+  // The name has already passed its rule, so there is no refusal to discard.
+  "set_extension has no failure path"_test = [] {
+    static_assert(std::is_void_v<decltype(std::declval<ce::event&>().set_extension(
+                      "a"_ext, ce::attribute_value{true}))>);
+    expect(true);
+  };
+
+  "remove_extension reports whether the name was present"_test = [] {
+    auto event = good_event();
+    event.set_extension("seq"_ext, std::int32_t{1});
+    expect(event.remove_extension("seq"));
+    expect(event.extension("seq") == nullptr);
+    expect(!event.remove_extension("seq"));
+    expect(event.extensions().empty());
   };
 
   // A pointer rather than an optional, so absence costs nothing and the caller can
@@ -775,235 +817,186 @@ const boost::ut::suite<"core-extension-accessors"> core_extension_accessors = []
     expect(event.extension("") == nullptr);
   };
 
-  // Strict on produce: an invalid or reserved name is refused here rather than
-  // discovered by a peer at decode time.
-  "set_extension refuses a name the spec forbids"_test = [] {
-    auto event = good_event();
-
-    const auto bad_name = event.set_extension("Trace-Parent", std::string{"x"});
-    expect(!bad_name.has_value());
-    expect(!bad_name.has_value() && bad_name.error().code == ce::errc::invalid_attribute_name);
-
-    const auto reserved = event.set_extension("id", std::string{"x"});
-    expect(!reserved.has_value());
-    expect(!reserved.has_value() && reserved.error().code == ce::errc::reserved_attribute_name);
-
-    expect(event.extensions.empty());
+  // Strict on produce: an invalid or reserved name is refused where the name is
+  // made, rather than discovered by a peer at decode time. It never reaches the
+  // event, which is why set_extension has nothing left to refuse.
+  "a name the spec forbids cannot reach set_extension"_test = [] {
+    expect(refused(ce::extension_name::make("Trace-Parent"sv), ce::errc::invalid_attribute_name,
+                   "Trace-Parent"));
+    expect(refused(ce::extension_name::make("id"sv), ce::errc::reserved_attribute_name, "id"));
   };
 
   // The map has a transparent comparator, so a string_view key looks up without
-  // materialising a std::string on every call.
-  "lookup is transparent and does not require a std::string"_test = [] {
+  // materialising a key on every call.
+  "lookup is transparent and does not require building a key"_test = [] {
     auto event = good_event();
-    expect(event.set_extension("seq", std::int32_t{7}).has_value());
+    event.set_extension("seq"_ext, std::int32_t{7});
     expect(event.extension(std::string_view{"seq"}) != nullptr);
     expect(std::get<std::int32_t>(*event.extension("seq")) == 7);
-    static_assert(std::is_same_v<decltype(ce::event::extensions),
-                                 std::map<std::string, ce::attribute_value, std::less<>>>);
+    static_assert(requires { typename ce::event::extension_map::key_compare::is_transparent; });
   };
 
   "setting the same name twice replaces the value"_test = [] {
     auto event = good_event();
-    expect(event.set_extension("seq", std::int32_t{1}).has_value());
-    expect(event.set_extension("seq", std::int32_t{2}).has_value());
-    expect(event.extensions.size() == 1U);
+    event.set_extension("seq"_ext, std::int32_t{1});
+    event.set_extension("seq"_ext, std::int32_t{2});
+    expect(event.extensions().size() == 1U);
     expect(std::get<std::int32_t>(*event.extension("seq")) == 2);
   };
 };
 
 // spec: SWR-CORE-0017
-const boost::ut::suite<"core-validate-required-non-empty"> core_validate_required_non_empty = [] {
+const boost::ut::suite<"core-required-attributes-refuse-empty"> core_required_refuse_empty = [] {
   using namespace boost::ut;
 
-  "a minimal event with all three required attributes validates"_test = [] {
-    expect(good_event().validate().has_value());
+  "a minimal event with all three required attributes is constructed"_test = [] {
+    expect(good_event().id().view() == "1"sv);
   };
 
   // Each required attribute is its own error site, so the report names which one
   // is missing rather than saying only that something is.
   "each empty required attribute is its own error"_test = [] {
-    for (const auto& [mutate, where] :
-         {std::pair{+[](ce::event& event) { event.id.clear(); }, "id"},
-          std::pair{+[](ce::event& event) { event.source = ce::uri_ref{}; }, "source"},
-          std::pair{+[](ce::event& event) { event.type.clear(); }, "type"}}) {
-      auto event = good_event();
-      mutate(event);
-      const auto res = event.validate();
-      expect(!res.has_value());
-      expect(!res.has_value() && res.error().code == ce::errc::missing_required_attribute);
-      expect(!res.has_value() && res.error().where == where);
-    }
+    expect(refused(ce::id::make(""sv), ce::errc::missing_required_attribute, "id"));
+    expect(refused(ce::source::make(""sv), ce::errc::missing_required_attribute, "source"));
+    expect(refused(ce::type::make(""sv), ce::errc::missing_required_attribute, "type"));
   };
 
-  "validate() is const and leaves the event alone"_test = [] {
-    const auto event = good_event();
-    expect(event.validate().has_value());
-    expect(event == good_event());
+  "a non-empty required attribute is made"_test = [] {
+    expect(ce::id::make("1"sv).has_value());
+    expect(ce::source::make("/spec/test"sv).has_value());
+    expect(ce::type::make("com.example.thing"sv).has_value());
   };
 };
 
 // spec: SWR-CORE-0018
-const boost::ut::suite<"core-validate-specversion"> core_validate_specversion = [] {
+const boost::ut::suite<"core-specversion-is-1-0-only"> core_specversion_is_1_0_only = [] {
   using namespace boost::ut;
 
   // SPEC section 9 decision D5: this SDK implements 1.0 only, and says so with its
   // own error code rather than reporting a generic invalid value.
   "a specversion other than 1.0 is unsupported_spec_version"_test = [] {
     for (const auto version : {"0.3"sv, "1.1"sv, "2.0"sv, ""sv, "1.0.0"sv}) {
-      auto event = good_event();
-      event.specversion = version;
-      const auto res = event.validate();
-      expect(!res.has_value());
-      expect(!res.has_value() && res.error().code == ce::errc::unsupported_spec_version);
-      expect(!res.has_value() && res.error().where == "specversion");
+      expect(refused(ce::spec_version::make(version), ce::errc::unsupported_spec_version,
+                     "specversion"))
+          << version;
     }
   };
 
-  // The version check comes first: an event claiming a version this SDK cannot
-  // read should not be reported in terms of rules that belong to another version.
-  "the version is checked before anything else"_test = [] {
-    ce::event event{
-        .id = "",
-        .source = "",
-        .type = "",
-        .specversion = "0.3",
-    };
-    const auto res = event.validate();
-    expect(!res.has_value());
-    expect(!res.has_value() && res.error().code == ce::errc::unsupported_spec_version);
+  // Not a string at all on the produce side: a version that does not exist has
+  // no spelling to be given.
+  "spec_version has a single value"_test = [] {
+    static_assert(std::is_default_constructible_v<ce::spec_version>);
+    static_assert(ce::spec_version{}.view() == "1.0");
+    expect(ce::spec_version{} == ce::spec_version{});
   };
 
   "1.0 is accepted"_test = [] {
-    auto event = good_event();
-    event.specversion = "1.0";
-    expect(event.validate().has_value());
+    const auto version = ce::spec_version::make("1.0"sv);
+    expect(version.has_value());
+    expect(version.has_value() && *version == ce::spec_version{});
   };
 };
 
 // spec: SWR-CORE-0019
-const boost::ut::suite<"core-validate-optional-non-empty"> core_validate_optional_non_empty = [] {
+const boost::ut::suite<"core-optional-attributes-refuse-empty"> core_optional_refuse_empty = [] {
   using namespace boost::ut;
 
   // An optional attribute may be absent, but the spec requires it to be non-empty
   // when present: an empty string means a producer set it by mistake.
   "a present-but-empty optional attribute is invalid_attribute_value"_test = [] {
-    {
-      auto event = good_event();
-      event.subject = "";
-      const auto res = event.validate();
-      expect(!res.has_value());
-      expect(!res.has_value() && res.error().code == ce::errc::invalid_attribute_value);
-      expect(!res.has_value() && res.error().where == "subject");
-    }
-    {
-      auto event = good_event();
-      event.dataschema = ce::uri{""};
-      const auto res = event.validate();
-      expect(!res.has_value());
-      expect(!res.has_value() && res.error().code == ce::errc::invalid_attribute_value);
-      expect(!res.has_value() && res.error().where == "dataschema");
-    }
-    {
-      auto event = good_event();
-      event.datacontenttype = "";
-      expect(!event.validate().has_value());
-    }
+    expect(refused(ce::subject::make(""sv), ce::errc::invalid_attribute_value, "subject"));
+    expect(refused(ce::dataschema::make(""sv), ce::errc::invalid_attribute_value, "dataschema"));
+    expect(refused(ce::datacontenttype::make(""sv), ce::errc::invalid_attribute_value,
+                   "datacontenttype"));
   };
 
   "absent is not the same as empty, and absent is fine"_test = [] {
-    auto event = good_event();
-    event.subject = std::nullopt;
-    event.dataschema = std::nullopt;
-    event.datacontenttype = std::nullopt;
-    expect(event.validate().has_value());
+    const auto event = good_event({
+        .datacontenttype = std::nullopt,
+        .dataschema = std::nullopt,
+        .subject = std::nullopt,
+    });
+    expect(event == good_event());
   };
 
   "a non-empty optional attribute is accepted"_test = [] {
-    auto event = good_event();
-    event.subject = "ok";
-    event.dataschema = ce::uri{"https://example.com/s"};
-    event.datacontenttype = "application/json";
-    expect(event.validate().has_value());
+    expect(ce::subject::make("ok"sv).has_value());
+    expect(ce::dataschema::make("https://example.com/s"sv).has_value());
+    expect(ce::datacontenttype::make("application/json"sv).has_value());
   };
 
   // datacontenttype carries a second rule: it has to be a media type at all.
   "a datacontenttype that is not a media type is invalid_content_type"_test = [] {
-    auto event = good_event();
-    event.datacontenttype = "not a media type";
-    const auto res = event.validate();
-    expect(!res.has_value());
-    expect(!res.has_value() && res.error().code == ce::errc::invalid_content_type);
-    expect(!res.has_value() && res.error().where == "datacontenttype");
+    expect(refused(ce::datacontenttype::make("not a media type"sv),
+                   ce::errc::invalid_content_type, "datacontenttype"));
   };
 };
 
 // spec: SWR-CORE-0020
-const boost::ut::suite<"core-validate-extension-names"> core_validate_extension_names = [] {
+const boost::ut::suite<"core-extension-names-refuse-invalid"> core_extension_names_refuse = [] {
   using namespace boost::ut;
 
-  // set_extension is the strict door, but the extensions map is public, so
-  // validate() has to re-check: an event assembled by a decoder or by aggregate
-  // initialization never went through set_extension at all.
-  "validate() rejects an extension name that is not [a-z0-9]+"_test = [] {
-    auto event = good_event();
-    event.extensions.emplace("Trace-Parent", ce::attribute_value{std::string{"x"}});
-    const auto res = event.validate();
-    expect(!res.has_value());
-    expect(!res.has_value() && res.error().code == ce::errc::invalid_attribute_name);
-    expect(!res.has_value() && res.error().where == "Trace-Parent");
+  // An extension name has no fixed identity to report, so the refusal names the
+  // text that was offered.
+  "an extension name that is not [a-z0-9]+ is invalid_attribute_name"_test = [] {
+    expect(refused(ce::extension_name::make("Trace-Parent"sv), ce::errc::invalid_attribute_name,
+                   "Trace-Parent"));
   };
 
-  "validate() rejects an extension that shadows a context attribute"_test = [] {
-    auto event = good_event();
-    event.extensions.emplace("id", ce::attribute_value{std::string{"x"}});
-    const auto res = event.validate();
-    expect(!res.has_value());
-    expect(!res.has_value() && res.error().code == ce::errc::reserved_attribute_name);
-    expect(!res.has_value() && res.error().where == "id");
+  "an extension that shadows a context attribute is reserved_attribute_name"_test = [] {
+    expect(refused(ce::extension_name::make("id"sv), ce::errc::reserved_attribute_name, "id"));
   };
 
-  "well-formed extension names validate"_test = [] {
+  "well-formed extension names are made"_test = [] {
     auto event = good_event();
-    expect(event.set_extension("traceparent", std::string{"00-x-y-01"}).has_value());
-    expect(event.set_extension("seq", std::int32_t{7}).has_value());
-    expect(event.set_extension("a1", true).has_value());
-    expect(event.validate().has_value());
+    event.set_extension("traceparent"_ext, std::string{"00-x-y-01"});
+    event.set_extension("seq"_ext, std::int32_t{7});
+    event.set_extension("a1"_ext, true);
+    expect(event.extensions().size() == 3U);
+    expect(ce::extension_name::make("traceparent"sv).has_value());
   };
 };
+
+/// An extension name of `length` characters, made at run time.
+[[nodiscard]] auto name_of_length(std::size_t length) -> ce::extension_name {
+  auto made = ce::extension_name::make(std::string(length, 'a'));
+  boost::ut::expect(made.has_value());
+  return made.has_value() ? *made : ce::extension_name{"fallback"_ext};
+}
 
 // spec: SWR-CORE-0021
 const boost::ut::suite<"core-lint-long-extension-name"> core_lint_long_extension_name = [] {
   using namespace boost::ut;
 
-  // The 20-character limit is a SHOULD in the core spec, so folding it into
-  // validate() would reject events the spec permits. It surfaces as a warning.
-  "a long extension name is a lint warning, not a validation failure"_test = [] {
+  // The 20-character limit is a SHOULD in the core spec, so refusing the name
+  // would reject events the spec permits. It surfaces as a warning.
+  "a long extension name is a lint warning, not a refusal"_test = [] {
+    constexpr std::size_t long_length = 25;
     auto event = good_event();
-    const std::string long_name(25, 'a');
-    expect(event.set_extension(long_name, std::string{"v"}).has_value());
-    expect(event.validate().has_value());
+    event.set_extension(name_of_length(long_length), std::string{"v"});
 
     const auto warnings = event.lint();
     expect(warnings.size() == 1U);
-    expect(warnings.size() == 1U && warnings[0].attribute == long_name);
+    expect(warnings.size() == 1U && warnings[0].attribute == std::string(long_length, 'a'));
     expect(warnings.size() == 1U && !warnings[0].message.empty());
   };
 
   "a conforming event lints clean"_test = [] {
     auto event = good_event();
     expect(event.lint().empty());
-    expect(event.set_extension("traceparent", std::string{"x"}).has_value());
+    event.set_extension("traceparent"_ext, std::string{"x"});
     expect(event.lint().empty());
   };
 
   // Exactly 20 is within the recommendation; 21 is the first one that is not.
   "the boundary is at twenty characters"_test = [] {
+    constexpr std::size_t at_limit_length = 20;
     auto at_limit = good_event();
-    expect(at_limit.set_extension(std::string(20, 'a'), std::string{"v"}).has_value());
+    at_limit.set_extension(name_of_length(at_limit_length), std::string{"v"});
     expect(at_limit.lint().empty());
 
     auto over_limit = good_event();
-    expect(over_limit.set_extension(std::string(21, 'a'), std::string{"v"}).has_value());
+    over_limit.set_extension(name_of_length(at_limit_length + 1), std::string{"v"});
     expect(over_limit.lint().size() == 1U);
   };
 };
@@ -1118,110 +1111,90 @@ const boost::ut::suite<"core-source-non-empty-only"> core_source_non_empty_only 
   // receiver that rejects a URI its peer considers valid is worse than one that
   // passes it along. Non-emptiness is the whole rule.
   "an empty source is the only source that fails"_test = [] {
-    auto event = good_event();
-    event.source = ce::uri_ref{};
-    const auto res = event.validate();
-    expect(!res.has_value());
-    expect(!res.has_value() && res.error().code == ce::errc::missing_required_attribute);
-    expect(!res.has_value() && res.error().where == "source");
+    expect(refused(ce::source::make(""sv), ce::errc::missing_required_attribute, "source"));
   };
 
   "anything non-empty is accepted, however unlike a URI it looks"_test = [] {
     for (const auto text : {"/spec/test"sv, "https://example.com/x"sv, "urn:uuid:1234"sv,
                             "my-source"sv, "not a uri at all %%% \t"sv, " "sv,
                             "../relative/../ref"sv}) {
-      auto event = good_event();
-      event.source = ce::uri_ref{std::string{text}};
-      expect(event.validate().has_value());
+      expect(ce::source::make(text).has_value()) << text;
     }
   };
 
   "source keeps its text verbatim"_test = [] {
-    auto event = good_event();
-    event.source = ce::uri_ref{"not a uri at all %%%"};
-    expect(event.validate().has_value());
-    expect(event.source.str() == "not a uri at all %%%");
+    const auto made = ce::source::make("not a uri at all %%%"sv);
+    expect(made.has_value());
+    if (!made) {
+      return;
+    }
+    const ce::event event{"1"_id, *made, "com.example.thing"_type};
+    expect(event.source().view() == "not a uri at all %%%"sv);
   };
 };
 
 // spec: SYS-CORE-0001
-const boost::ut::suite<"core-validate"> core_validate = [] {
+const boost::ut::suite<"core-event-model"> core_event_model = [] {
   using namespace boost::ut;
 
-  // The system-level view: a fully populated event goes through validate() as one
-  // gate, and every MUST-level rule it enforces is reachable from that one call.
-  "a fully populated event validates"_test = [] {
-    auto event = good_event();
-    event.datacontenttype = "application/json";
-    event.dataschema = ce::uri{"https://example.com/schema.json"};
-    event.subject = "orders/42";
+  // The system-level view: a fully populated event is built in one expression,
+  // and there is no separate check to remember afterwards.
+  "a fully populated event is constructed"_test = [] {
     const auto parsed = ce::parse_timestamp("2018-04-05T17:31:00Z"sv);
     expect(parsed.has_value());
-    event.time = *parsed;
-    expect(event.set_extension("traceparent", std::string{"00-x-y-01"}).has_value());
-    expect(event.set_extension("seq", std::int32_t{7}).has_value());
-    event.data = ce::json_text{.raw = R"({"amount":1})"};
-
-    expect(event.validate().has_value());
+    if (!parsed) {
+      return;
+    }
+    const auto event = good_event({
+        .datacontenttype = "application/json"_mediatype,
+        .dataschema = "https://example.com/schema.json"_dataschema,
+        .subject = "orders/42"_subject,
+        .time = *parsed,
+        .extensions = {{"traceparent"_ext, std::string{"00-x-y-01"}},
+                       {"seq"_ext, std::int32_t{7}}},
+        .data = ce::json_text{.raw = R"({"amount":1})"},
+    });
+    expect(event.extensions().size() == 2U);
     expect(event.lint().empty());
   };
 
-  // One call, every category of failure it can report. Listing them together is
-  // what makes it visible that validate() is the single gate rather than one of
-  // several places a rule might live.
-  "validate() reports each rule it owns"_test = [] {
-    {
-      auto event = good_event();
-      event.specversion = "0.3";
-      expect(event.validate().error().code == ce::errc::unsupported_spec_version);
-    }
-    {
-      auto event = good_event();
-      event.id.clear();
-      expect(event.validate().error().code == ce::errc::missing_required_attribute);
-    }
-    {
-      auto event = good_event();
-      event.subject = "";
-      expect(event.validate().error().code == ce::errc::invalid_attribute_value);
-    }
-    {
-      auto event = good_event();
-      event.datacontenttype = "not a media type";
-      expect(event.validate().error().code == ce::errc::invalid_content_type);
-    }
-    {
-      auto event = good_event();
-      event.extensions.emplace("Bad-Name", ce::attribute_value{std::string{"x"}});
-      expect(event.validate().error().code == ce::errc::invalid_attribute_name);
-    }
-    {
-      auto event = good_event();
-      event.extensions.emplace("time", ce::attribute_value{std::string{"x"}});
-      expect(event.validate().error().code == ce::errc::reserved_attribute_name);
-    }
+  // Every category of refusal the model holds, side by side. Listing them together
+  // is what makes it visible that each rule lives with the value it constrains,
+  // rather than in one of several places a rule might be checked.
+  "each rule is refused where the value is made"_test = [] {
+    expect(refused(ce::spec_version::make("0.3"sv), ce::errc::unsupported_spec_version,
+                   "specversion"));
+    expect(refused(ce::id::make(""sv), ce::errc::missing_required_attribute, "id"));
+    expect(refused(ce::subject::make(""sv), ce::errc::invalid_attribute_value, "subject"));
+    expect(refused(ce::datacontenttype::make("not a media type"sv),
+                   ce::errc::invalid_content_type, "datacontenttype"));
+    expect(refused(ce::extension_name::make("Bad-Name"sv), ce::errc::invalid_attribute_name,
+                   "Bad-Name"));
+    expect(refused(ce::extension_name::make("time"sv), ce::errc::reserved_attribute_name,
+                   "time"));
   };
 
   // Round-tripping an event through the model must not change it, which is the
   // property every format layer above the core will rely on.
   "an event survives a copy unchanged"_test = [] {
-    auto event = good_event();
-    event.subject = "orders/42";
     const auto parsed = ce::parse_timestamp("2018-04-05T17:31:00.500Z"sv);
     expect(parsed.has_value());
-    event.time = *parsed;
-    expect(event.set_extension("seq", std::int32_t{7}).has_value());
+    if (!parsed) {
+      return;
+    }
+    auto event = good_event({.subject = "orders/42"_subject, .time = *parsed});
+    event.set_extension("seq"_ext, std::int32_t{7});
 
     const ce::event copy = event;
     expect(copy == event);
-    expect(copy.validate().has_value());
-    expect(ce::to_string(*copy.time) == "2018-04-05T17:31:00.500Z");
+    expect(copy.time().has_value() &&
+           ce::to_string(*copy.time()) == "2018-04-05T17:31:00.500Z");
   };
 
   "a warning is not an error"_test = [] {
+    constexpr std::size_t long_length = 25;
     auto event = good_event();
-    expect(event.set_extension(std::string(25, 'a'), std::string{"v"}).has_value());
-    expect(event.validate().has_value());
+    event.set_extension(name_of_length(long_length), std::string{"v"});
     expect(event.lint().size() == 1U);
   };
 };

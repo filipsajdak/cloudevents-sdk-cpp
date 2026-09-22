@@ -90,10 +90,6 @@ static_assert(binding::binding_traits<kafka_traits>);
 /// something no other SDK's consumer reads.
 template <json::json_codec Codec>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
-  if (auto valid = cloud_event.validate(); !valid) {
-    return fail(valid.error().code, valid.error().detail, valid.error().where);
-  }
-
   if (mode == content_mode::batched) {
     return fail(errc::invalid_argument, "the Kafka binding defines no batch mode");
   }
@@ -133,23 +129,25 @@ template <json::json_codec Codec>
                 "no ce_specversion header and no CloudEvents content type");
   }
 
-  auto cloud_event = binding::read_attributes<detail::kafka_traits>(incoming.header_fields);
-  if (!cloud_event) {
-    return fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
+  auto under_construction = binding::read_attributes<detail::kafka_traits>(incoming.header_fields);
+  if (!under_construction) {
+    return fail(under_construction.error().code, under_construction.error().detail,
+                under_construction.error().where);
   }
 
   if (const std::string* declared = incoming.header_fields.find_exact(detail::content_type_header);
       declared != nullptr) {
-    cloud_event->datacontenttype = *declared;
+    auto media_type = datacontenttype::make(*declared);
+    if (!media_type) {
+      return fail(media_type.error().code, media_type.error().detail, media_type.error().where);
+    }
+    under_construction->rest.datacontenttype = std::move(*media_type);
   }
 
-  binding::read_body(incoming.body, *cloud_event);
+  under_construction->rest.data =
+      binding::read_body(incoming.body, under_construction->rest.datacontenttype);
 
-  if (auto valid = cloud_event->validate(); !valid) {
-    return fail(valid.error().code, valid.error().detail, valid.error().where);
-  }
-
-  return std::move(*cloud_event);
+  return std::move(*under_construction).build();
 }
 
 /// \brief A Kafka record: the message, plus the key that decides its partition.

@@ -22,6 +22,15 @@ namespace ce::inline v1::detail {
 /// work there (SWR-CORE-0027).
 [[noreturn]] void this_literal_is_not_a_valid_cloudevents_attribute();
 
+/// \brief Whether a refusal names the text that was offered rather than the
+/// attribute it was offered for.
+///
+/// A context attribute is identified by which one it is, so an empty `id` reports
+/// `id` (SWR-CORE-0017, SWR-CORE-0019). An extension has no fixed name to report:
+/// the offered text is the only thing that identifies it (SWR-CORE-0020).
+template <class Policy>
+concept names_offending_text = requires { requires Policy::names_offending_text; };
+
 /// \brief Proof that a compile-time constant passed its attribute's rule.
 ///
 /// Only a consteval constructor can produce one, so a value of this type cannot
@@ -67,7 +76,11 @@ class validated_string {
 
   [[nodiscard]] static auto make(std::string text) -> result<validated_string> {
     if (const auto refused = Policy::check(text); refused) {
-      return fail(*refused, std::move(text));
+      if constexpr (names_offending_text<Policy>) {
+        return fail(*refused, std::move(text));
+      } else {
+        return fail(*refused);
+      }
     }
     validated_string out;
     out.owned_ = std::move(text);

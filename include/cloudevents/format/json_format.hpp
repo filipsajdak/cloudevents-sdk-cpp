@@ -32,40 +32,36 @@ struct json_format {
 
   /// \brief Build the JSON document for one event.
   [[nodiscard]] static auto to_value(const event& cloud_event) -> result<value> {
-    if (auto valid = cloud_event.validate(); !valid) {
-      return fail(valid.error().code, valid.error().detail, valid.error().where);
-    }
-
     auto root = Codec::make_object();
-    Codec::set(root, "specversion", Codec::make_string(spec_version_of(cloud_event)));
-    Codec::set(root, "id", Codec::make_string(id_of(cloud_event)));
-    Codec::set(root, "source", Codec::make_string(source_of(cloud_event).view()));
-    Codec::set(root, "type", Codec::make_string(type_of(cloud_event)));
+    Codec::set(root, "specversion", Codec::make_string(cloud_event.specversion().view()));
+    Codec::set(root, "id", Codec::make_string(cloud_event.id().view()));
+    Codec::set(root, "source", Codec::make_string(cloud_event.source().view()));
+    Codec::set(root, "type", Codec::make_string(cloud_event.type().view()));
 
     // Bound once rather than called twice: nothing says the second call yields
     // the engaged optional the first one tested.
-    if (const auto& media_type = datacontenttype_of(cloud_event); media_type) {
-      Codec::set(root, "datacontenttype", Codec::make_string(*media_type));
+    if (const auto& media_type = cloud_event.datacontenttype(); media_type) {
+      Codec::set(root, "datacontenttype", Codec::make_string(media_type->view()));
     }
-    if (const auto& schema = dataschema_of(cloud_event); schema) {
+    if (const auto& schema = cloud_event.dataschema(); schema) {
       Codec::set(root, "dataschema", Codec::make_string(schema->view()));
     }
-    if (const auto& named = subject_of(cloud_event); named) {
-      Codec::set(root, "subject", Codec::make_string(*named));
+    if (const auto& named = cloud_event.subject(); named) {
+      Codec::set(root, "subject", Codec::make_string(named->view()));
     }
-    if (const auto& when = time_of(cloud_event); when) {
+    if (const auto& when = cloud_event.time(); when) {
       Codec::set(root, "time", Codec::make_string(to_string(*when)));
     }
 
-    for (const auto& [name, attribute] : extensions_of(cloud_event)) {
+    for (const auto& [name, attribute] : cloud_event.extensions()) {
       auto encoded = encode_attribute(attribute);
       if (!encoded) {
-        return fail(encoded.error().code, encoded.error().detail, name);
+        return fail(encoded.error().code, encoded.error().detail, name.str());
       }
-      Codec::set(root, name, std::move(*encoded));
+      Codec::set(root, name.view(), std::move(*encoded));
     }
 
-    if (auto stored = encode_data(root, data_of(cloud_event)); !stored) {
+    if (auto stored = encode_data(root, cloud_event.data()); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
 
@@ -102,7 +98,7 @@ struct json_format {
       return fail(errc::parse_error, "a CloudEvent must be a JSON object");
     }
 
-    event cloud_event{.id = {}, .source = {}, .type = {}};
+    event::builder under_construction{};
 
     auto required = [&](std::string_view name, auto assign) -> result<void> {
       const auto* member = Codec::find(document, name);
@@ -114,26 +110,41 @@ struct json_format {
       if (!text) {
         return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
       }
-      assign(*text);
-      return {};
+      return assign(*text);
     };
 
-    if (auto read = required("specversion", [&](std::string_view v) { cloud_event.specversion = v; });
+    // Each required attribute goes through its own factory, which is the only
+    // thing that can refuse the text the document carried.
+    const auto store = []<class Attribute>(std::optional<Attribute>& slot) {
+      return [&slot](std::string_view text) -> result<void> {
+        auto made = Attribute::make(text);
+        if (!made) {
+          return fail(made.error().code, made.error().detail, made.error().where);
+        }
+        slot = std::move(*made);
+        return {};
+      };
+    };
+
+    if (auto read = required("specversion",
+                             [](std::string_view text) -> result<void> {
+                               auto version = spec_version::make(text);
+                               if (!version) {
+                                 return fail(version.error().code, version.error().detail,
+                                             version.error().where);
+                               }
+                               return {};
+                             });
         !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (spec_version_of(cloud_event) != "1.0") {
-      return fail(errc::unsupported_spec_version, "this SDK implements CloudEvents 1.0 only",
-                  "specversion");
-    }
-    if (auto read = required("id", [&](std::string_view v) { cloud_event.id = v; }); !read) {
+    if (auto read = required("id", store(under_construction.id)); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto read = required("source", [&](std::string_view v) { cloud_event.source = uri_ref{std::string{v}}; });
-        !read) {
+    if (auto read = required("source", store(under_construction.source)); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto read = required("type", [&](std::string_view v) { cloud_event.type = v; }); !read) {
+    if (auto read = required("type", store(under_construction.type)); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
 
@@ -149,26 +160,35 @@ struct json_format {
       return std::optional<std::string>{std::string{*text}};
     };
 
-    auto content = optional_string("datacontenttype");
-    if (!content) {
-      return fail(content.error().code, content.error().detail, content.error().where);
-    }
-    cloud_event.datacontenttype = std::move(*content);
+    // An absent optional attribute stays absent; a present one goes through its
+    // factory, so the only way into the event is past its rule.
+    const auto store_optional = [&]<class Attribute>(std::string_view name,
+                                                     std::optional<Attribute>& slot) -> result<void> {
+      auto text = optional_string(name);
+      if (!text) {
+        return fail(text.error().code, text.error().detail, text.error().where);
+      }
+      if (!*text) {
+        return {};
+      }
+      auto made = Attribute::make(std::move(**text));
+      if (!made) {
+        return fail(made.error().code, made.error().detail, made.error().where);
+      }
+      slot = std::move(*made);
+      return {};
+    };
 
-    auto schema = optional_string("dataschema");
-    if (!schema) {
-      return fail(schema.error().code, schema.error().detail, schema.error().where);
+    if (auto read = store_optional("datacontenttype", under_construction.rest.datacontenttype);
+        !read) {
+      return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (*schema) {
-      cloud_event.dataschema = uri{std::move(**schema)};
+    if (auto read = store_optional("dataschema", under_construction.rest.dataschema); !read) {
+      return fail(read.error().code, read.error().detail, read.error().where);
     }
-
-    auto subject_attribute = optional_string("subject");
-    if (!subject_attribute) {
-      return fail(subject_attribute.error().code, subject_attribute.error().detail,
-                  subject_attribute.error().where);
+    if (auto read = store_optional("subject", under_construction.rest.subject); !read) {
+      return fail(read.error().code, read.error().detail, read.error().where);
     }
-    cloud_event.subject = std::move(*subject_attribute);
 
     if (auto time_text = optional_string("time"); !time_text) {
       return fail(time_text.error().code, time_text.error().detail, time_text.error().where);
@@ -177,10 +197,10 @@ struct json_format {
       if (!parsed) {
         return fail(parsed.error().code, parsed.error().detail, "time");
       }
-      cloud_event.time = *parsed;
+      under_construction.rest.time = *parsed;
     }
 
-    if (auto stored = decode_data(document, cloud_event); !stored) {
+    if (auto stored = decode_data(document, under_construction.rest); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
 
@@ -200,12 +220,12 @@ struct json_format {
         return;
       }
       // An unknown member becomes an extension only if its name is one the spec
-      // allows. Accepting others would let decode return an event that
-      // validate() rejects, so the same document would decode and then fail to
-      // re-encode.
-      if (!valid_attribute_name(name)) {
-        extension_error = fail(errc::invalid_attribute_name,
-                               "extension names must match [a-z0-9]+", std::string{name});
+      // allows. Accepting others would let decode return an event the encoder
+      // then refuses, so the same document would decode and fail to re-encode.
+      auto attribute = extension_name::make(name);
+      if (!attribute) {
+        extension_error =
+            fail(attribute.error().code, attribute.error().detail, std::string{name});
         return;
       }
       auto decoded = decode_attribute(member);
@@ -213,20 +233,15 @@ struct json_format {
         extension_error = fail(decoded.error().code, decoded.error().detail, std::string{name});
         return;
       }
-      cloud_event.extensions.insert_or_assign(std::string{name}, std::move(*decoded));
+      under_construction.rest.extensions.insert_or_assign(std::move(*attribute),
+                                                          std::move(*decoded));
     });
     if (!extension_error) {
       return fail(extension_error.error().code, extension_error.error().detail,
                   extension_error.error().where);
     }
 
-    // The decoder must not hand back an event the encoder would refuse, so the
-    // same document cannot decode and then fail to re-encode.
-    if (auto valid = cloud_event.validate(); !valid) {
-      return fail(valid.error().code, valid.error().detail, valid.error().where);
-    }
-
-    return cloud_event;
+    return std::move(under_construction).build();
   }
 
   /// \brief Read one event from JSON text.
@@ -358,7 +373,8 @@ struct json_format {
         data);
   }
 
-  [[nodiscard]] static auto decode_data(const value& document, event& cloud_event) -> result<void> {
+  [[nodiscard]] static auto decode_data(const value& document, event::options& into)
+      -> result<void> {
     const auto* data = Codec::find(document, "data");
     const auto* data_base64 = Codec::find(document, "data_base64");
 
@@ -376,7 +392,7 @@ struct json_format {
       if (!decoded) {
         return fail(decoded.error().code, decoded.error().detail, "data_base64");
       }
-      cloud_event.data = std::move(*decoded);
+      into.data = std::move(*decoded);
       return {};
     }
 
@@ -386,18 +402,18 @@ struct json_format {
 
     // A JSON string under `data` is the payload itself when the content type says
     // it is not JSON. Otherwise the member is carried through as JSON.
-    const auto& media_type = datacontenttype_of(cloud_event);
-    const bool declared_non_json = media_type && !is_json_content_type(*media_type);
+    const auto& media_type = into.datacontenttype;
+    const bool declared_non_json = media_type && !is_json_content_type(media_type->view());
     if (declared_non_json && Codec::kind_of(*data) == json::kind::string) {
       auto text = Codec::as_string(*data);
       if (!text) {
         return fail(errc::invalid_attribute_value, "data must be a JSON string", "data");
       }
-      cloud_event.data = std::string{*text};
+      into.data = std::string{*text};
       return {};
     }
 
-    cloud_event.data = json_text{.raw = Codec::dump(*data)};
+    into.data = json_text{.raw = Codec::dump(*data)};
     return {};
   }
 };

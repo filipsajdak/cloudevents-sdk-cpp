@@ -161,10 +161,6 @@ static_assert(binding::binding_traits<detail::http_traits<literal_values>>);
 /// \brief Lay an event out as an HTTP message.
 template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
-  if (auto valid = cloud_event.validate(); !valid) {
-    return fail(valid.error().code, valid.error().detail, valid.error().where);
-  }
-
   if (mode == content_mode::structured) {
     return binding::encode_structured<detail::http_traits<Values>, Codec>(cloud_event);
   }
@@ -220,26 +216,26 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
     return fail(errc::not_a_cloudevent, "no ce-specversion header and no CloudEvents content type");
   }
 
-  auto cloud_event = binding::read_attributes<detail::http_traits<Values>>(request.header_fields);
-  if (!cloud_event) {
-    return fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
+  auto under_construction =
+      binding::read_attributes<detail::http_traits<Values>>(request.header_fields);
+  if (!under_construction) {
+    return fail(under_construction.error().code, under_construction.error().detail,
+                under_construction.error().where);
   }
 
   if (const std::string* declared = request.header_fields.find(detail::content_type_header);
       declared != nullptr) {
-    cloud_event->datacontenttype = *declared;
+    auto media_type = datacontenttype::make(*declared);
+    if (!media_type) {
+      return fail(media_type.error().code, media_type.error().detail, media_type.error().where);
+    }
+    under_construction->rest.datacontenttype = std::move(*media_type);
   }
 
-  binding::read_body(request.body, *cloud_event);
+  under_construction->rest.data =
+      binding::read_body(request.body, under_construction->rest.datacontenttype);
 
-  // Same invariant as the JSON format: an empty ce-type header is present but
-  // not valid, and an event that cannot go back out to a message is of no use
-  // to a receiver.
-  if (auto valid = cloud_event->validate(); !valid) {
-    return fail(valid.error().code, valid.error().detail, valid.error().where);
-  }
-
-  return std::move(*cloud_event);
+  return std::move(*under_construction).build();
 }
 
 /// \brief Read a batch from an HTTP message.

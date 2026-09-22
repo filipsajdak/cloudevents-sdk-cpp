@@ -23,7 +23,8 @@ int main() {
   if (!ce::valid_attribute_name("seq9") || ce::valid_attribute_name("Seq9")) {
     return 1;
   }
-  ce::event subject{.id = "1", .source = ce::uri_ref{"/core"}, .type = "t"};
+  using namespace ce::literals;
+  ce::event subject{"1"_id, "/core"_source, "t"_type};
   if (!subject.set(ce::ext::partitioning{.partitionkey = "k"})) {
     return 2;
   }

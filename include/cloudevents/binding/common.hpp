@@ -141,24 +141,24 @@ template <binding_traits T>
     detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
   };
 
-  put_attribute("specversion", spec_version_of(cloud_event));
-  put_attribute("id", id_of(cloud_event));
-  put_attribute("source", source_of(cloud_event).view());
-  put_attribute("type", type_of(cloud_event));
+  put_attribute("specversion", cloud_event.specversion().view());
+  put_attribute("id", cloud_event.id().view());
+  put_attribute("source", cloud_event.source().view());
+  put_attribute("type", cloud_event.type().view());
   // Bound once rather than called twice. Two calls are two expressions as far
   // as a reader or a checker is concerned, and nothing says the second yields
   // the engaged optional the first one tested.
-  if (const auto& schema = dataschema_of(cloud_event); schema) {
+  if (const auto& schema = cloud_event.dataschema(); schema) {
     put_attribute("dataschema", schema->view());
   }
-  if (const auto& named = subject_of(cloud_event); named) {
-    put_attribute("subject", *named);
+  if (const auto& named = cloud_event.subject(); named) {
+    put_attribute("subject", named->view());
   }
-  if (const auto& when = time_of(cloud_event); when) {
+  if (const auto& when = cloud_event.time(); when) {
     put_attribute("time", to_string(*when));
   }
-  for (const auto& [name, attribute] : extensions_of(cloud_event)) {
-    put_attribute(name, render_attribute(attribute));
+  for (const auto& [name, attribute] : cloud_event.extensions()) {
+    put_attribute(name.view(), render_attribute(attribute));
   }
 
   if (!failure) {
@@ -169,11 +169,11 @@ template <binding_traits T>
   // appear under the prefix, or a receiver sees the same attribute twice, and it
   // is not encoded there: it is a media type, not an attribute value. Where the
   // binding maps it like any other attribute, it is encoded like one.
-  if (const auto& media_type = datacontenttype_of(cloud_event); media_type) {
+  if (const auto& media_type = cloud_event.datacontenttype(); media_type) {
     if constexpr (detail::content_type_policy<T>::as_attribute) {
-      put_attribute("datacontenttype", *media_type);
+      put_attribute("datacontenttype", media_type->view());
     } else {
-      detail::put<T>(into, std::string{T::content_type_header}, *media_type);
+      detail::put<T>(into, std::string{T::content_type_header}, media_type->str());
     }
   }
   return failure;
@@ -181,10 +181,12 @@ template <binding_traits T>
 
 /// \brief Read the attributes out of a message's fields.
 ///
-/// The event is returned without its datacontenttype, its payload or a
-/// `validate()` call: those need the body, which is the caller's to supply.
+/// Hands back the builder rather than an event, because the payload and the
+/// media type describing it come from the body, which is the caller's to supply.
+/// The event is built once everything is known, so there is no window in which
+/// one exists without its payload (SWR-BIND-0006).
 template <binding_traits T>
-[[nodiscard]] auto read_attributes(const raw_headers& delivered) -> result<event> {
+[[nodiscard]] auto read_attributes(const raw_headers& delivered) -> result<event::builder> {
   // The ingress gate. `raw_headers::find` returns the first field of a name
   // while the loop below lets the last one win, so a message carrying `ce-id`
   // twice decoded differently from how the content mode was detected. Refusing
@@ -197,11 +199,21 @@ template <binding_traits T>
   }
   const headers& fields = *adopted;
 
-  event cloud_event{.id = {}, .source = {}, .type = {}};
-  bool saw_id = false;
-  bool saw_source = false;
-  bool saw_type = false;
+  event::builder under_construction{};
   result<void> header_error{};
+
+  // Every context attribute is made the same way: the wire text goes to the
+  // attribute's own factory, which is the only thing that can refuse it.
+  const auto store = [&header_error]<class Attribute>(std::optional<Attribute>& slot,
+                                                      std::string text) {
+    auto made = Attribute::make(std::move(text));
+    if (!made) {
+      header_error = fail(made.error().code, made.error().detail, made.error().where);
+      return false;
+    }
+    slot = std::move(*made);
+    return true;
+  };
 
   for (const auto& [name, raw_value] : fields) {
     if (!detail::carries_prefix<T>(name)) {
@@ -221,7 +233,9 @@ template <binding_traits T>
     // for that binding".
     if constexpr (detail::content_type_policy<T>::as_attribute) {
       if (attribute == "datacontenttype") {
-        cloud_event.datacontenttype = *decoded;
+        if (!store(under_construction.rest.datacontenttype, std::move(*decoded))) {
+          break;
+        }
         continue;
       }
     } else {
@@ -240,55 +254,59 @@ template <binding_traits T>
     }
 
     if (attribute == "specversion") {
-      cloud_event.specversion = std::move(*decoded);
+      auto version = spec_version::make(*decoded);
+      if (!version) {
+        header_error = fail(version.error().code, version.error().detail, version.error().where);
+        break;
+      }
     } else if (attribute == "id") {
-      cloud_event.id = std::move(*decoded);
-      saw_id = true;
+      if (!store(under_construction.id, std::move(*decoded))) {
+        break;
+      }
     } else if (attribute == "source") {
-      cloud_event.source = uri_ref{std::move(*decoded)};
-      saw_source = true;
+      if (!store(under_construction.source, std::move(*decoded))) {
+        break;
+      }
     } else if (attribute == "type") {
-      cloud_event.type = std::move(*decoded);
-      saw_type = true;
+      if (!store(under_construction.type, std::move(*decoded))) {
+        break;
+      }
     } else if (attribute == "dataschema") {
-      cloud_event.dataschema = uri{std::move(*decoded)};
+      if (!store(under_construction.rest.dataschema, std::move(*decoded))) {
+        break;
+      }
     } else if (attribute == "subject") {
-      cloud_event.subject = std::move(*decoded);
+      if (!store(under_construction.rest.subject, std::move(*decoded))) {
+        break;
+      }
     } else if (attribute == "time") {
       auto parsed = parse_timestamp(*decoded);
       if (!parsed) {
         header_error = fail(parsed.error().code, parsed.error().detail, "time");
         break;
       }
-      cloud_event.time = *parsed;
+      under_construction.rest.time = *parsed;
     } else {
       // Same rule as the JSON format: a prefixed field whose name is not one the
       // spec allows cannot become an extension, or reading would return an event
-      // that writing then refuses.
-      if (!valid_attribute_name(attribute)) {
+      // that writing then refuses. `extension_name` is where that rule lives now.
+      auto extension = extension_name::make(std::move(attribute));
+      if (!extension) {
         header_error =
-            fail(errc::invalid_attribute_name, "extension names must match [a-z0-9]+", attribute);
+            fail(extension.error().code, extension.error().detail, extension.error().where);
         break;
       }
       // The wire form carries no type, so an extension arrives as a string. The
       // typed extension structs are what recover the declared type.
-      cloud_event.extensions.insert_or_assign(std::move(attribute),
-                                              attribute_value{std::move(*decoded)});
+      under_construction.rest.extensions.insert_or_assign(std::move(*extension),
+                                                          attribute_value{std::move(*decoded)});
     }
   }
 
   if (!header_error) {
     return fail(header_error.error().code, header_error.error().detail, header_error.error().where);
   }
-  if (spec_version_of(cloud_event) != "1.0") {
-    return fail(errc::unsupported_spec_version, "this SDK implements CloudEvents 1.0 only",
-                "specversion");
-  }
-  if (!saw_id || !saw_source || !saw_type) {
-    return fail(errc::missing_required_attribute, "id, source and type are all required",
-                !saw_id ? "id" : (!saw_source ? "source" : "type"));
-  }
-  return cloud_event;
+  return under_construction;
 }
 
 /// \brief The payload, as the message body.
@@ -306,21 +324,22 @@ inline void write_body(const event& cloud_event, message& into) {
           into.body = to_bytes(held.raw);
         }
       },
-      data_of(cloud_event));
+      cloud_event.data());
 }
 
-/// \brief The message body, as the payload. Reads `datacontenttype_of(into)`, so the
-/// caller sets that first.
-inline void read_body(const binary& body, event& into) {
+/// \brief The message body, as the payload.
+///
+/// Takes the media type rather than reading it back off a half-built event, so
+/// the ordering the old out-parameter form required cannot be got wrong.
+[[nodiscard]] inline auto read_body(const binary& body,
+                                    const std::optional<datacontenttype>& media_type) -> data_t {
   if (body.empty()) {
-    return;
+    return {};
   }
-  const auto& media_type = datacontenttype_of(into);
-  if (media_type && is_json_content_type(*media_type)) {
-    into.data = json_text{.raw = to_text(body)};
-  } else {
-    into.data = body;
+  if (media_type && is_json_content_type(media_type->view())) {
+    return json_text{.raw = to_text(body)};
   }
+  return body;
 }
 
 /// \brief The whole event as one document in the body, under the event content type.

@@ -59,11 +59,9 @@ int main() {
       .labels = {{"warehouse", "oslo"}, {"lane", "3"}},
   };
 
-  ce::event subject{
-      .id = "A234-1234-1234",
-      .source = ce::uri_ref{"https://example.test/orders"},
-      .type = "com.example.order.placed",
-  };
+  using namespace ce::literals;
+  ce::event subject{"A234-1234-1234"_id, "https://example.test/orders"_source,
+                    "com.example.order.placed"_type};
 
   // set_data writes the struct as the payload and sets datacontenttype, so the
   // event states what it carries. It returns nothing: a described type is one
@@ -122,13 +120,15 @@ int main() {
 
   // Decoding is strict about a member that IS present with the wrong type, and
   // the failure names the member rather than the payload.
-  ce::event mistyped{
-      .id = "B1",
-      .source = ce::uri_ref{"/s"},
-      .type = "com.example.order.line",
+  const ce::event mistyped{
+      "B1"_id,
+      "/s"_source,
+      "com.example.order.line"_type,
+      {
+          .datacontenttype = "application/json"_mediatype,
+          .data = ce::json_text{.raw = R"({"sku":"SKU-1","quantity":"two"})"},
+      },
   };
-  mistyped.datacontenttype = "application/json";
-  mistyped.data = ce::json_text{.raw = R"({"sku":"SKU-1","quantity":"two"})"};
 
   auto rejected = ce::data_as<shop::line_item, codec>(mistyped);
   if (rejected) {

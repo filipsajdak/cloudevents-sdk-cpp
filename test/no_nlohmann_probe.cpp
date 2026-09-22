@@ -53,11 +53,12 @@ CE_DESCRIBE(parcel, label, weight);
 
 auto probe() -> report {
   using format = ce::json_format<ce::test::mini_codec>;
+  using namespace ce::literals;
   static_assert(ce::json::json_codec<ce::test::mini_codec>);
 
-  ce::event subject{.id = "1", .source = "/spec/test", .type = "com.example.thing"};
-  subject.datacontenttype = "application/json";
-  subject.data = ce::json_text{.raw = R"({"k":1})"};
+  const ce::event subject{"1"_id, "/spec/test"_source, "com.example.thing"_type,
+                          {.datacontenttype = "application/json"_mediatype,
+                           .data = ce::json_text{.raw = R"({"k":1})"}}};
 
   auto encoded = format::encode(subject);
   if (!encoded) {
@@ -71,12 +72,12 @@ auto probe() -> report {
   }
 
   auto decoded = format::decode(*encoded);
-  const bool round_tripped = decoded.has_value() && decoded->id == subject.id &&
-                             decoded->type == subject.type &&
-                             std::holds_alternative<ce::json_text>(decoded->data);
+  const bool round_tripped = decoded.has_value() && decoded->id() == subject.id() &&
+                             decoded->type() == subject.type() &&
+                             std::holds_alternative<ce::json_text>(decoded->data());
 
   // The typed payload accessors, over the same user-supplied codec.
-  ce::event typed{.id = "2", .source = "/spec/test", .type = "com.example.parcel"};
+  ce::event typed{"2"_id, "/spec/test"_source, "com.example.parcel"_type};
   const parcel sent{.label = "crate", .weight = 12};
   // set_data cannot fail, so there is no longer a result to check: writing the
   // payload and reading it back is the whole round trip.
@@ -86,7 +87,7 @@ auto probe() -> report {
       read.has_value() && read->label == sent.label && read->weight == sent.weight;
 
   // The typed extension layer, which is core and needs no codec at all.
-  ce::event tagged{.id = "3", .source = "/spec/test", .type = "com.example.traced"};
+  ce::event tagged{"3"_id, "/spec/test"_source, "com.example.traced"_type};
   const bool wrote_extension =
       tagged.set(ce::ext::tracing{.traceparent = "00-a-b-01", .tracestate = {}}).has_value();
   auto tracing = tagged.get<ce::ext::tracing>();

@@ -43,9 +43,9 @@ void run(std::string_view name) {
   auto minimal = format::decode(ce::bench::minimal_document);
   check(minimal.has_value(), name, "minimal document does not decode");
   if (minimal) {
-    check(minimal->id == "A234-1234-1234", name, "minimal id");
-    check(minimal->type == "com.example.someevent", name, "minimal type");
-    check(minimal->validate().has_value(), name, "minimal does not validate");
+    check(minimal->id() == "A234-1234-1234", name, "minimal id");
+    check(minimal->type() == "com.example.someevent", name, "minimal type");
+    check(format::encode(*minimal).has_value(), name, "minimal does not re-encode");
   }
 
   auto full = format::decode(ce::bench::full_document);
@@ -53,15 +53,15 @@ void run(std::string_view name) {
   if (!full) {
     return;
   }
-  check(full->subject.has_value(), name, "subject lost");
-  check(full->time.has_value(), name, "time lost");
-  if (full->time) {
+  check(full->subject().has_value(), name, "subject lost");
+  check(full->time().has_value(), name, "time lost");
+  if (full->time()) {
     // Nanosecond precision and a non-UTC offset both survive, which is what
     // SWR-CORE-0009 requires and what a codec can quietly ruin.
-    check(ce::to_string(*full->time) == "2026-09-20T12:34:56.123456789+02:00", name,
+    check(ce::to_string(*full->time()) == "2026-09-20T12:34:56.123456789+02:00", name,
           "timestamp did not round-trip byte for byte");
   }
-  check(std::holds_alternative<ce::json_text>(full->data), name, "payload is not json_text");
+  check(std::holds_alternative<ce::json_text>(full->data()), name, "payload is not json_text");
 
   // --- the Integer / floating distinction ---------------------------------
   //

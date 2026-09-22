@@ -81,26 +81,29 @@ inline constexpr auto full_document =
 /// The event the encode benchmarks start from: the decoded `full_document`.
 [[nodiscard]] inline auto full_event() -> const ce::event& {
   static const ce::event subject = [] {
-    ce::event out{
-        .id = "A234-1234-1234",
-        .source = ce::uri_ref{"https://example.test/orders/eu-west"},
-        .type = "com.example.order.placed",
+    using namespace ce::literals;
+    const auto parsed = ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00");
+    return ce::event{
+        "A234-1234-1234"_id,
+        "https://example.test/orders/eu-west"_source,
+        "com.example.order.placed"_type,
+        {
+            .datacontenttype = "application/json"_mediatype,
+            .dataschema = "https://example.test/schema/order/v2"_dataschema,
+            .subject = "order-99"_subject,
+            .time = parsed ? std::optional<ce::timestamp>{*parsed} : std::nullopt,
+            .extensions =
+                {
+                    {"traceparent"_ext,
+                     std::string{"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"}},
+                    {"partitionkey"_ext, std::string{"customer-42"}},
+                    {"sampledrate"_ext, std::int32_t{30}},
+                },
+            .data = ce::json_text{
+                .raw =
+                    R"({"total":4299,"currency":"EUR","lines":[{"sku":"SKU-1","qty":2},{"sku":"SKU-2","qty":1}],"paid":true})"},
+        },
     };
-    out.subject = "order-99";
-    out.dataschema = ce::uri{"https://example.test/schema/order/v2"};
-    out.datacontenttype = "application/json";
-    if (auto parsed = ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00")) {
-      out.time = *parsed;
-    }
-    (void)out.set_extension(
-        "traceparent",
-        ce::attribute_value{std::string{"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"}});
-    (void)out.set_extension("partitionkey", ce::attribute_value{std::string{"customer-42"}});
-    (void)out.set_extension("sampledrate", ce::attribute_value{std::int32_t{30}});
-    out.data = ce::json_text{
-        .raw =
-            R"({"total":4299,"currency":"EUR","lines":[{"sku":"SKU-1","qty":2},{"sku":"SKU-2","qty":1}],"paid":true})"};
-    return out;
   }();
   return subject;
 }
@@ -108,20 +111,24 @@ inline constexpr auto full_document =
 /// One hundred events to encode as a batch.
 [[nodiscard]] inline auto batch_events() -> const std::vector<ce::event>& {
   static const std::vector<ce::event> events = [] {
+    using namespace ce::literals;
+    const auto parsed = ce::parse_timestamp("2026-09-20T12:34:56Z");
     std::vector<ce::event> out;
     out.reserve(100);
     for (int i = 0; i < 100; ++i) {
-      ce::event subject{.id = "id-" + std::to_string(i),
-                        .source = ce::uri_ref{"/bulk"},
-                        .type = "com.example.tick"};
-      subject.datacontenttype = "application/json";
-      if (auto parsed = ce::parse_timestamp("2026-09-20T12:34:56Z")) {
-        subject.time = *parsed;
+      // The id is made at run time, so it goes through the factory; "id-N" always
+      // passes, and a refusal would only shrink the batch, never corrupt it.
+      auto id = ce::id::make("id-" + std::to_string(i));
+      if (!id) {
+        continue;
       }
-      (void)subject.set_extension("sequence",
-                                  ce::attribute_value{std::to_string(1000000 + i)});
-      subject.data = ce::json_text{.raw = R"({"n":)" + std::to_string(i) + "}"};
-      out.push_back(std::move(subject));
+      out.emplace_back(std::move(*id), "/bulk"_source, "com.example.tick"_type,
+                       ce::event::options{
+                           .datacontenttype = "application/json"_mediatype,
+                           .time = parsed ? std::optional<ce::timestamp>{*parsed} : std::nullopt,
+                           .extensions = {{"sequence"_ext, std::to_string(1000000 + i)}},
+                           .data = ce::json_text{.raw = R"({"n":)" + std::to_string(i) + "}"},
+                       });
     }
     return out;
   }();

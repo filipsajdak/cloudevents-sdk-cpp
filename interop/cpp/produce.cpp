@@ -46,81 +46,101 @@ int main(int argc, char** argv) {
   const std::filesystem::path dir{argv[1]};
   std::filesystem::create_directories(dir);
 
-  ce::event minimal{
-      .id = "id-minimal", .source = ce::uri_ref{"/interop/cpp"}, .type = "com.example.minimal"};
+  using namespace ce::literals;
+
+  const ce::event minimal{"id-minimal"_id, "/interop/cpp"_source, "com.example.minimal"_type};
   write(dir, "minimal", minimal);
 
-  ce::event full{
-      .id = "id-full", .source = ce::uri_ref{"https://example.test/interop/cpp"},
-      .type = "com.example.full"};
-  full.subject = "the-subject";
-  full.dataschema = ce::uri{"https://example.test/schema/1"};
-  full.datacontenttype = "application/json";
-  if (auto parsed = ce::parse_timestamp("2026-09-20T12:34:56Z")) {
-    full.time = *parsed;
-  }
-  full.data = ce::json_text{.raw = R"({"count":3,"label":"cpp"})"};
+  const auto full_time = ce::parse_timestamp("2026-09-20T12:34:56Z");
+  const ce::event full{
+      "id-full"_id,
+      "https://example.test/interop/cpp"_source,
+      "com.example.full"_type,
+      {
+          .datacontenttype = "application/json"_mediatype,
+          .dataschema = "https://example.test/schema/1"_dataschema,
+          .subject = "the-subject"_subject,
+          .time = full_time ? std::optional<ce::timestamp>{*full_time} : std::nullopt,
+          .data = ce::json_text{.raw = R"({"count":3,"label":"cpp"})"},
+      },
+  };
   write(dir, "full", full);
 
-  ce::event extended{.id = "id-extensions", .source = ce::uri_ref{"/interop/cpp"},
-                     .type = "com.example.extensions"};
-  (void)extended.set(ce::ext::tracing{
-      .traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", .tracestate = {}});
-  (void)extended.set(ce::ext::sampled_rate{.sampledrate = 30});
-  (void)extended.set(ce::ext::partitioning{.partitionkey = "customer-42"});
+  // The typed extensions name their attributes from the struct, so writing one
+  // can be refused; a refusal is a failed producer run, not a silent omission.
+  ce::event extended{"id-extensions"_id, "/interop/cpp"_source, "com.example.extensions"_type};
+  const bool extended_written =
+      extended.set(ce::ext::tracing{
+                       .traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+                       .tracestate = {}})
+          .has_value() &&
+      extended.set(ce::ext::sampled_rate{.sampledrate = 30}).has_value() &&
+      extended.set(ce::ext::partitioning{.partitionkey = "customer-42"}).has_value();
+  if (!extended_written) {
+    std::fprintf(stderr, "FAIL: a typed extension was refused\n");
+    ++failures;
+  }
   write(dir, "extensions", extended);
 
-  ce::event text{
-      .id = "id-text", .source = ce::uri_ref{"/interop/cpp"}, .type = "com.example.text"};
-  text.datacontenttype = "text/plain";
-  text.data = std::string{"plain text payload"};
+  const ce::event text{"id-text"_id, "/interop/cpp"_source, "com.example.text"_type,
+                       {.datacontenttype = "text/plain"_mediatype,
+                        .data = std::string{"plain text payload"}}};
   write(dir, "text_data", text);
 
-  ce::event binary{
-      .id = "id-binary", .source = ce::uri_ref{"/interop/cpp"}, .type = "com.example.binary"};
-  binary.datacontenttype = "application/octet-stream";
-  binary.data = ce::binary{std::byte{0x00}, std::byte{0x01}, std::byte{0x02}, std::byte{0xFF}};
+  const ce::event binary{
+      "id-binary"_id,
+      "/interop/cpp"_source,
+      "com.example.binary"_type,
+      {
+          .datacontenttype = "application/octet-stream"_mediatype,
+          .data = ce::binary{std::byte{0x00}, std::byte{0x01}, std::byte{0x02}, std::byte{0xFF}},
+      },
+  };
   write(dir, "binary_data", binary);
 
   // --- the same edge cases, from this side --------------------------------
 
-  ce::event nanos{
-      .id = "id-nanos", .source = ce::uri_ref{"/interop/cpp"}, .type = "com.example.nanos"};
-  if (auto parsed = ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00")) {
-    nanos.time = *parsed;
-  } else {
+  const auto nanos_time = ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00");
+  if (!nanos_time) {
     std::fprintf(stderr, "FAIL: this SDK cannot parse nanosecond precision\n");
     ++failures;
   }
+  const ce::event nanos{
+      "id-nanos"_id, "/interop/cpp"_source, "com.example.nanos"_type,
+      {.time = nanos_time ? std::optional<ce::timestamp>{*nanos_time} : std::nullopt}};
   write(dir, "time_nanoseconds", nanos);
 
-  ce::event types{
-      .id = "id-types", .source = ce::uri_ref{"/interop/cpp"}, .type = "com.example.types"};
-  (void)types.set_extension("astring", ce::attribute_value{std::string{"text"}});
-  (void)types.set_extension("aninteger", ce::attribute_value{std::int32_t{42}});
-  (void)types.set_extension("aboolean", ce::attribute_value{true});
-  (void)types.set_extension("negative", ce::attribute_value{std::int32_t{-7}});
-  (void)types.set_extension("zero", ce::attribute_value{std::int32_t{0}});
+  const ce::event types{"id-types"_id, "/interop/cpp"_source, "com.example.types"_type,
+                        {.extensions = {
+                             {"astring"_ext, std::string{"text"}},
+                             {"aninteger"_ext, std::int32_t{42}},
+                             {"aboolean"_ext, true},
+                             {"negative"_ext, std::int32_t{-7}},
+                             {"zero"_ext, std::int32_t{0}},
+                         }}};
   write(dir, "extension_types", types);
 
-  ce::event unicode{.id = "id-unicode-\u00e9\u6587",
-                    .source = ce::uri_ref{"/interop/cpp/\u00e9v\u00e9nement"},
-                    .type = "com.example.unicode"};
-  unicode.subject = "\u65e5\u672c\u8a9e \U0001F600";
-  unicode.datacontenttype = "application/json";
-  // Real UTF-8 bytes rather than escapes: JSON has no \U form, only \uXXXX
-  // and surrogate pairs, and the point is to carry the characters themselves.
-  unicode.data = ce::json_text{.raw = "{\"text\":\"\u00e9\u6587 \U0001F600\"}"};
+  // Real UTF-8 bytes rather than escapes in the payload: JSON has no \U form,
+  // only \uXXXX and surrogate pairs, and the point is to carry the characters
+  // themselves.
+  const ce::event unicode{
+      "id-unicode-\u00e9\u6587"_id,
+      "/interop/cpp/\u00e9v\u00e9nement"_source,
+      "com.example.unicode"_type,
+      {
+          .datacontenttype = "application/json"_mediatype,
+          .subject = "\u65e5\u672c\u8a9e \U0001F600"_subject,
+          .data = ce::json_text{.raw = "{\"text\":\"\u00e9\u6587 \U0001F600\"}"},
+      },
+  };
   write(dir, "unicode", unicode);
 
-  ce::event scalar{
-      .id = "id-scalar", .source = ce::uri_ref{"/interop/cpp"}, .type = "com.example.scalar"};
-  scalar.datacontenttype = "application/json";
-  scalar.data = ce::json_text{.raw = "[1,2,3]"};
+  const ce::event scalar{"id-scalar"_id, "/interop/cpp"_source, "com.example.scalar"_type,
+                         {.datacontenttype = "application/json"_mediatype,
+                          .data = ce::json_text{.raw = "[1,2,3]"}}};
   write(dir, "data_array", scalar);
 
-  ce::event relative{
-      .id = "id-relative", .source = ce::uri_ref{"/"}, .type = "t"};
+  const ce::event relative{"id-relative"_id, "/"_source, "t"_type};
   write(dir, "minimal_relative", relative);
 
   // A batch, which nothing had exercised across SDKs.

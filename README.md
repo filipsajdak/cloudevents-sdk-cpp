@@ -12,17 +12,26 @@ the JSON codec; the SDK never picks one for you.
 #include <cloudevents/core.hpp>
 
 using codec = ce::codec::nlohmann_codec;
+using namespace ce::literals;
 
-ce::event order{
-    .id = "A234-1234-1234",
-    .source = ce::uri_ref{"https://example.test/orders"},
-    .type = "com.example.order.placed",
+const ce::event order{
+    "A234-1234-1234"_id,
+    "https://example.test/orders"_source,
+    "com.example.order.placed"_type,
+    {
+        .datacontenttype = "application/json"_mediatype,
+        .data = ce::json_text{.raw = R"({"total":42})"},
+    },
 };
-order.datacontenttype = "application/json";
-order.data = ce::json_text{.raw = R"({"total":42})"};
 
 auto request = ce::http::to_message<codec>(order, ce::content_mode::binary_mode);
 ```
+
+Each attribute is a type that refuses what CloudEvents forbids, and a literal is
+checked when the program compiles: `""_id` does not build. So an invalid event
+cannot be written down, and there is no validation step to remember before
+sending one. Text that arrives at run time goes through `ce::id::make(text)` and
+its siblings, which return a result.
 
 ## What you get
 

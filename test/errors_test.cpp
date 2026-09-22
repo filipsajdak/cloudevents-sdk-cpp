@@ -74,8 +74,20 @@ void fails_with(const R& outcome, ce::errc expected, std::string_view what) {
   }
 }
 
-[[nodiscard]] auto minimal() -> ce::event {
-  return ce::event{.id = "id-1", .source = ce::uri_ref{"/spec/test"}, .type = "com.example.thing"};
+using namespace ce::literals;
+
+[[nodiscard]] auto minimal(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"id-1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
+}
+
+/// A binary-mode request carrying the four attributes every case needs, plus
+/// whatever fields the case is about.
+[[nodiscard]] auto request_with(ce::raw_headers::entry extra) -> ce::message {
+  return ce::message{.header_fields = {{"ce-specversion", "1.0"},
+                                       {"ce-id", "1"},
+                                       {"ce-source", "/s"},
+                                       {"ce-type", "t"},
+                                       std::move(extra)}};
 }
 
 struct parcel {
@@ -92,8 +104,7 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
   "missing_required_attribute"_test = [] {
     fails_with(format::decode(R"({"specversion":"1.0","source":"/s","type":"t"})"),
                ce::errc::missing_required_attribute, "id absent from a document");
-    fails_with(ce::event{.id = "", .source = ce::uri_ref{"/s"}, .type = "t"}.validate(),
-               ce::errc::missing_required_attribute, "id present but empty");
+    fails_with(ce::id::make(""sv), ce::errc::missing_required_attribute, "id present but empty");
     fails_with(minimal().get<ce::ext::tracing>(), ce::errc::missing_required_attribute,
                "a required extension field is absent");
     fails_with(ce::data_as<parcel, codec>(minimal()), ce::errc::missing_required_attribute,
@@ -101,40 +112,26 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
   };
 
   "invalid_attribute_name"_test = [] {
-    ce::event subject = minimal();
-    fails_with(subject.set_extension("Upper", ce::attribute_value{std::string{"x"}}),
-               ce::errc::invalid_attribute_name, "an uppercase extension name");
+    fails_with(ce::extension_name::make("Upper"sv), ce::errc::invalid_attribute_name,
+               "an uppercase extension name");
     fails_with(format::decode(
                    R"({"specversion":"1.0","id":"1","source":"/s","type":"t","has_underscore":"x"})"),
                ce::errc::invalid_attribute_name, "an underscore in a decoded extension name");
-
-    ce::message request;
-    request.header_fields.add("ce-specversion", "1.0");
-    request.header_fields.add("ce-id", "1");
-    request.header_fields.add("ce-source", "/s");
-    request.header_fields.add("ce-type", "t");
-    request.header_fields.add("ce-has_underscore", "x");
-    fails_with(ce::http::from_message<codec>(request), ce::errc::invalid_attribute_name,
-               "an underscore in a ce- header name");
+    fails_with(ce::http::from_message<codec>(request_with({"ce-has_underscore", "x"})),
+               ce::errc::invalid_attribute_name, "an underscore in a ce- header name");
   };
 
   "reserved_attribute_name"_test = [] {
-    ce::event subject = minimal();
-    fails_with(subject.set_extension("type", ce::attribute_value{std::string{"x"}}),
-               ce::errc::reserved_attribute_name, "an extension redefining type");
-    fails_with(subject.set_extension("specversion", ce::attribute_value{std::string{"2.0"}}),
-               ce::errc::reserved_attribute_name, "an extension redefining specversion");
+    fails_with(ce::extension_name::make("type"sv), ce::errc::reserved_attribute_name,
+               "an extension redefining type");
+    fails_with(ce::extension_name::make("specversion"sv), ce::errc::reserved_attribute_name,
+               "an extension redefining specversion");
   };
 
   "invalid_attribute_value"_test = [] {
-    ce::event empty_subject = minimal();
-    empty_subject.subject = "";
-    fails_with(empty_subject.validate(), ce::errc::invalid_attribute_value,
+    fails_with(ce::subject::make(""sv), ce::errc::invalid_attribute_value,
                "subject present but empty");
-
-    ce::event empty_schema = minimal();
-    empty_schema.dataschema = ce::uri{""};
-    fails_with(empty_schema.validate(), ce::errc::invalid_attribute_value,
+    fails_with(ce::dataschema::make(""sv), ce::errc::invalid_attribute_value,
                "dataschema present but empty");
 
     fails_with(ce::ext::sampled_rate{.sampledrate = 0}.validate(),
@@ -145,15 +142,13 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
     fails_with(format::decode(R"({"specversion":"0.3","id":"1","source":"/s","type":"t"})"),
                ce::errc::unsupported_spec_version, "a 0.3 document");
 
-    ce::event subject = minimal();
-    subject.specversion = "2.0";
-    fails_with(subject.validate(), ce::errc::unsupported_spec_version, "a 2.0 event");
+    fails_with(ce::spec_version::make("2.0"sv), ce::errc::unsupported_spec_version,
+               "a 2.0 version");
 
-    ce::message request;
-    request.header_fields.add("ce-specversion", "0.3");
-    request.header_fields.add("ce-id", "1");
-    request.header_fields.add("ce-source", "/s");
-    request.header_fields.add("ce-type", "t");
+    const ce::message request{.header_fields = {{"ce-specversion", "0.3"},
+                                                {"ce-id", "1"},
+                                                {"ce-source", "/s"},
+                                                {"ce-type", "t"}}};
     fails_with(ce::http::from_message<codec>(request), ce::errc::unsupported_spec_version,
                "a 0.3 message");
   };
@@ -166,9 +161,8 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
   };
 
   "invalid_content_type"_test = [] {
-    ce::event subject = minimal();
-    subject.datacontenttype = "not a media type";
-    fails_with(subject.validate(), ce::errc::invalid_content_type, "a malformed media type");
+    fails_with(ce::datacontenttype::make("not a media type"sv), ce::errc::invalid_content_type,
+               "a malformed media type");
   };
 
   "parse_error"_test = [] {
@@ -185,19 +179,16 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
                    R"({"specversion":"1.0","id":"1","source":"/s","type":"t","rate":1.5})"),
                ce::errc::type_mismatch, "a floating-point extension value");
 
-    ce::event subject = minimal();
-    (void)subject.set_extension("sampledrate", ce::attribute_value{std::string{"not-a-number"}});
+    const auto subject = minimal(
+        {.extensions = {{"sampledrate"_ext, ce::attribute_value{std::string{"not-a-number"}}}}});
     fails_with(subject.get<ce::ext::sampled_rate>(), ce::errc::type_mismatch,
                "an extension string that is not an integer");
 
-    ce::event bytes = minimal();
-    bytes.data = ce::binary{std::byte{0x00}};
-    fails_with(ce::data_as<parcel, codec>(bytes), ce::errc::type_mismatch,
-               "a binary payload read as a described type");
+    fails_with(ce::data_as<parcel, codec>(minimal({.data = ce::binary{std::byte{0x00}}})),
+               ce::errc::type_mismatch, "a binary payload read as a described type");
 
-    ce::event wrong = minimal();
-    wrong.datacontenttype = "application/json";
-    wrong.data = ce::json_text{.raw = R"({"label":7,"weight":1})"};
+    const auto wrong = minimal({.datacontenttype = "application/json"_mediatype,
+                                .data = ce::json_text{.raw = R"({"label":7,"weight":1})"}});
     fails_with(ce::data_as<parcel, codec>(wrong), ce::errc::type_mismatch,
                "a payload member of the wrong JSON type");
   };
@@ -207,9 +198,9 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
                    R"({"specversion":"1.0","id":"1","source":"/s","type":"t","n":9999999999})"),
                ce::errc::out_of_range, "an extension integer past the Integer range");
 
-    ce::event huge = minimal();
-    huge.datacontenttype = "application/json";
-    huge.data = ce::json_text{.raw = R"({"label":"x","weight":2147483648})"};
+    const auto huge =
+        minimal({.datacontenttype = "application/json"_mediatype,
+                 .data = ce::json_text{.raw = R"({"label":"x","weight":2147483648})"}});
     fails_with(ce::data_as<parcel, codec>(huge), ce::errc::out_of_range,
                "a payload integer past its declared field");
   };
@@ -232,35 +223,22 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
   };
 
   "invalid_utf8"_test = [] {
-    ce::message request;
-    request.header_fields.add("ce-specversion", "1.0");
-    request.header_fields.add("ce-id", "1");
-    request.header_fields.add("ce-source", "/s");
-    request.header_fields.add("ce-type", "t");
     // An overlong encoding of '/', which is a second spelling of the same text.
-    request.header_fields.add("ce-subject", "%C0%AF");
-    fails_with(ce::http::from_message<codec>(request), ce::errc::invalid_utf8,
-               "an overlong UTF-8 sequence in a header");
+    fails_with(ce::http::from_message<codec>(request_with({"ce-subject", "%C0%AF"})),
+               ce::errc::invalid_utf8, "an overlong UTF-8 sequence in a header");
 
     // A lone surrogate, which no well-formed UTF-8 carries.
-    ce::message surrogate;
-    surrogate.header_fields.add("ce-specversion", "1.0");
-    surrogate.header_fields.add("ce-id", "1");
-    surrogate.header_fields.add("ce-source", "/s");
-    surrogate.header_fields.add("ce-type", "t");
-    surrogate.header_fields.add("ce-subject", "%ED%A0%80");
-    fails_with(ce::http::from_message<codec>(surrogate), ce::errc::invalid_utf8,
-               "a surrogate in a header");
+    fails_with(ce::http::from_message<codec>(request_with({"ce-subject", "%ED%A0%80"})),
+               ce::errc::invalid_utf8, "a surrogate in a header");
   };
 
   "not_a_cloudevent"_test = [] {
-    ce::message plain;
-    plain.header_fields.add("Content-Type", "application/json");
-    plain.body = ce::http::detail::to_bytes(R"({"hello":"world"})");
+    const ce::message plain{.header_fields = {{"Content-Type", "application/json"}},
+                            .body = ce::http::detail::to_bytes(R"({"hello":"world"})")};
     fails_with(ce::http::from_message<codec>(plain), ce::errc::not_a_cloudevent,
                "a request with no ce- headers");
 
-    ce::message bare;
+    const ce::message bare{};
     fails_with(ce::http::from_message<codec>(bare), ce::errc::not_a_cloudevent,
                "a request with no headers at all");
   };

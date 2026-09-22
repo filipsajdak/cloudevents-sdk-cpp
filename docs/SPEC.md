@@ -119,13 +119,16 @@ five headers to read one event.
   `std::chrono::parse`.
 - `data_t = variant<monostate, std::string, binary, json_text>`; `json_text` holds
   serialized JSON so core stays codec-free.
-- `event`: aggregate with public members (see §9 D1). Required `id`, `source`,
-  `specversion` (default `"1.0"`), `type`; optional `datacontenttype`, `dataschema`,
-  `subject`, `time`; `extensions` as `std::map<string, attribute_value, less<>>`.
-- `set_extension`, `extension`, `validate`. `validate` enforces: required attributes
-  non-empty, `specversion == "1.0"`, optional strings non-empty when present,
-  extension names match `[a-z0-9]+` and are not reserved. Name length over 20 is
-  accepted (spec says SHOULD) and surfaced via a separate `lint()` returning warnings.
+- `event`: a class with no public data members (see §9 D1, reversed by CR-0001). It is
+  constructed from already-validated `id`, `source` and `type` plus an `options`
+  aggregate for `datacontenttype`, `dataschema`, `subject`, `time`, `extensions` and
+  `data`, or by a decoder through `event::builder`. `specversion` is the single value
+  `1.0`. Extensions are a `std::map<extension_name, attribute_value, less<>>`.
+- Each context attribute is its own type, and each type refuses what the core
+  specification forbids: required attributes empty, a `specversion` other than `1.0`,
+  optional strings empty when present, extension names outside `[a-z0-9]+` or
+  reserved. There is no `validate`. Name length over 20 is accepted (spec says SHOULD)
+  and surfaced via a separate `lint()` returning warnings.
 - `constexpr` validators: `valid_attribute_name`, `reserved_name`,
   `is_json_content_type` (`*/json`, `*/*+json`, case-insensitive, parameters allowed).
 - Leniency principle: strict on produce, tolerant on consume. `source` is checked
@@ -341,7 +344,7 @@ Use the default, record it, move on. Do not relitigate inside a task.
 
 | ID | Question | Default |
 |---|---|---|
-| D1 | `event` as public aggregate vs builder with private state | ~~Aggregate; `validate()` is the gate~~ **Reversed by CR-0001 / ADR-0008**: every context attribute is a type that cannot hold a forbidden value, `event` is constructed through `create` or `builder`, and `validate()` is removed |
+| D1 | `event` as public aggregate vs builder with private state | ~~Aggregate; `validate()` is the gate~~ **Reversed by CR-0001 / ADR-0008**: every context attribute is a type that cannot hold a forbidden value, `event` is constructed from validated attributes or through `builder`, and `validate()` is removed |
 | D2 | License | Apache-2.0, matching the other CloudEvents SDKs |
 | D3 | Repo and namespace name | `cloudevents-cpp`, `ce` |
 | D4 | Support `-fno-exceptions` builds | Yes; verify ut and nlohmann configs permit it, else tests only need exceptions |

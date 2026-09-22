@@ -136,20 +136,20 @@ void check_literal_structured(std::string_view label) {
   auto core = format::decode(read_fixture("core-01-example-event.json"));
   expect(core.has_value()) << label << ": core-01";
   if (core) {
-    expect(core->specversion == "1.0") << label;
-    expect(core->type == "com.github.pull_request.opened") << label;
-    expect(core->source.view() == "https://github.com/cloudevents/spec/pull") << label;
-    expect(core->id == "A234-1234-1234") << label;
-    expect(bool{core->subject == std::optional<std::string>{"123"}}) << label;
-    expect(core->time.has_value()) << label;
-    if (core->time) {
+    expect(core->specversion().view() == "1.0"sv) << label;
+    expect(core->type() == "com.github.pull_request.opened") << label;
+    expect(core->source().view() == "https://github.com/cloudevents/spec/pull") << label;
+    expect(core->id() == "A234-1234-1234") << label;
+    expect(bool{core->subject() == std::optional<std::string>{"123"}}) << label;
+    expect(core->time().has_value()) << label;
+    if (core->time()) {
       // Stored byte for byte, so re-emitting does not alter what a peer signed.
-      expect(ce::to_string(*core->time) == "2018-04-05T17:31:00Z") << label;
+      expect(ce::to_string(*core->time()) == "2018-04-05T17:31:00Z") << label;
     }
-    expect(bool{core->datacontenttype == std::optional<std::string>{"text/xml"}}) << label;
+    expect(bool{core->datacontenttype() == std::optional<std::string>{"text/xml"}}) << label;
     // A string payload under a non-JSON content type is the payload itself.
-    expect(std::holds_alternative<std::string>(core->data)) << label;
-    if (const auto* text = std::get_if<std::string>(&core->data)) {
+    expect(std::holds_alternative<std::string>(core->data())) << label;
+    if (const auto* text = std::get_if<std::string>(&core->data())) {
       expect(*text == R"(<much wow="xml"/>)") << label;
     }
     // The two extensions, with the types JSON carries.
@@ -166,7 +166,9 @@ void check_literal_structured(std::string_view label) {
         expect(std::get<std::int32_t>(*other) == 5) << label;
       }
     }
-    expect(core->validate().has_value()) << label;
+    // What decoded goes back out: the property a validation step used to stand
+    // in for.
+    expect(format::encode(*core).has_value()) << label;
   }
 
   // json-03, json-05, json-07: the JSON format's structured examples.
@@ -175,10 +177,9 @@ void check_literal_structured(std::string_view label) {
     auto decoded = format::decode(read_fixture(name));
     expect(decoded.has_value()) << label << ": " << name;
     if (decoded) {
-      expect(decoded->specversion == "1.0") << label << ": " << name;
-      expect(!decoded->id.empty()) << label << ": " << name;
-      expect(!decoded->type.empty()) << label << ": " << name;
-      expect(decoded->validate().has_value()) << label << ": " << name;
+      expect(decoded->specversion().view() == "1.0"sv) << label << ": " << name;
+      expect(decoded->id().size() != 0U) << label << ": " << name;
+      expect(decoded->type().size() != 0U) << label << ": " << name;
       // Re-encoding must produce a document that decodes to the same event.
       auto again = format::encode(*decoded);
       expect(again.has_value()) << label << ": " << name;
@@ -231,9 +232,9 @@ void check_elided_base64(std::string_view label) {
     auto decoded = format::decode(repaired);
     expect(decoded.has_value()) << label << ": json-01 with real base64";
     if (decoded) {
-      expect(std::holds_alternative<ce::binary>(decoded->data)) << label;
-      expect(decoded->id == "A234-1234-1234") << label;
-      expect(decoded->validate().has_value()) << label;
+      expect(std::holds_alternative<ce::binary>(decoded->data())) << label;
+      expect(decoded->id() == "A234-1234-1234") << label;
+      expect(format::encode(*decoded).has_value()) << label;
     }
   }
 }
@@ -255,17 +256,18 @@ void check_literal_binary_headers(std::string_view label) {
     auto decoded = ce::http::from_message<C>(request);
     expect(decoded.has_value()) << label << ": " << name;
     if (decoded) {
-      expect(decoded->specversion == "1.0") << label << ": " << name;
-      expect(decoded->type == "com.example.someevent") << label << ": " << name;
-      expect(decoded->source.view() == "/mycontext") << label << ": " << name;
-      expect(decoded->time.has_value()) << label << ": " << name;
+      expect(decoded->specversion().view() == "1.0"sv) << label << ": " << name;
+      expect(decoded->type() == "com.example.someevent") << label << ": " << name;
+      expect(decoded->source().view() == "/mycontext") << label << ": " << name;
+      expect(decoded->time().has_value()) << label << ": " << name;
       // The binary binding carries every extension as text.
       const auto* extension = decoded->extension("comexampleothervalue");
       expect(extension != nullptr) << label << ": " << name;
       if (extension != nullptr) {
         expect(std::holds_alternative<std::string>(*extension)) << label << ": " << name;
       }
-      expect(decoded->validate().has_value()) << label << ": " << name;
+      expect(ce::http::to_message<C>(*decoded, ce::content_mode::binary_mode).has_value())
+          << label << ": " << name;
     }
   }
 }

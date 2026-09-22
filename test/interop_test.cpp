@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "fixtures_path.hpp"
+#include "equality.hpp"
 #include "mini_codec.hpp"
 
 // Golden JSON produced by the Go and Java CloudEvents SDKs, and the documents
@@ -97,7 +98,7 @@ constexpr std::array producers{"go"sv, "java"sv, "cpp"sv};
 /// data_base64, and the SDKs do not agree on which. The bytes are what must
 /// match; the representation is the producer's choice.
 [[nodiscard]] auto payload_bytes(const ce::event& subject) -> std::vector<std::byte> {
-  if (const auto* text = std::get_if<std::string>(&subject.data)) {
+  if (const auto* text = std::get_if<std::string>(&subject.data())) {
     std::vector<std::byte> out;
     out.reserve(text->size());
     for (const char character : *text) {
@@ -105,10 +106,10 @@ constexpr std::array producers{"go"sv, "java"sv, "cpp"sv};
     }
     return out;
   }
-  if (const auto* bytes = std::get_if<ce::binary>(&subject.data)) {
+  if (const auto* bytes = std::get_if<ce::binary>(&subject.data())) {
     return *bytes;
   }
-  if (const auto* json = std::get_if<ce::json_text>(&subject.data)) {
+  if (const auto* json = std::get_if<ce::json_text>(&subject.data())) {
     std::vector<std::byte> out;
     out.reserve(json->raw.size());
     for (const char character : json->raw) {
@@ -145,8 +146,7 @@ void check_goldens_decode(std::string_view label) {
       if (!decoded) {
         continue;
       }
-      expect(decoded->validate().has_value()) << label << ": " << sdk << "/" << name;
-      expect(decoded->specversion == "1.0") << label << ": " << sdk << "/" << name;
+      expect(decoded->specversion().view() == "1.0"sv) << label << ": " << sdk << "/" << name;
 
       // What decoded must re-encode, and the result must decode to the same
       // event: a golden we can read but not reproduce is not interoperability.
@@ -185,28 +185,29 @@ void check_cross_sdk_agreement(std::string_view label) {
     }
 
     for (std::size_t i = 1; i < decoded.size(); ++i) {
-      expect(decoded[i].id == decoded[0].id) << label << ": " << name << " id";
-      expect(decoded[i].type == decoded[0].type) << label << ": " << name << " type";
-      expect(bool{decoded[i].subject == decoded[0].subject}) << label << ": " << name << " subject";
+      expect(decoded[i].id() == decoded[0].id()) << label << ": " << name << " id";
+      expect(decoded[i].type() == decoded[0].type()) << label << ": " << name << " type";
+      expect(ce_test::equal(decoded[i].subject(), decoded[0].subject()))
+          << label << ": " << name << " subject";
       // The INSTANT, not the text. Go normalises an offset to UTC while Java
       // and this SDK keep it, so the same moment has two spellings and the
       // default comparison would report a disagreement that is not one.
-      expect(decoded[i].time.has_value() == decoded[0].time.has_value())
+      expect(decoded[i].time().has_value() == decoded[0].time().has_value())
           << label << ": " << name << " time presence";
-      if (decoded[i].time && decoded[0].time) {
-        expect(bool{decoded[i].time->utc == decoded[0].time->utc})
+      if (decoded[i].time() && decoded[0].time()) {
+        expect(bool{decoded[i].time()->utc == decoded[0].time()->utc})
             << label << ": " << name << " time instant";
       }
-      expect(bool{decoded[i].dataschema == decoded[0].dataschema})
+      expect(ce_test::equal(decoded[i].dataschema(), decoded[0].dataschema()))
           << label << ": " << name << " dataschema";
-      expect(bool{decoded[i].datacontenttype == decoded[0].datacontenttype})
+      expect(ce_test::equal(decoded[i].datacontenttype(), decoded[0].datacontenttype()))
           << label << ": " << name << " datacontenttype";
       // Not the representation - see the Java divergence pinned below - but
       // whether a payload is present at all must agree.
-      const bool left_empty = std::holds_alternative<std::monostate>(decoded[0].data);
-      const bool right_empty = std::holds_alternative<std::monostate>(decoded[i].data);
+      const bool left_empty = std::holds_alternative<std::monostate>(decoded[0].data());
+      const bool right_empty = std::holds_alternative<std::monostate>(decoded[i].data());
       expect(left_empty == right_empty) << label << ": " << name << " payload presence";
-      expect(decoded[i].extensions.size() == decoded[0].extensions.size())
+      expect(decoded[i].extensions().size() == decoded[0].extensions().size())
           << label << ": " << name << " extension count";
     }
   }
@@ -226,8 +227,8 @@ void check_binary_payload_agreement(std::string_view label) {
     if (!decoded) {
       continue;
     }
-    expect(std::holds_alternative<ce::binary>(decoded->data)) << label << ": " << sdk;
-    if (const auto* bytes = std::get_if<ce::binary>(&decoded->data)) {
+    expect(std::holds_alternative<ce::binary>(decoded->data())) << label << ": " << sdk;
+    if (const auto* bytes = std::get_if<ce::binary>(&decoded->data())) {
       expect(bool{*bytes == expected}) << label << ": " << sdk << " payload bytes differ";
     }
   }
@@ -403,9 +404,9 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
       expect(events.has_value()) << sdk << ": batch did not decode";
       if (events) {
         expect(events->size() == 3_ul) << sdk << ": expected 3 events";
-        for (const auto& subject : *events) {
-          expect(subject.validate().has_value()) << sdk;
-        }
+        // What decoded goes back out, which is what a peer's batch has to
+        // survive here.
+        expect(format::encode_batch(std::span<const ce::event>{*events}).has_value()) << sdk;
       }
     }
   };
@@ -432,26 +433,26 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
     if (!from_go || !from_java || !from_cpp) {
       return;
     }
-    expect(from_go->time.has_value());
-    expect(from_java->time.has_value());
-    if (!from_go->time || !from_java->time || !from_cpp->time) {
+    expect(from_go->time().has_value());
+    expect(from_java->time().has_value());
+    if (!from_go->time() || !from_java->time() || !from_cpp->time()) {
       return;
     }
 
-    expect(bool{from_go->time->utc == from_java->time->utc}) << "the instants must agree";
-    expect(bool{from_cpp->time->utc == from_java->time->utc}) << "the instants must agree";
+    expect(bool{from_go->time()->utc == from_java->time()->utc}) << "the instants must agree";
+    expect(bool{from_cpp->time()->utc == from_java->time()->utc}) << "the instants must agree";
 
     // Go dropped the offset; Java and this SDK kept it.
-    expect(from_go->time->offset == std::chrono::minutes{0});
-    expect(from_java->time->offset == std::chrono::minutes{120});
-    expect(from_cpp->time->offset == std::chrono::minutes{120});
+    expect(from_go->time()->offset == std::chrono::minutes{0});
+    expect(from_java->time()->offset == std::chrono::minutes{120});
+    expect(from_cpp->time()->offset == std::chrono::minutes{120});
 
     // Nanosecond precision survives everywhere.
-    expect(from_go->time->fractional_digits.count() == 9_u);
-    expect(from_java->time->fractional_digits.count() == 9_u);
+    expect(from_go->time()->fractional_digits.count() == 9_u);
+    expect(from_java->time()->fractional_digits.count() == 9_u);
 
     // And the pinned consequence: same instant, not equal.
-    expect(!(*from_go->time == *from_java->time))
+    expect(!(*from_go->time() == *from_java->time()))
         << "timestamp equality is textual; if this changes, say so in the release notes";
   };
 
@@ -471,13 +472,13 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
     if (!from_go || !from_cpp) {
       return;
     }
-    expect(from_go->source.view().find('%') != std::string_view::npos)
+    expect(from_go->source().view().find('%') != std::string_view::npos)
         << "Go stopped percent-encoding the source";
-    expect(from_cpp->source.view().find('%') == std::string_view::npos)
+    expect(from_cpp->source().view().find('%') == std::string_view::npos)
         << "this SDK started escaping the source";
 
     // The subject is not a URI, so every producer carries it verbatim.
-    expect(bool{from_go->subject == from_cpp->subject});
+    expect(ce_test::equal(from_go->subject(), from_cpp->subject()));
   };
 
   "the SDKs disagree about how to carry a non-JSON payload"_test = [] {
@@ -503,9 +504,9 @@ const boost::ut::suite<"interop-golden-corpus"> interop = [] {
       return;
     }
 
-    expect(std::holds_alternative<std::string>(from_go->data)) << "Go changed representation";
-    expect(std::holds_alternative<std::string>(from_cpp->data)) << "this SDK changed";
-    expect(std::holds_alternative<ce::binary>(from_java->data)) << "Java changed representation";
+    expect(std::holds_alternative<std::string>(from_go->data())) << "Go changed representation";
+    expect(std::holds_alternative<std::string>(from_cpp->data())) << "this SDK changed";
+    expect(std::holds_alternative<ce::binary>(from_java->data())) << "Java changed representation";
 
     // And yet the bytes are the same, which is what interoperability means here.
     expect(bool{payload_bytes(*from_go) == payload_bytes(*from_java)});
@@ -537,12 +538,12 @@ const boost::ut::suite<"interop-http-binary-mode"> interop_http_binary_mode = []
         continue;
       }
 
-      expect(from_headers->id == from_document->id) << name;
-      expect(bool{from_headers->source == from_document->source}) << name;
-      expect(from_headers->type == from_document->type) << name;
-      expect(bool{from_headers->subject == from_document->subject}) << name;
-      expect(bool{from_headers->time == from_document->time}) << name;
-      expect(bool{from_headers->dataschema == from_document->dataschema}) << name;
+      expect(from_headers->id() == from_document->id()) << name;
+      expect(bool{from_headers->source() == from_document->source()}) << name;
+      expect(from_headers->type() == from_document->type()) << name;
+      expect(ce_test::equal(from_headers->subject(), from_document->subject())) << name;
+      expect(ce_test::equal(from_headers->time(), from_document->time())) << name;
+      expect(ce_test::equal(from_headers->dataschema(), from_document->dataschema())) << name;
       expect(bool{payload_bytes(*from_headers) == payload_bytes(*from_document)}) << name;
     }
   };
@@ -563,7 +564,7 @@ const boost::ut::suite<"interop-http-binary-mode"> interop_http_binary_mode = []
     auto compatible = ce::http::from_message<nlohmann_codec, ce::http::literal_values>(wire);
     expect(bool{compatible});
     if (compatible) {
-      expect(bool{compatible->subject == std::optional<std::string>{"100% of 50%OFF"}});
+      expect(bool{compatible->subject() == std::optional<std::string>{"100% of 50%OFF"}});
       const auto* pct = compatible->extension("pct");
       expect(pct != nullptr);
       if (pct != nullptr) {
@@ -596,8 +597,13 @@ const boost::ut::suite<"interop-behaviour-audit"> interop_behaviour_audit = [] {
   };
 
   "a non-UTC offset survives a write here, unlike Go"_test = [] {
-    ce::event subject{.id = "1", .source = "/probe", .type = "com.example.probe"};
-    subject.time = *ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00");
+    using namespace ce::literals;
+    const auto when = ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00");
+    expect(when.has_value());
+    if (!when) {
+      return;
+    }
+    const ce::event subject{"1"_id, "/probe"_source, "com.example.probe"_type, {.time = *when}};
 
     auto written = ce::http::to_message<nlohmann_codec>(subject, ce::content_mode::binary_mode);
     expect(bool{written});
@@ -616,17 +622,16 @@ const boost::ut::suite<"interop-behaviour-audit"> interop_behaviour_audit = [] {
   "a lowercase RFC 3339 time is accepted here, unlike Go"_test = [] {
     // RFC 3339 section 5.6: parsers SHOULD accept lower case t and z. Go rejects
     // this input, so a third party emitting it is read here and refused there.
-    ce::message request;
-    request.header_fields.set("ce-specversion", "1.0");
-    request.header_fields.set("ce-id", "1");
-    request.header_fields.set("ce-source", "/s");
-    request.header_fields.set("ce-type", "t");
-    request.header_fields.set("ce-time", "2026-09-20t12:34:56z");
+    const ce::message request{.header_fields = {{"ce-specversion", "1.0"},
+                                                {"ce-id", "1"},
+                                                {"ce-source", "/s"},
+                                                {"ce-type", "t"},
+                                                {"ce-time", "2026-09-20t12:34:56z"}}};
 
     auto decoded = ce::http::from_message<nlohmann_codec>(request);
     expect(bool{decoded});
     if (decoded) {
-      expect(decoded->time.has_value());
+      expect(decoded->time().has_value());
     }
   };
 
@@ -634,12 +639,13 @@ const boost::ut::suite<"interop-behaviour-audit"> interop_behaviour_audit = [] {
     // The core spec requires a present attribute to be non-empty. Go accepts
     // both of these and this SDK refuses them, which is a difference a caller
     // meets as a rejected message rather than as corrupted data.
+    // set, not add: `ce-type` replaces the one already there rather than
+    // arriving twice, which would be a different refusal.
     const auto with = [](std::string_view name, std::string_view value) {
-      ce::message request;
-      request.header_fields.set("ce-specversion", "1.0");
-      request.header_fields.set("ce-id", "1");
-      request.header_fields.set("ce-source", "/s");
-      request.header_fields.set("ce-type", "t");
+      ce::message request{.header_fields = {{"ce-specversion", "1.0"},
+                                            {"ce-id", "1"},
+                                            {"ce-source", "/s"},
+                                            {"ce-type", "t"}}};
       request.header_fields.set(std::string{name}, std::string{value});
       return request;
     };
@@ -653,18 +659,20 @@ const boost::ut::suite<"interop-behaviour-audit"> interop_behaviour_audit = [] {
     auto empty_type = ce::http::from_message<nlohmann_codec>(with("ce-type", ""));
     expect(!empty_type);
 
-    // And writing one is refused too, where Go silently drops the attribute.
-    ce::event subject{.id = "1", .source = "/probe", .type = "com.example.probe"};
-    subject.subject = "";
-    expect(!ce::http::to_message<nlohmann_codec>(subject, ce::content_mode::binary_mode));
+    // And writing one is refused too, where Go silently drops the attribute:
+    // here there is no event to write, because an empty subject cannot be made.
+    const auto empty = ce::subject::make(""sv);
+    expect(!empty);
+    if (!empty) {
+      expect(empty.error().code == ce::errc::invalid_attribute_value);
+    }
   };
 
   "a specversion this SDK does not implement is refused"_test = [] {
-    ce::message request;
-    request.header_fields.set("ce-specversion", "0.3");
-    request.header_fields.set("ce-id", "1");
-    request.header_fields.set("ce-source", "/s");
-    request.header_fields.set("ce-type", "t");
+    const ce::message request{.header_fields = {{"ce-specversion", "0.3"},
+                                                {"ce-id", "1"},
+                                                {"ce-source", "/s"},
+                                                {"ce-type", "t"}}};
 
     // Go accepts this because it implements 0.3. This SDK claims 1.0 only, so
     // refusing is the honest answer rather than a divergence.

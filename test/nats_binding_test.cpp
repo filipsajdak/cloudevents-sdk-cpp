@@ -11,29 +11,29 @@
 #include <type_traits>
 
 #include "codecs_under_test.hpp"
+#include "equality.hpp"
 #include "mini_codec.hpp"
 
 namespace {
 
 using namespace std::string_view_literals;
 
-[[nodiscard]] auto base_event() -> ce::event {
-  return ce::event{
-      .id = "1",
-      .source = "/spec/test",
-      .type = "com.example.thing",
-  };
+using namespace ce::literals;
+
+[[nodiscard]] auto base_event(ce::event::options rest = {}) -> ce::event {
+  return ce::event{"1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
 }
 
 template <class Codec>
 void check_round_trip(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.subject = "s";
-  subject.datacontenttype = "application/json";
-  subject.data = ce::json_text{.raw = "{\"a\":1}"};
-  expect(bool{subject.set_extension("alpha", ce::attribute_value{std::string{"a"}})}) << codec;
+  const ce::event subject = base_event({
+      .datacontenttype = "application/json"_mediatype,
+      .subject = "s"_subject,
+      .extensions = {{"alpha"_ext, std::string{"a"}}},
+      .data = ce::json_text{.raw = "{\"a\":1}"},
+  });
 
   auto payload = ce::nats::to_payload<Codec>(subject);
   expect(bool{payload}) << codec;
@@ -44,11 +44,11 @@ void check_round_trip(std::string_view codec) {
   auto read_back = ce::nats::from_payload<Codec>(*payload);
   expect(bool{read_back}) << codec;
   if (read_back) {
-    expect(read_back->id == subject.id) << codec;
-    expect(bool{read_back->source == subject.source}) << codec;
-    expect(read_back->type == subject.type) << codec;
-    expect(bool{read_back->subject == subject.subject}) << codec;
-    expect(read_back->extensions.size() == 1U) << codec;
+    expect(read_back->id() == subject.id()) << codec;
+    expect(bool{read_back->source() == subject.source()}) << codec;
+    expect(read_back->type() == subject.type()) << codec;
+    expect(ce_test::equal(read_back->subject(), subject.subject())) << codec;
+    expect(read_back->extensions().size() == 1U) << codec;
   }
 }
 
@@ -104,14 +104,17 @@ template <class Codec>
 void check_invalid_event_is_refused(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.type.clear();  // present but empty: validate() refuses it
-
-  auto payload = ce::nats::to_payload<Codec>(subject);
-  expect(!payload) << codec;
-  if (!payload) {
-    expect(payload.error().where == "type"sv) << codec;
+  // A present-but-empty type is refused where a type is made, naming it, so
+  // there is no such event for to_payload to be handed.
+  const auto empty_type = ce::type::make(""sv);
+  expect(!empty_type) << codec;
+  if (!empty_type) {
+    expect(empty_type.error().where == "type"sv) << codec;
   }
+
+  // What to_payload can still refuse is a payload the encoder cannot write.
+  const ce::event broken = base_event({.data = ce::json_text{.raw = "{not json"}});
+  expect(!ce::nats::to_payload<Codec>(broken)) << codec;
 }
 
 
@@ -119,10 +122,11 @@ template <class Codec>
 void check_binary_mode(std::string_view codec) {
   using namespace boost::ut;
 
-  ce::event subject = base_event();
-  subject.subject = "a b";  // a space, so the percent-encoding rule is exercised
-  subject.datacontenttype = "text/plain";
-  subject.data = std::string{"hello"};
+  const ce::event subject = base_event({
+      .datacontenttype = "text/plain"_mediatype,
+      .subject = "a b"_subject,  // a space, so the percent-encoding rule is exercised
+      .data = std::string{"hello"},
+  });
 
   auto out = ce::nats::to_message<Codec>(subject, ce::content_mode::binary_mode);
   expect(bool{out}) << codec;
@@ -157,9 +161,9 @@ void check_binary_mode(std::string_view codec) {
   auto read_back = ce::nats::from_message<Codec>(*out);
   expect(bool{read_back}) << codec;
   if (read_back) {
-    expect(read_back->id == subject.id) << codec;
-    expect(bool{read_back->subject == subject.subject}) << codec;
-    expect(bool{read_back->datacontenttype == subject.datacontenttype}) << codec;
+    expect(read_back->id() == subject.id()) << codec;
+    expect(ce_test::equal(read_back->subject(), subject.subject())) << codec;
+    expect(ce_test::equal(read_back->datacontenttype(), subject.datacontenttype())) << codec;
   }
 }
 
@@ -170,7 +174,7 @@ void check_mode_detection(std::string_view codec) {
   // The binding inverts HTTP's default: no content type means BINARY, not
   // structured, so a message with neither is not a CloudEvent rather than an
   // empty structured document.
-  ce::message bare;
+  const ce::message bare{};
   expect(ce::nats::detect_content_mode(bare) == ce::content_mode::binary_mode) << codec;
 
   auto refused = ce::nats::from_message<Codec>(bare);
@@ -179,8 +183,8 @@ void check_mode_detection(std::string_view codec) {
     expect(refused.error().code == ce::errc::not_a_cloudevent) << codec;
   }
 
-  ce::message structured;
-  structured.header_fields.set("content-type", "application/cloudevents+json; charset=utf-8");
+  const ce::message structured{
+      .header_fields = {{"content-type", "application/cloudevents+json; charset=utf-8"}}};
   expect(ce::nats::detect_content_mode(structured) == ce::content_mode::structured) << codec;
 
   const ce::event subject = base_event();
@@ -191,7 +195,7 @@ void check_mode_detection(std::string_view codec) {
     auto read_back = ce::nats::from_message<Codec>(*encoded);
     expect(bool{read_back}) << codec;
     if (read_back) {
-      expect(read_back->id == subject.id) << codec;
+      expect(read_back->id() == subject.id()) << codec;
     }
   }
 

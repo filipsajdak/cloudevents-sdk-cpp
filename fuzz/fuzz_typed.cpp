@@ -73,9 +73,10 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
 
   // The payload path also has to hold up when the text is the payload itself
   // rather than a whole event.
-  ce::event direct{.id = "1", .source = ce::uri_ref{"/s"}, .type = "t"};
-  direct.datacontenttype = "application/json";
-  direct.data = ce::json_text{.raw = std::string{text}};
+  using namespace ce::literals;
+  const ce::event direct{"1"_id, "/s"_source, "t"_type,
+                         {.datacontenttype = "application/json"_mediatype,
+                          .data = ce::json_text{.raw = std::string{text}}}};
   (void)ce::data_as<parcel, codec>(direct);
 
   return 0;

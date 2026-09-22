@@ -73,9 +73,10 @@ void check_timestamp_is_byte_exact(Report report) {
   if (!decoded) {
     return;
   }
-  report(decoded->time.has_value(), "the time attribute was lost");
-  if (decoded->time) {
-    report(to_string(*decoded->time) == "2026-09-20T12:34:56.123456789+02:00",
+  const auto& when = decoded->time();
+  report(when.has_value(), "the time attribute was lost");
+  if (when) {
+    report(to_string(*when) == "2026-09-20T12:34:56.123456789+02:00",
            "the timestamp did not round-trip byte for byte");
   }
 
@@ -103,12 +104,12 @@ void check_surrogate_pair(Report report) {
 
   auto decoded = format::decode(surrogate_pair_document());
   report(decoded.has_value(), "a surrogate pair does not decode");
-  if (!decoded || !decoded->subject) {
+  if (!decoded || !decoded->subject()) {
     report(false, "the subject carrying a surrogate pair was lost");
     return;
   }
   // U+1F600 is four bytes in UTF-8: F0 9F 98 80.
-  report(*decoded->subject == "\xF0\x9F\x98\x80",
+  report(decoded->subject()->view() == "\xF0\x9F\x98\x80",
          "a surrogate pair did not become one UTF-8 character");
 }
 
@@ -130,7 +131,7 @@ void check_batch_round_trip(Report report) {
   if (decoded->size() != 100) {
     return;
   }
-  report(decoded->front().id == "0" && decoded->back().id == "99",
+  report(decoded->front().id().view() == "0" && decoded->back().id().view() == "99",
          "the batch decoded in the wrong order");
 
   auto encoded = format::encode_batch(*decoded);

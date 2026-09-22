@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <ctre.hpp>
 
@@ -66,7 +67,7 @@ class fraction_digits {
   /// keeps `.fractional_digits = 3` in a designated initializer working.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   consteval fraction_digits(int count) : count_{static_cast<std::uint8_t>(count)} {
-    if (count < 0 || count > static_cast<int>(detail::max_fractional_digits)) {
+    if (count < 0 || std::cmp_greater(count, detail::max_fractional_digits)) {
       detail::this_digit_count_is_more_than_a_nanosecond_instant_can_express();
     }
   }
@@ -111,6 +112,25 @@ namespace detail {
 inline constexpr auto rfc3339_pattern = ctll::fixed_string{
     R"(^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:([Zz])|([+\-])(\d{2}):(\d{2}))$)"};
 
+/// The pattern's capture groups, in the order they open.
+namespace rfc3339_group {
+inline constexpr std::size_t year = 1;
+inline constexpr std::size_t month = 2;
+inline constexpr std::size_t day = 3;
+inline constexpr std::size_t hour = 4;
+inline constexpr std::size_t minute = 5;
+inline constexpr std::size_t second = 6;
+inline constexpr std::size_t fraction = 7;
+inline constexpr std::size_t utc_designator = 8;
+inline constexpr std::size_t offset_sign = 9;
+inline constexpr std::size_t offset_hour = 10;
+inline constexpr std::size_t offset_minute = 11;
+}  // namespace rfc3339_group
+
+/// The value of the first fractional digit's place: a tenth of a second.
+inline constexpr std::chrono::nanoseconds first_fraction_place =
+    std::chrono::nanoseconds{std::chrono::seconds{1}} / decimal_radix;
+
 /// \brief Parse a run of decimal digits that CTRE has already shape-checked.
 template <class Capture>
 [[nodiscard]] constexpr auto to_int(Capture capture) noexcept -> int {
@@ -142,12 +162,13 @@ template <class Capture>
     return fail(errc::invalid_timestamp, "not an RFC 3339 date-time", std::string{text});
   }
 
-  const int year = detail::to_int(match.get<1>());
-  const auto month = static_cast<unsigned>(detail::to_int(match.get<2>()));
-  const auto day = static_cast<unsigned>(detail::to_int(match.get<3>()));
-  const int hour = detail::to_int(match.get<4>());
-  const int minute = detail::to_int(match.get<5>());
-  const int second = detail::to_int(match.get<6>());
+  namespace group = detail::rfc3339_group;
+  const int year = detail::to_int(match.get<group::year>());
+  const auto month = static_cast<unsigned>(detail::to_int(match.get<group::month>()));
+  const auto day = static_cast<unsigned>(detail::to_int(match.get<group::day>()));
+  const int hour = detail::to_int(match.get<group::hour>());
+  const int minute = detail::to_int(match.get<group::minute>());
+  const int second = detail::to_int(match.get<group::second>());
 
   if (!detail::is_valid_date(year, month, day)) {
     return fail(errc::invalid_timestamp, "no such calendar date", std::string{text});
@@ -161,7 +182,7 @@ template <class Capture>
 
   fraction_digits fractional_digits{};
   std::chrono::nanoseconds subsecond{0};
-  if (const auto fraction = match.get<7>(); fraction) {
+  if (const auto fraction = match.get<group::fraction>(); fraction) {
     const auto digits = fraction.to_view();
     // The grammar above admits one to nine digits, so this cannot fail. It is
     // still asked rather than asserted: the bound belongs to the type, and a
@@ -171,25 +192,24 @@ template <class Capture>
       return fail(counted.error().code, counted.error().detail, std::string{text});
     }
     fractional_digits = *counted;
-    auto place = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::milliseconds{100});
+    auto place = detail::first_fraction_place;
     for (const char digit : digits) {
       subsecond += place * (digit - '0');
-      place /= 10;
+      place /= detail::decimal_radix;
     }
   }
 
   auto form = offset_form::utc_designator;
   std::chrono::minutes offset{0};
-  if (!match.get<8>()) {
+  if (!match.get<group::utc_designator>()) {
     form = offset_form::numeric;
-    const int offset_hour = detail::to_int(match.get<10>());
-    const int offset_minute = detail::to_int(match.get<11>());
+    const int offset_hour = detail::to_int(match.get<group::offset_hour>());
+    const int offset_minute = detail::to_int(match.get<group::offset_minute>());
     if (offset_hour > detail::last_hour || offset_minute > detail::last_minute) {
       return fail(errc::invalid_timestamp, "offset out of range", std::string{text});
     }
     offset = std::chrono::hours{offset_hour} + std::chrono::minutes{offset_minute};
-    if (match.get<9>().to_view() == "-") {
+    if (match.get<group::offset_sign>().to_view() == "-") {
       offset = -offset;
     }
   }

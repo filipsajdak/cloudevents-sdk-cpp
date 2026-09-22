@@ -77,7 +77,7 @@ static_assert(!binding::binding_traits<bare_string>);
   };
 }
 
-[[nodiscard]] auto field_names(const ce::headers& fields) -> std::vector<std::string> {
+[[nodiscard]] auto field_names(const ce::raw_headers& fields) -> std::vector<std::string> {
   std::vector<std::string> names;
   for (const auto& [name, value] : fields) {
     names.push_back(name);
@@ -92,13 +92,13 @@ const boost::ut::suite<"message-headers-from-field-list"> message_headers_field_
   using namespace boost::ut;
 
   "a braced list builds the same fields as repeated add calls"_test = [] {
-    const ce::headers listed{
+    const ce::raw_headers listed{
         {"x_specversion", "1.0"},
         {"x_id", "1"},
         {"x_source", "/s"},
     };
 
-    ce::headers added;
+    ce::raw_headers added;
     added.add("x_specversion", "1.0");
     added.add("x_id", "1");
     added.add("x_source", "/s");
@@ -110,7 +110,7 @@ const boost::ut::suite<"message-headers-from-field-list"> message_headers_field_
   // add semantics, not set: a message that arrived carrying a field twice is
   // exactly what a test written against this constructor needs to describe.
   "the order is kept and a repeated name is kept twice"_test = [] {
-    const ce::headers fields{
+    const ce::raw_headers fields{
         {"x_id", "first"},
         {"x_other", "v"},
         {"x_id", "second"},
@@ -128,7 +128,7 @@ const boost::ut::suite<"message-headers-from-field-list"> message_headers_field_
   };
 
   "an empty braced list is an empty set of fields"_test = [] {
-    const ce::headers none{};
+    const ce::raw_headers none{};
     expect(none.empty());
     expect(none.size() == 0U);
   };
@@ -164,7 +164,7 @@ const boost::ut::suite<"binding-core-emission-order"> binding_core_emission_orde
     expect(bool{subject.set_extension("alpha", ce::attribute_value{std::string{"a"}})});
     expect(bool{subject.set_extension("beta", ce::attribute_value{std::int32_t{2}})});
 
-    ce::headers fields;
+    ce::raw_headers fields;
     expect(bool{binding::write_attributes<exact_traits>(subject, fields)});
 
     const std::vector<std::string> expected = {
@@ -178,7 +178,7 @@ const boost::ut::suite<"binding-core-emission-order"> binding_core_emission_orde
     ce::event subject = base_event();
     subject.datacontenttype = "application/json";
 
-    ce::headers fields;
+    ce::raw_headers fields;
     expect(bool{binding::write_attributes<exact_traits>(subject, fields)});
     expect(fields.find_exact("content-type") != nullptr);
     expect(fields.find_exact("x_datacontenttype") == nullptr);
@@ -190,7 +190,7 @@ const boost::ut::suite<"binding-core-name-case"> binding_core_name_case = [] {
   using namespace boost::ut;
 
   "a case-sensitive binding leaves a differently-cased field alone"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("X_ID", "caller's own");
 
     ce::event subject = base_event();
@@ -209,7 +209,7 @@ const boost::ut::suite<"binding-core-name-case"> binding_core_name_case = [] {
   };
 
   "a case-sensitive binding does not lower an attribute name"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("x_specversion", "1.0");
     fields.add("x_id", "1");
     fields.add("x_source", "/s");
@@ -225,7 +225,7 @@ const boost::ut::suite<"binding-core-name-case"> binding_core_name_case = [] {
   };
 
   "a prefix in the wrong case is not a prefix"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("x_specversion", "1.0");
     fields.add("x_id", "1");
     fields.add("x_source", "/s");
@@ -251,7 +251,7 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
     subject.time = *ce::parse_timestamp("2026-09-21T00:00:00Z");
     expect(bool{subject.set_extension("alpha", ce::attribute_value{std::string{"a"}})});
 
-    ce::headers fields;
+    ce::raw_headers fields;
     expect(bool{binding::write_attributes<exact_traits>(subject, fields)});
 
     auto read_back = binding::read_attributes<exact_traits>(fields);
@@ -270,7 +270,7 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
     ce::event subject = base_event();
     subject.subject = std::string{"\xC3"};  // a truncated two-byte sequence
 
-    ce::headers fields;
+    ce::raw_headers fields;
     auto written = binding::write_attributes<exact_traits>(subject, fields);
     expect(!written);
     if (!written) {
@@ -280,7 +280,7 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
   };
 
   "a missing required attribute names the first one absent"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("x_specversion", "1.0");
     fields.add("x_id", "1");
     fields.add("x_source", "/s");
@@ -299,7 +299,7 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
   // no place in this binding. The caller's fix is to move the media type to the
   // content-type field, and nothing in the old diagnosis said so.
   "a prefixed datacontenttype is refused where the binding has a content-type field"_test = [] {
-    const ce::headers fields{
+    const ce::raw_headers fields{
         {"x_specversion", "1.0"},
         {"x_id", "1"},
         {"x_source", "/s"},

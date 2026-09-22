@@ -20,11 +20,11 @@ namespace ce::inline v1 {
 /// Order and duplicates are preserved because the HTTP binding permits repeated
 /// headers, so a multimap that merged them would lose information a receiver may
 /// need.
-class headers {
+class raw_headers {
  public:
   using entry = std::pair<std::string, std::string>;
 
-  headers() = default;
+  raw_headers() = default;
 
   /// \brief Build a set of fields from a literal list, in the order given.
   ///
@@ -32,7 +32,7 @@ class headers {
   /// name is kept twice, which is what a wire-shaped literal has to be able to
   /// say. `set` semantics would silently drop the duplicate a test was written
   /// to exercise.
-  headers(std::initializer_list<entry> fields) : entries_{fields} {}
+  raw_headers(std::initializer_list<entry> fields) : entries_{fields} {}
 
   void add(std::string name, std::string value) {
     entries_.emplace_back(std::move(name), std::move(value));
@@ -94,7 +94,7 @@ class headers {
   [[nodiscard]] auto size() const noexcept -> std::size_t { return entries_.size(); }
   [[nodiscard]] auto empty() const noexcept -> bool { return entries_.empty(); }
 
-  friend auto operator==(const headers&, const headers&) -> bool = default;
+  friend auto operator==(const raw_headers&, const raw_headers&) -> bool = default;
 
  private:
   std::vector<entry> entries_;
@@ -102,7 +102,7 @@ class headers {
 
 /// \brief What a binding produces and consumes.
 struct message {
-  headers header_fields = {};
+  raw_headers header_fields = {};
   binary body = {};
 
   friend auto operator==(const message&, const message&) -> bool = default;

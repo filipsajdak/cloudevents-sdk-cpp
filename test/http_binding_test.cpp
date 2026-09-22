@@ -1008,7 +1008,7 @@ const boost::ut::suite<"message-type-shape"> message_type_shape = [] {
     // A plain aggregate, so a caller can build one with a designated initializer
     // and copy an arbitrary server's headers and body into it.
     static_assert(std::is_aggregate_v<ce::message>);
-    static_assert(std::is_same_v<decltype(ce::message::header_fields), ce::headers>);
+    static_assert(std::is_same_v<decltype(ce::message::header_fields), ce::raw_headers>);
     static_assert(std::is_same_v<decltype(ce::message::body), ce::binary>);
     static_assert(std::is_same_v<ce::binary, std::vector<std::byte>>);
     static_assert(std::is_default_constructible_v<ce::message>);
@@ -1034,7 +1034,7 @@ const boost::ut::suite<"message-type-shape"> message_type_shape = [] {
     // DECLARES no third-party type is what the no-dependency build proves; it is
     // not something a runtime assertion can see, so it is asserted here only as
     // far as the two member types go.
-    static_assert(std::is_same_v<ce::headers::entry, std::pair<std::string, std::string>>);
+    static_assert(std::is_same_v<ce::raw_headers::entry, std::pair<std::string, std::string>>);
     ce::message request;
     request.header_fields.add("Content-Type", "text/plain");
     request.body = ce::http::detail::to_bytes("payload");
@@ -1048,7 +1048,7 @@ const boost::ut::suite<"headers-ordered-multimap"> headers_ordered_multimap = []
   using namespace boost::ut;
 
   "add preserves insertion order"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("A", "1");
     fields.add("B", "2");
     fields.add("C", "3");
@@ -1071,7 +1071,7 @@ const boost::ut::suite<"headers-ordered-multimap"> headers_ordered_multimap = []
   "add keeps repeated field names, in order"_test = [] {
     // The HTTP binding permits a repeated header, so a structure that merged
     // them would lose information the receiver may need.
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("Set-Cookie", "a=1");
     fields.add("X-Other", "x");
     fields.add("Set-Cookie", "b=2");
@@ -1097,7 +1097,7 @@ const boost::ut::suite<"headers-ordered-multimap"> headers_ordered_multimap = []
   };
 
   "set replaces every header of that name"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("Accept", "text/plain");
     fields.add("X-Keep", "keep");
     fields.add("accept", "application/json");
@@ -1127,7 +1127,7 @@ const boost::ut::suite<"headers-ordered-multimap"> headers_ordered_multimap = []
   };
 
   "lookup ignores letter case, in both directions"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("Content-Type", "text/plain");
     fields.add("CE-SPECVERSION", "1.0");
 
@@ -1151,7 +1151,7 @@ const boost::ut::suite<"headers-ordered-multimap"> headers_ordered_multimap = []
   };
 
   "an empty container is empty"_test = [] {
-    const ce::headers fields;
+    const ce::raw_headers fields;
     expect(fields.empty());
     expect(fields.size() == 0U);
     expect(fields.find("anything") == nullptr);
@@ -1473,7 +1473,7 @@ const boost::ut::suite<"headers-case-sensitive-lookup"> headers_exact = [] {
   using namespace boost::ut;
 
   "find_exact answers only to the exact spelling"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("ce-id", "lower");
     fields.add("CE-ID", "upper");
 
@@ -1498,7 +1498,7 @@ const boost::ut::suite<"headers-case-sensitive-lookup"> headers_exact = [] {
   };
 
   "contains_exact is the same rule"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("ce_partitionkey", "k");
     expect(fields.contains_exact("ce_partitionkey"));
     expect(!fields.contains_exact("CE_PARTITIONKEY"));
@@ -1510,7 +1510,7 @@ const boost::ut::suite<"headers-case-sensitive-lookup"> headers_exact = [] {
     // This is the reason set_exact exists. A Kafka binding writing extension
     // "abc" must not erase a caller's "ABC", which is a different header on
     // that transport.
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("abc", "one");
     fields.add("ABC", "two");
 
@@ -1530,7 +1530,7 @@ const boost::ut::suite<"headers-case-sensitive-lookup"> headers_exact = [] {
   "set still erases case-insensitively, as HTTP needs"_test = [] {
     // SWR-HTTP-0002 is unchanged: the existing three keep their behaviour, and
     // that is what stops this addition being a breaking change.
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.add("abc", "one");
     fields.add("ABC", "two");
 
@@ -1545,7 +1545,7 @@ const boost::ut::suite<"headers-case-sensitive-lookup"> headers_exact = [] {
   };
 
   "set_exact adds when absent"_test = [] {
-    ce::headers fields;
+    ce::raw_headers fields;
     fields.set_exact("ce_type", "t");
     expect(fields.size() == 1_ul);
     expect(fields.contains_exact("ce_type"));

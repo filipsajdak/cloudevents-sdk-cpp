@@ -67,7 +67,7 @@ struct content_type_policy<T> {
 };
 
 template <binding_traits T>
-void put(headers& into, std::string name, std::string value) {
+void put(raw_headers& into, std::string name, std::string value) {
   if constexpr (T::case_sensitive_names) {
     into.set_exact(std::move(name), std::move(value));
   } else {
@@ -76,7 +76,7 @@ void put(headers& into, std::string name, std::string value) {
 }
 
 template <binding_traits T>
-[[nodiscard]] auto look_up(const headers& fields, std::string_view name) -> const std::string* {
+[[nodiscard]] auto look_up(const raw_headers& fields, std::string_view name) -> const std::string* {
   if constexpr (T::case_sensitive_names) {
     return fields.find_exact(name);
   } else {
@@ -135,7 +135,7 @@ template <binding_traits T>
 /// interop and conformance fixtures compare whole messages, so a reordering that
 /// reads as tidying breaks them.
 template <binding_traits T>
-[[nodiscard]] auto write_attributes(const event& cloud_event, headers& into) -> result<void> {
+[[nodiscard]] auto write_attributes(const event& cloud_event, raw_headers& into) -> result<void> {
   result<void> failure{};
 
   const auto put_attribute = [&into, &failure](std::string_view name, std::string_view value) {
@@ -190,7 +190,7 @@ template <binding_traits T>
 /// The event is returned without its datacontenttype, its payload or a
 /// `validate()` call: those need the body, which is the caller's to supply.
 template <binding_traits T>
-[[nodiscard]] auto read_attributes(const headers& fields) -> result<event> {
+[[nodiscard]] auto read_attributes(const raw_headers& fields) -> result<event> {
   event cloud_event{.id = {}, .source = {}, .type = {}};
   bool saw_id = false;
   bool saw_source = false;

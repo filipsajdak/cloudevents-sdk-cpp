@@ -33,7 +33,7 @@ struct nlohmann_codec {
     return parsed;
   }
 
-  [[nodiscard]] static auto dump(const value& subject) -> std::string { return subject.dump(); }
+  [[nodiscard]] static auto dump(const value& held) -> std::string { return held.dump(); }
 
   [[nodiscard]] static auto make_null() -> value { return value(nullptr); }
   [[nodiscard]] static auto make_bool(bool boolean) -> value { return value(boolean); }
@@ -51,24 +51,24 @@ struct nlohmann_codec {
 
   static void push(value& array, value element) { array.push_back(std::move(element)); }
 
-  [[nodiscard]] static auto kind_of(const value& subject) -> json::kind {
-    if (subject.is_null()) {
+  [[nodiscard]] static auto kind_of(const value& held) -> json::kind {
+    if (held.is_null()) {
       return json::kind::null;
     }
-    if (subject.is_boolean()) {
+    if (held.is_boolean()) {
       return json::kind::boolean;
     }
     // Checked before is_number_float, because an integer is also a number.
-    if (subject.is_number_integer() || subject.is_number_unsigned()) {
+    if (held.is_number_integer() || held.is_number_unsigned()) {
       return json::kind::integer;
     }
-    if (subject.is_number_float()) {
+    if (held.is_number_float()) {
       return json::kind::floating;
     }
-    if (subject.is_string()) {
+    if (held.is_string()) {
       return json::kind::string;
     }
-    if (subject.is_array()) {
+    if (held.is_array()) {
       return json::kind::array;
     }
     return json::kind::object;
@@ -82,21 +82,21 @@ struct nlohmann_codec {
     return found == object.end() ? nullptr : &(*found);
   }
 
-  [[nodiscard]] static auto size_of(const value& subject) -> std::size_t { return subject.size(); }
+  [[nodiscard]] static auto size_of(const value& held) -> std::size_t { return held.size(); }
 
-  [[nodiscard]] static auto as_bool(const value& subject) -> result<bool> {
-    if (!subject.is_boolean()) {
+  [[nodiscard]] static auto as_bool(const value& held) -> result<bool> {
+    if (!held.is_boolean()) {
       return fail(errc::type_mismatch, "not a JSON boolean");
     }
-    return subject.get<bool>();
+    return held.get<bool>();
   }
 
-  [[nodiscard]] static auto as_int(const value& subject) -> result<std::int64_t> {
+  [[nodiscard]] static auto as_int(const value& held) -> result<std::int64_t> {
     // The unsigned test comes FIRST. is_number_integer() is true for an unsigned
     // value too, so testing it first would make the range check below dead code.
-    if (subject.is_number_unsigned()) {
-      const auto held = subject.get<std::uint64_t>();
-      if (held > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+    if (held.is_number_unsigned()) {
+      const auto unsigned_value = held.get<std::uint64_t>();
+      if (unsigned_value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
         // get<std::int64_t>() reinterprets rather than refusing: 2^64-1 arrives
         // as -1, which is inside the CloudEvents Integer range, so the format
         // layer accepts it and the caller is handed a value that is not the one
@@ -108,27 +108,27 @@ struct nlohmann_codec {
         // two different codes.
         return fail(errc::out_of_range, "JSON integer too large for int64");
       }
-      return static_cast<std::int64_t>(held);
+      return static_cast<std::int64_t>(unsigned_value);
     }
-    if (subject.is_number_integer()) {
-      return subject.get<std::int64_t>();
+    if (held.is_number_integer()) {
+      return held.get<std::int64_t>();
     }
     return fail(errc::type_mismatch, "not a JSON integer");
   }
 
-  [[nodiscard]] static auto as_double(const value& subject) -> result<double> {
-    if (!subject.is_number()) {
+  [[nodiscard]] static auto as_double(const value& held) -> result<double> {
+    if (!held.is_number()) {
       return fail(errc::type_mismatch, "not a JSON number");
     }
-    return subject.get<double>();
+    return held.get<double>();
   }
 
-  /// \brief The string, viewing storage owned by `subject`.
-  [[nodiscard]] static auto as_string(const value& subject) -> result<std::string_view> {
-    if (!subject.is_string()) {
+  /// \brief The string, viewing storage owned by `held`.
+  [[nodiscard]] static auto as_string(const value& held) -> result<std::string_view> {
+    if (!held.is_string()) {
       return fail(errc::type_mismatch, "not a JSON string");
     }
-    return std::string_view{subject.get_ref<const std::string&>()};
+    return std::string_view{held.get_ref<const std::string&>()};
   }
 
   template <class F>

@@ -145,13 +145,13 @@ static_assert(binding::binding_traits<detail::http_traits<literal_values>>);
 
 /// \brief Lay an event out as an HTTP message.
 template <json::json_codec Codec, value_policy Values = percent_encoded_values>
-[[nodiscard]] auto to_message(const event& subject, content_mode mode) -> result<message> {
-  if (auto valid = subject.validate(); !valid) {
+[[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
+  if (auto valid = cloud_event.validate(); !valid) {
     return fail(valid.error().code, valid.error().detail, valid.error().where);
   }
 
   if (mode == content_mode::structured) {
-    return binding::encode_structured<detail::http_traits<Values>, Codec>(subject);
+    return binding::encode_structured<detail::http_traits<Values>, Codec>(cloud_event);
   }
 
   if (mode == content_mode::batched) {
@@ -160,11 +160,11 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 
   message out;
   if (auto written =
-          binding::write_attributes<detail::http_traits<Values>>(subject, out.header_fields);
+          binding::write_attributes<detail::http_traits<Values>>(cloud_event, out.header_fields);
       !written) {
     return fail(written.error().code, written.error().detail, written.error().where);
   }
-  binding::write_body(subject, out);
+  binding::write_body(cloud_event, out);
   return out;
 }
 
@@ -205,26 +205,26 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
     return fail(errc::not_a_cloudevent, "no ce-specversion header and no CloudEvents content type");
   }
 
-  auto subject = binding::read_attributes<detail::http_traits<Values>>(request.header_fields);
-  if (!subject) {
-    return fail(subject.error().code, subject.error().detail, subject.error().where);
+  auto cloud_event = binding::read_attributes<detail::http_traits<Values>>(request.header_fields);
+  if (!cloud_event) {
+    return fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
   }
 
   if (const std::string* declared = request.header_fields.find(detail::content_type_header);
       declared != nullptr) {
-    subject->datacontenttype = *declared;
+    cloud_event->datacontenttype = *declared;
   }
 
-  binding::read_body(request.body, *subject);
+  binding::read_body(request.body, *cloud_event);
 
   // Same invariant as the JSON format: an empty ce-type header is present but
   // not valid, and an event that cannot go back out to a message is of no use
   // to a receiver.
-  if (auto valid = subject->validate(); !valid) {
+  if (auto valid = cloud_event->validate(); !valid) {
     return fail(valid.error().code, valid.error().detail, valid.error().where);
   }
 
-  return std::move(*subject);
+  return std::move(*cloud_event);
 }
 
 /// \brief Read a batch from an HTTP message.

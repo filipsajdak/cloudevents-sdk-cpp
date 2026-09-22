@@ -131,11 +131,11 @@ template <binding_traits T>
 /// \brief Lay an event's attributes out as prefixed fields.
 ///
 /// The emission order is part of the contract: specversion, id, source, type,
-/// dataschema, subject, time, the extensions, and the content type last. The
+/// dataschema, cloud_event, time, the extensions, and the content type last. The
 /// interop and conformance fixtures compare whole messages, so a reordering that
 /// reads as tidying breaks them.
 template <binding_traits T>
-[[nodiscard]] auto write_attributes(const event& subject, headers& into) -> result<void> {
+[[nodiscard]] auto write_attributes(const event& cloud_event, headers& into) -> result<void> {
   result<void> failure{};
 
   const auto put_attribute = [&into, &failure](std::string_view name, std::string_view value) {
@@ -150,20 +150,20 @@ template <binding_traits T>
     detail::put<T>(into, std::string{T::attribute_prefix} + std::string{name}, std::move(*encoded));
   };
 
-  put_attribute("specversion", subject.specversion);
-  put_attribute("id", subject.id);
-  put_attribute("source", subject.source.view());
-  put_attribute("type", subject.type);
-  if (subject.dataschema) {
-    put_attribute("dataschema", subject.dataschema->view());
+  put_attribute("specversion", cloud_event.specversion);
+  put_attribute("id", cloud_event.id);
+  put_attribute("source", cloud_event.source.view());
+  put_attribute("type", cloud_event.type);
+  if (cloud_event.dataschema) {
+    put_attribute("dataschema", cloud_event.dataschema->view());
   }
-  if (subject.subject) {
-    put_attribute("subject", *subject.subject);
+  if (cloud_event.subject) {
+    put_attribute("subject", *cloud_event.subject);
   }
-  if (subject.time) {
-    put_attribute("time", to_string(*subject.time));
+  if (cloud_event.time) {
+    put_attribute("time", to_string(*cloud_event.time));
   }
-  for (const auto& [name, attribute] : subject.extensions) {
+  for (const auto& [name, attribute] : cloud_event.extensions) {
     put_attribute(name, render_attribute(attribute));
   }
 
@@ -175,11 +175,11 @@ template <binding_traits T>
   // appear under the prefix, or a receiver sees the same attribute twice, and it
   // is not encoded there: it is a media type, not an attribute value. Where the
   // binding maps it like any other attribute, it is encoded like one.
-  if (subject.datacontenttype) {
+  if (cloud_event.datacontenttype) {
     if constexpr (detail::content_type_policy<T>::as_attribute) {
-      put_attribute("datacontenttype", *subject.datacontenttype);
+      put_attribute("datacontenttype", *cloud_event.datacontenttype);
     } else {
-      detail::put<T>(into, std::string{T::content_type_header}, *subject.datacontenttype);
+      detail::put<T>(into, std::string{T::content_type_header}, *cloud_event.datacontenttype);
     }
   }
   return failure;
@@ -191,7 +191,7 @@ template <binding_traits T>
 /// `validate()` call: those need the body, which is the caller's to supply.
 template <binding_traits T>
 [[nodiscard]] auto read_attributes(const headers& fields) -> result<event> {
-  event subject{.id = {}, .source = {}, .type = {}};
+  event cloud_event{.id = {}, .source = {}, .type = {}};
   bool saw_id = false;
   bool saw_source = false;
   bool saw_type = false;
@@ -215,7 +215,7 @@ template <binding_traits T>
     // for that binding".
     if constexpr (detail::content_type_policy<T>::as_attribute) {
       if (attribute == "datacontenttype") {
-        subject.datacontenttype = *decoded;
+        cloud_event.datacontenttype = *decoded;
         continue;
       }
     } else {
@@ -234,27 +234,27 @@ template <binding_traits T>
     }
 
     if (attribute == "specversion") {
-      subject.specversion = *decoded;
+      cloud_event.specversion = *decoded;
     } else if (attribute == "id") {
-      subject.id = *decoded;
+      cloud_event.id = *decoded;
       saw_id = true;
     } else if (attribute == "source") {
-      subject.source = uri_ref{*decoded};
+      cloud_event.source = uri_ref{*decoded};
       saw_source = true;
     } else if (attribute == "type") {
-      subject.type = *decoded;
+      cloud_event.type = *decoded;
       saw_type = true;
     } else if (attribute == "dataschema") {
-      subject.dataschema = uri{*decoded};
+      cloud_event.dataschema = uri{*decoded};
     } else if (attribute == "subject") {
-      subject.subject = *decoded;
+      cloud_event.subject = *decoded;
     } else if (attribute == "time") {
       auto parsed = parse_timestamp(*decoded);
       if (!parsed) {
         header_error = fail(parsed.error().code, parsed.error().detail, "time");
         break;
       }
-      subject.time = *parsed;
+      cloud_event.time = *parsed;
     } else {
       // Same rule as the JSON format: a prefixed field whose name is not one the
       // spec allows cannot become an extension, or reading would return an event
@@ -266,14 +266,14 @@ template <binding_traits T>
       }
       // The wire form carries no type, so an extension arrives as a string. The
       // typed extension structs are what recover the declared type.
-      subject.extensions.insert_or_assign(attribute, attribute_value{*decoded});
+      cloud_event.extensions.insert_or_assign(attribute, attribute_value{*decoded});
     }
   }
 
   if (!header_error) {
     return fail(header_error.error().code, header_error.error().detail, header_error.error().where);
   }
-  if (subject.specversion != "1.0") {
+  if (cloud_event.specversion != "1.0") {
     return fail(errc::unsupported_spec_version, "this SDK implements CloudEvents 1.0 only",
                 "specversion");
   }
@@ -281,11 +281,11 @@ template <binding_traits T>
     return fail(errc::missing_required_attribute, "id, source and type are all required",
                 !saw_id ? "id" : (!saw_source ? "source" : "type"));
   }
-  return subject;
+  return cloud_event;
 }
 
 /// \brief The payload, as the message body.
-inline void write_body(const event& subject, message& into) {
+inline void write_body(const event& cloud_event, message& into) {
   std::visit(
       [&into](const auto& held) {
         using held_type = std::remove_cvref_t<decltype(held)>;
@@ -299,7 +299,7 @@ inline void write_body(const event& subject, message& into) {
           into.body = to_bytes(held.raw);
         }
       },
-      subject.data);
+      cloud_event.data);
 }
 
 /// \brief The message body, as the payload. Reads `into.datacontenttype`, so the
@@ -317,8 +317,8 @@ inline void read_body(const binary& body, event& into) {
 
 /// \brief The whole event as one document in the body, under the event content type.
 template <binding_traits T, json::json_codec Codec>
-[[nodiscard]] auto encode_structured(const event& subject) -> result<message> {
-  auto text = json_format<Codec>::encode(subject);
+[[nodiscard]] auto encode_structured(const event& cloud_event) -> result<message> {
+  auto text = json_format<Codec>::encode(cloud_event);
   if (!text) {
     return fail(text.error().code, text.error().detail, text.error().where);
   }

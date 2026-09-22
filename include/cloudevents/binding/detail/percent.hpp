@@ -31,6 +31,9 @@ inline constexpr unsigned hex_radix = 10U;
 /// Not a hex digit. Negative so it cannot be mistaken for a value.
 inline constexpr int not_a_hex_digit = -1;
 
+/// An escape is the percent sign and the two hex digits of one byte.
+inline constexpr std::size_t escape_length = 3;
+
 /// \brief True when a byte must be percent-encoded in a header value.
 ///
 /// The binding requires escaping anything outside printable ASCII, plus space,
@@ -79,20 +82,23 @@ inline constexpr int not_a_hex_digit = -1;
 /// Any octet may be escaped, because a sender is free to escape more than the
 /// minimum. The result must still be well-formed UTF-8.
 [[nodiscard]] inline auto percent_decode(std::string_view text) -> result<std::string> {
+  const std::string_view whole = text;
   std::string out;
   out.reserve(text.size());
-  for (std::size_t index = 0; index < text.size(); ++index) {
-    if (text[index] != '%') {
-      out.push_back(text[index]);
+  while (!text.empty()) {
+    if (text.front() != '%') {
+      out.push_back(text.front());
+      text.remove_prefix(1);
       continue;
     }
-    if (index + 2 >= text.size()) {
-      return fail(errc::parse_error, "truncated percent escape", std::string{text});
+    if (text.size() < escape_length) {
+      return fail(errc::parse_error, "truncated percent escape", std::string{whole});
     }
-    const int high = hex_value(text[index + 1]);
-    const int low = hex_value(text[index + 2]);
+    const std::string_view digits = text.substr(1, escape_length - 1);
+    const int high = hex_value(digits.front());
+    const int low = hex_value(digits.back());
     if (high < 0 || low < 0) {
-      return fail(errc::parse_error, "percent escape is not hexadecimal", std::string{text});
+      return fail(errc::parse_error, "percent escape is not hexadecimal", std::string{whole});
     }
     // Assembled unsigned. hex_value returns int because it reports "not a hex
     // digit" as -1, and shifting a signed value into the high bit of a byte is
@@ -104,11 +110,11 @@ inline constexpr int not_a_hex_digit = -1;
     const auto byte =
         static_cast<unsigned>(high) << hex_shift | static_cast<unsigned>(low);
     out.push_back(static_cast<char>(static_cast<unsigned char>(byte)));
-    index += 2;
+    text.remove_prefix(escape_length);
   }
   if (!ce::v1::detail::is_valid_utf8(out)) {
     return fail(errc::invalid_utf8, "the decoded header value is not well-formed UTF-8",
-                std::string{text});
+                std::string{whole});
   }
   return out;
 }

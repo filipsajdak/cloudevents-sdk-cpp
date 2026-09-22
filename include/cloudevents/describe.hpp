@@ -129,14 +129,11 @@ inline constexpr std::size_t field_count =
 /// \brief The wire names of `T`'s members, in declaration order.
 template <described T>
 [[nodiscard]] constexpr auto field_names() -> std::array<std::string_view, field_count<T>> {
-  std::array<std::string_view, field_count<T>> names{};
-  std::apply(
-      [&names](auto... member) {
-        std::size_t index = 0;
-        ((names[index++] = member.name), ...);
+  return std::apply(
+      [](auto... member) {
+        return std::array<std::string_view, field_count<T>>{member.name...};
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());
-  return names;
 }
 
 /// \brief Call `visit(wire_name, member)` for each member, in declaration order.

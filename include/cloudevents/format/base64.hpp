@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -71,15 +72,18 @@ inline constexpr unsigned second_sextet_shift = 12;
 inline constexpr unsigned third_sextet_shift = 6;
 inline constexpr unsigned fourth_sextet_shift = 0;
 
-/// Where each octet of that group sits while it is being packed.
-inline constexpr unsigned first_octet_shift = 16;
-inline constexpr unsigned second_octet_shift = 8;
-
 /// A partial group is left-padded up to a whole number of sextets: one octet
 /// needs four bits of padding, two octets need two.
 inline constexpr unsigned one_octet_padding = 4;
 inline constexpr unsigned two_octet_padding = 2;
-inline constexpr unsigned two_octet_first_shift = 10;
+
+/// The alphabet character for the low six bits of `value`.
+[[nodiscard]] constexpr auto base64_character(std::uint32_t value) noexcept -> char {
+  // The mask is what bounds the index; this keeps the alphabet as long as it.
+  static_assert(base64_alphabet.size() == sextet_mask + 1);
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+  return base64_alphabet[value & sextet_mask];
+}
 
 }  // namespace detail
 
@@ -94,17 +98,20 @@ inline constexpr unsigned two_octet_first_shift = 10;
 
   // Emit the 6-bit field at `offset` of a packed group.
   const auto emit = [&out](std::uint32_t packed, unsigned offset) {
-    out.push_back(detail::base64_alphabet[(packed >> offset) & detail::sextet_mask]);
+    out.push_back(detail::base64_character(packed >> offset));
   };
-  const auto byte_at = [&bytes](std::size_t index) {
-    return static_cast<std::uint32_t>(bytes[index]);
+  // Pack up to one quantum of octets into one integer, first octet highest.
+  const auto pack = [](std::span<const std::byte> octets) {
+    std::uint32_t group = 0;
+    for (const std::byte octet : octets) {
+      group = (group << detail::octet_bits) | static_cast<std::uint32_t>(octet);
+    }
+    return group;
   };
 
-  std::size_t index = 0;
-  for (; index + detail::quantum_octets - 1 < bytes.size(); index += detail::quantum_octets) {
-    const std::uint32_t group = (byte_at(index) << detail::first_octet_shift) |
-                                (byte_at(index + 1) << detail::second_octet_shift) |
-                                byte_at(index + 2);
+  std::span<const std::byte> rest{bytes};
+  for (; rest.size() >= detail::quantum_octets; rest = rest.subspan(detail::quantum_octets)) {
+    const std::uint32_t group = pack(rest.first(detail::quantum_octets));
     emit(group, detail::first_sextet_shift);
     emit(group, detail::second_sextet_shift);
     emit(group, detail::third_sextet_shift);
@@ -113,14 +120,13 @@ inline constexpr unsigned two_octet_first_shift = 10;
 
   // A partial group is padded to a whole number of sextets, then to four
   // characters, so the encoded length always determines the byte count.
-  if (const std::size_t remaining = bytes.size() - index; remaining == 1) {
-    const std::uint32_t group = byte_at(index) << detail::one_octet_padding;
+  if (rest.size() == 1) {
+    const std::uint32_t group = pack(rest) << detail::one_octet_padding;
     emit(group, detail::third_sextet_shift);
     emit(group, detail::fourth_sextet_shift);
     out.append("==");
-  } else if (remaining == 2) {
-    const std::uint32_t group = (byte_at(index) << detail::two_octet_first_shift) |
-                                (byte_at(index + 1) << detail::two_octet_padding);
+  } else if (rest.size() == 2) {
+    const std::uint32_t group = pack(rest) << detail::two_octet_padding;
     emit(group, detail::second_sextet_shift);
     emit(group, detail::third_sextet_shift);
     emit(group, detail::fourth_sextet_shift);

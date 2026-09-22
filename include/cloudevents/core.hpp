@@ -134,6 +134,50 @@ inline constexpr std::string_view reserved_names[] = {
          ce::detail::iequals(text.substr(0, prefix.size()), prefix);
 }
 
+/// The UTF-8 encoding, as the tables in Unicode 15 chapter 3 state it. Each
+/// constant is named for what it tests rather than for its bit pattern, so a
+/// transcription error reads as one.
+namespace utf8 {
+
+/// A byte below this is a one-byte sequence and its own code point.
+inline constexpr unsigned char ascii_limit = 0x80U;
+
+/// A continuation byte matches `10xxxxxx`.
+inline constexpr unsigned char continuation_mask = 0xC0U;
+inline constexpr unsigned char continuation_marker = 0x80U;
+inline constexpr unsigned char continuation_payload = 0x3FU;
+inline constexpr unsigned int continuation_bits = 6U;
+
+/// A lead byte announces its length in its high bits, and carries the rest of
+/// the code point in the low bits the matching payload mask keeps.
+inline constexpr unsigned char two_byte_mask = 0xE0U;
+inline constexpr unsigned char two_byte_marker = 0xC0U;
+inline constexpr unsigned char two_byte_payload = 0x1FU;
+
+inline constexpr unsigned char three_byte_mask = 0xF0U;
+inline constexpr unsigned char three_byte_marker = 0xE0U;
+inline constexpr unsigned char three_byte_payload = 0x0FU;
+
+inline constexpr unsigned char four_byte_mask = 0xF8U;
+inline constexpr unsigned char four_byte_marker = 0xF0U;
+inline constexpr unsigned char four_byte_payload = 0x07U;
+
+/// The smallest code point each length is allowed to encode. A sequence below
+/// its own floor is an overlong encoding: a second spelling of a character that
+/// a shorter sequence already spells.
+inline constexpr std::uint32_t two_byte_floor = 0x80U;
+inline constexpr std::uint32_t three_byte_floor = 0x800U;
+inline constexpr std::uint32_t four_byte_floor = 0x10000U;
+
+/// UTF-16 surrogates are not characters, and UTF-8 does not encode them.
+inline constexpr std::uint32_t first_surrogate = 0xD800U;
+inline constexpr std::uint32_t last_surrogate = 0xDFFFU;
+
+/// The last code point Unicode defines.
+inline constexpr std::uint32_t last_code_point = 0x10FFFFU;
+
+}  // namespace utf8
+
 /// \brief True when the bytes are well-formed UTF-8.
 ///
 /// Rejects overlong encodings, surrogates and values above U+10FFFF, because each
@@ -146,19 +190,19 @@ inline constexpr std::string_view reserved_names[] = {
     std::size_t length = 0;
     std::uint32_t code = 0;
 
-    if (lead < 0x80) {
+    if (lead < utf8::ascii_limit) {
       ++index;
       continue;
     }
-    if ((lead & 0xE0U) == 0xC0U) {
+    if ((lead & utf8::two_byte_mask) == utf8::two_byte_marker) {
       length = 2;
-      code = lead & 0x1FU;
-    } else if ((lead & 0xF0U) == 0xE0U) {
+      code = lead & utf8::two_byte_payload;
+    } else if ((lead & utf8::three_byte_mask) == utf8::three_byte_marker) {
       length = 3;
-      code = lead & 0x0FU;
-    } else if ((lead & 0xF8U) == 0xF0U) {
+      code = lead & utf8::three_byte_payload;
+    } else if ((lead & utf8::four_byte_mask) == utf8::four_byte_marker) {
       length = 4;
-      code = lead & 0x07U;
+      code = lead & utf8::four_byte_payload;
     } else {
       return false;
     }
@@ -168,22 +212,23 @@ inline constexpr std::string_view reserved_names[] = {
     }
     for (std::size_t offset = 1; offset < length; ++offset) {
       const auto continuation = static_cast<unsigned char>(text[index + offset]);
-      if ((continuation & 0xC0U) != 0x80U) {
+      if ((continuation & utf8::continuation_mask) != utf8::continuation_marker) {
         return false;
       }
-      code = (code << 6U) | (continuation & 0x3FU);
+      code = (code << utf8::continuation_bits) | (continuation & utf8::continuation_payload);
     }
 
-    if (length == 2 && code < 0x80) {
+    if (length == 2 && code < utf8::two_byte_floor) {
       return false;
     }
-    if (length == 3 && code < 0x800) {
+    if (length == 3 && code < utf8::three_byte_floor) {
       return false;
     }
-    if (length == 4 && code < 0x10000) {
+    if (length == 4 && code < utf8::four_byte_floor) {
       return false;
     }
-    if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
+    if (code > utf8::last_code_point ||
+        (code >= utf8::first_surrogate && code <= utf8::last_surrogate)) {
       return false;
     }
     index += length;

@@ -162,7 +162,15 @@ const boost::ut::suite<"config-inline-namespace-v1"> config_inline_namespace_v1 
     static_assert(std::is_same_v<ce::failure, ce::v1::failure>);
     static_assert(std::is_same_v<ce::event, ce::v1::event>);
     static_assert(std::is_same_v<ce::timestamp, ce::v1::timestamp>);
-    static_assert(std::is_same_v<decltype(ce::fail), decltype(ce::v1::fail)>);
+    // fail is an overload set, so decltype on the bare name is ambiguous. Taking
+    // the address of one overload through both spellings says more than the type
+    // comparison did: these are not merely the same signature, they are the same
+    // function.
+    static_assert(static_cast<ce::failure (*)(ce::errc, std::string, std::string)>(&ce::fail) ==
+                  static_cast<ce::failure (*)(ce::errc, std::string, std::string)>(&ce::v1::fail));
+    static_assert(static_cast<ce::failure (*)(const ce::static_error&)>(&ce::fail) ==
+                  static_cast<ce::failure (*)(const ce::v1::static_error&)>(&ce::v1::fail));
+    static_assert(std::is_same_v<ce::static_error, ce::v1::static_error>);
     expect(true);
   };
 };

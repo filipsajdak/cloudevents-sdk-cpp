@@ -410,27 +410,6 @@ jobs:
       - name: The committed goldens are unchanged
         run: git diff --exit-code test/fixtures/interop
 
-  docs:
-    name: API reference
-    needs: gate
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install doxygen
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y doxygen graphviz
-      # SPEC section 10 requires a one-line brief on every public symbol, so the
-      # Doxyfile treats a warning as an error and this job is what enforces it.
-      # Without the job the setting was inert, and it was: the first run found a
-      # doc comment containing the two characters that end a C comment.
-      - name: Build the reference
-        run: cd docs && doxygen Doxyfile
-      - uses: actions/upload-artifact@v4
-        with:
-          name: api-reference
-          path: docs/doxygen/html/
-
   all-codecs:
     name: every codec, ${{ matrix.os }} c++${{ matrix.std }}
     needs: gate

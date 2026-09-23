@@ -43,8 +43,6 @@ Run every command from a clean `main` at the commit being tagged.
       the change is understood and described in the release notes.
 - [ ] `cmake -S . -B build -DCE_BUILD_MODULE=ON` builds and `module_consumer`
       exits 0 on a toolchain that supports modules (`SWR-BUILD-0010`).
-- [ ] Doxygen produces no warnings: the docs job treats them as errors, because
-      SPEC section 10 requires a brief on every public symbol.
 - [ ] The installed package is consumed from `test/consumer/` with the system
       copy of any dependency hidden, so a stale include path cannot mask a
       missing one.

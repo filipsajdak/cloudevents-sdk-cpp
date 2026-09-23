@@ -1,1 +1,1 @@
-{"specversion":"1.0","id":"id-extensions","source":"/interop/go","type":"com.example.extensions","traceparent":"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01","sampledrate":30,"partitionkey":"customer-42"}
+{"specversion":"1.0","id":"id-extensions","source":"/interop/go","type":"com.example.extensions","partitionkey":"customer-42","sampledrate":30,"traceparent":"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"}

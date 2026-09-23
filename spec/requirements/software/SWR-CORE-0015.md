@@ -2,7 +2,8 @@
 uid: SWR-CORE-0015
 title: event optional attributes and extension map
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   CloudEvents v1.0.2 core specification section 3.1 marks `datacontenttype`,

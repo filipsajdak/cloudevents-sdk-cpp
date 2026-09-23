@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0015
 title: A decoded message always re-encodes
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   A header name is not constrained to the CloudEvents attribute grammar, so a sender may present ce- followed by anything an HTTP framework admits. Carrying that through as an extension would produce an event that to_message then refuses, breaking the round trip the binding exists to provide. CR-0001 replaced the validation operation this requirement first named with the attribute types, so the property is stated as that round trip.

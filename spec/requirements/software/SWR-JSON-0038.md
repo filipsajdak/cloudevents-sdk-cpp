@@ -2,7 +2,8 @@
 uid: SWR-JSON-0038
 title: base64 padding must be exactly what the final quantum needs
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   The decoder stripped any run of trailing padding before looking at the length,

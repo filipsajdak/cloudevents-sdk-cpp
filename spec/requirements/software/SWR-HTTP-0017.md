@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0017
 title: The percent-encoding policy validates on the way out as well as in
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: medium
 rationale: >
   `literal_values::encode` refuses a control character and ill-formed UTF-8, while

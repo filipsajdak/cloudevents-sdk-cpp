@@ -2,7 +2,8 @@
 uid: SWR-CORE-0030
 title: A timestamp cannot carry more fractional digits than it can express
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   `fractional_digits` was a public member of an aggregate holding a

@@ -2,7 +2,8 @@
 uid: SWR-CORE-0029
 title: The event builder refuses to build without the required attributes
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   A decoder discovers attributes one at a time in wire order and cannot know

@@ -2,7 +2,8 @@
 uid: SWR-CORE-0018
 title: Only specversion 1.0 is accepted on receive, and no other can be produced
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   SPEC 5.1 pins `specversion` to the value 1.0 and open decision D5 declines

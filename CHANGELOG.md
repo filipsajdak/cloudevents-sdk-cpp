@@ -2,6 +2,112 @@
 
 Notable changes per release. Dates are the tag date.
 
+## v0.4.0
+
+A second API generation, `ce::v2`, in which an invalid CloudEvent cannot be
+written down. `ce::v1` keeps what v0.3.0 published, so existing code has a way
+to keep compiling.
+
+### Two generations
+
+- **`ce::v2` is the inline namespace**, so `ce::event` now names the v2 class.
+- **`ce::v1` holds the v0.3.0 surface**, under `include/cloudevents/v1/`: the
+  aggregate `event`, `validate()`, `headers`, and the format and bindings built
+  on them. A v1 declaration does not change; v1 takes defect fixes only.
+- **What did not change is shared**: `errc`, `error`, `result`, the codec
+  concept, the three codecs, base64 and the describe seam are one type through
+  `ce::`, `ce::v1::` and `ce::v2::`. A codec written for v0.3.0 serves both.
+- The optional module exports `ce::v2` only.
+
+CR-0002 and ADR-0009 record why: SPEC section 3 rule 4 sends breaking changes to
+a new generation, and v0.4.0's event model is one.
+
+### Staying on v0.3.0 code
+
+Spell `ce::v1::` and include the `v1/` headers. Nothing else changes:
+
+```cpp
+#include <cloudevents/v1/binding/http.hpp>
+
+const ce::v1::event order{.id = "A1", .source = "/orders", .type = "com.example.placed"};
+auto request = ce::v1::http::to_message<ce::v1::codec::nlohmann_codec>(
+    order, ce::v1::content_mode::binary_mode);
+```
+
+### Moving to `ce::v2`
+
+| v0.3.0 (`ce::v1`) | v0.4.0 (`ce::v2`) |
+|---|---|
+| `ce::event{.id = "1", .source = "/s", .type = "t", .subject = "x"}` | `ce::event{"1"_id, "/s"_source, "t"_type, {.subject = "x"_subject}}` |
+| a runtime string assigned to a member | `ce::id::make(text)` and its siblings, which return a `result` |
+| `if (auto ok = e.validate(); !ok)` | nothing to call: construction refuses what `validate()` refused |
+| `e.id`, `e.subject` | `e.id()`, `e.subject()`, returning the validated types |
+| `e.set_extension("name", value)` returning `result<void>` | `e.set_extension("name"_ext, value)`, which cannot fail |
+| `e.datacontenttype = ...; e.data = ...;` | `e.set_data(payload, "application/json"_mediatype)` |
+| `ce::headers` | `ce::raw_headers`; `ce::headers` is now the type that refuses a repeated field |
+| `binding::read_attributes` returning an `event` | returns an `event::builder`; `build()` reports a missing attribute |
+| `binding::read_body(body, event&)` | `read_body(body, media_type)` returns the payload |
+| `ce::set_data<T, Codec>` returning `result<void>` | returns nothing, because it cannot fail |
+| `timestamp::fractional_digits` as `std::uint8_t` | a `fraction_digits`, refusing a count above nine |
+
+A literal is checked when the program compiles: `""_id` does not build.
+`docs/GUIDE.md` covers the whole v2 surface.
+
+### Fixed, in both generations
+
+- A timestamp with more than nine fractional digits divided by zero when
+  rendered. v2 cannot hold one; v1 renders nine.
+- The RapidJSON codec handed a null pointer to RapidJSON for an empty string.
+- The `result<void>` polyfill answered `error()` on a success with `errc{0}`
+  where `std::expected` leaves it undefined; a wrong-branch read now aborts.
+- base64 accepted any run of padding, so `"QQ======"` decoded.
+- A message carrying one `ce-` attribute twice decoded to whichever came last.
+  It is now refused with `invalid_argument`.
+- A prefixed `datacontenttype` on HTTP or Kafka was accepted as an extension and
+  then refused as a reserved name. It is now refused as `invalid_argument`.
+- The HTTP percent-encoding policy now refuses ill-formed UTF-8 on the way out,
+  as it always did on the way in.
+
+### Added
+
+- `docs/GUIDE.md`, the user guide. Every C++ block in it is compiled and run in
+  CI. `CONTRIBUTING.md` and `SECURITY.md`.
+- A clang-tidy gate over the public headers, including the magic-number checks.
+- `check_references.py` checks the `// spec:` markers in the headers against
+  each requirement's `satisfied_by`, in both directions.
+
+### Removed
+
+- The Doxygen reference. The headers carry `// spec:` markers instead of doc
+  comments, and the guide is the documentation.
+
+### Measured on the release candidate
+
+- Line coverage 95.8% (2416 of 2522), function coverage 92.5%, branch coverage
+  60.3%, against a floor of 90% lines.
+- CI: GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with
+  libc++ 17, AppleClang at C++20 and C++23, MSVC 19, GCC 16 with C++26 static
+  reflection, plus the forced polyfill, exceptions disabled, no default codec,
+  every codec on Linux and macOS, ASan with UBSan, and install-and-consume.
+- 45 CTest entries per preset: 27 for `ce::v2` and 18 for `ce::v1`, of which
+  16 are the v0.3.0 suites unchanged.
+
+### Known limitations
+
+- libc++ 17 and 18 implement `std::format` without defining `__cpp_lib_format`;
+  the SDK carves them out by version (D-CI-1).
+- Clang 16 cannot compile libstdc++ 13 or 14 in C++23 mode, so the C++23 Clang
+  job uses libc++ (D-CI-1).
+- The module interface is usable, with constraints on what an importing
+  translation unit may also include (D-MODULE-1), and it exports `ce::v2` only.
+- Given the same non-JSON payload, the Java SDK writes `data_base64` where Go
+  and this SDK write a JSON string. Both are legal (D-INTEROP-1).
+- HTTP binary mode percent-encodes header values as the binding requires; the Go
+  and Java SDKs do not, so talking to them needs `ce::http::literal_values`
+  (D-HTTP-1).
+- A `ce::v1::timestamp` can still be given more than nine fractional digits by
+  hand. The renderer is guarded; the type is v0.3.0's and does not change.
+
 ## v0.3.0
 
 NATS binary mode, and the reason it was missing.

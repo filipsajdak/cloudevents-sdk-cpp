@@ -2,7 +2,8 @@
 uid: SWR-MSG-0004
 title: A repeated attribute field is refused rather than resolved
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   `headers::find` returns the first field of a name while `read_attributes`

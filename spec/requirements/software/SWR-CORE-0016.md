@@ -2,7 +2,8 @@
 uid: SWR-CORE-0016
 title: Extension attribute accessors on event
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   SPEC 5.1 lists `set_extension` and `extension` as the supported way to reach

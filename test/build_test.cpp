@@ -52,8 +52,8 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
   // this build selected. Between gcc-cxx23 (std::expected) and polyfill-cxx23 both
   // backends are therefore exercised through the same assertions.
 
-  using poly_int = ce::detail::poly::expected<int, ce::error>;
-  using poly_void = ce::detail::poly::expected<void, ce::error>;
+  using poly_int = ce::v1::detail::poly::expected<int, ce::error>;
+  using poly_void = ce::v1::detail::poly::expected<void, ce::error>;
   using result_int = ce::result<int>;
   using result_void = ce::result<void>;
 
@@ -91,7 +91,7 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
     expect(result_ok.has_value() && static_cast<bool>(result_ok) && *result_ok == 7);
 
     const poly_int poly_bad{
-        ce::detail::poly::unexpected<ce::error>{ce::error{.code = ce::errc::parse_error}}};
+        ce::v1::detail::poly::unexpected<ce::error>{ce::error{.code = ce::errc::parse_error}}};
     const result_int result_bad{ce::fail(ce::errc::parse_error)};
     expect(!poly_bad.has_value() && !static_cast<bool>(poly_bad));
     expect(!result_bad.has_value() && !static_cast<bool>(result_bad));
@@ -111,7 +111,7 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
     expect(ok.has_value() && static_cast<bool>(ok));
 
     const poly_void bad{
-        ce::detail::poly::unexpected<ce::error>{ce::error{.code = ce::errc::invalid_base64,
+        ce::v1::detail::poly::unexpected<ce::error>{ce::error{.code = ce::errc::invalid_base64,
                                                           .detail = "a detail long enough to "
                                                                     "outgrow the small-string "
                                                                     "buffer and allocate",
@@ -144,44 +144,38 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
 };
 
 // spec: SWR-BUILD-0005
-const boost::ut::suite<"config-inline-namespace-v1"> config_inline_namespace_v1 = [] {
+const boost::ut::suite<"config-inline-namespace-v2"> config_inline_namespace_v2 = [] {
   using namespace boost::ut;
 
-  // These are not two spellings of a typedef: if v1 were a plain namespace, `ce::X`
-  // would name nothing and the file would not compile, and if the names were
-  // declared twice they would be different entities and is_same_v would be false.
-  // Compiling AND matching is what pins the namespace as inline.
-  "ce::v1 is inline, so the qualified and unqualified names are one entity"_test = [] {
-    static_assert(std::is_same_v<ce::result<int>, ce::v1::result<int>>);
-    static_assert(std::is_same_v<ce::errc, ce::v1::errc>);
+  // Compiling AND matching is what pins v2 as inline: if it were a plain
+  // namespace `ce::event` would name nothing, and if the names were declared
+  // twice is_same_v would be false.
+  "ce::v2 is inline, so the qualified and unqualified names are one entity"_test = [] {
+    static_assert(std::is_same_v<ce::event, ce::v2::event>);
+    static_assert(std::is_same_v<ce::timestamp, ce::v2::timestamp>);
+    static_assert(std::is_same_v<ce::result<int>, ce::v2::result<int>>);
     expect(true);
   };
 
-  "the whole published surface lives inside it"_test = [] {
+  // An entity unchanged since v0.3.0 is declared once, in ce::v1, and brought into
+  // ce::v2, so all three spellings are one type rather than three equal ones.
+  "an unchanged entity is one type through every spelling"_test = [] {
+    static_assert(std::is_same_v<ce::errc, ce::v1::errc>);
     static_assert(std::is_same_v<ce::error, ce::v1::error>);
     static_assert(std::is_same_v<ce::failure, ce::v1::failure>);
-    static_assert(std::is_same_v<ce::event, ce::v1::event>);
-    static_assert(std::is_same_v<ce::timestamp, ce::v1::timestamp>);
     static_assert(std::is_same_v<ce::static_error, ce::v1::static_error>);
+    static_assert(std::is_same_v<ce::result<int>, ce::v1::result<int>>);
 
     // fail is an overload set, so decltype on the bare name is ambiguous. The
-    // address of one overload taken through both spellings says more than a type
-    // comparison would: not the same signature, the same function.
-    //
-    // Compared at run time through named pointers rather than in a static_assert.
-    // gcc resolves both spellings to one declaration during folding and then
-    // reports the static_assert as -Wtautological-compare, which is the compiler
-    // agreeing with the assertion by refusing to let it be written.
+    // address of one overload taken through each spelling says more than a type
+    // comparison would: not the same signature, the same function. Compared at run
+    // time, because gcc folds the static_assert form into -Wtautological-compare.
     using from_errc = ce::failure (*)(ce::errc, std::string, std::string);
-    using from_diagnosis = ce::failure (*)(const ce::static_error&);
-
-    const auto errc_through_ce = static_cast<from_errc>(&ce::fail);
-    const auto errc_through_v1 = static_cast<from_errc>(&ce::v1::fail);
-    expect(errc_through_ce == errc_through_v1);
-
-    const auto diagnosis_through_ce = static_cast<from_diagnosis>(&ce::fail);
-    const auto diagnosis_through_v1 = static_cast<from_diagnosis>(&ce::v1::fail);
-    expect(diagnosis_through_ce == diagnosis_through_v1);
+    const auto through_ce = static_cast<from_errc>(&ce::fail);
+    const auto through_v1 = static_cast<from_errc>(&ce::v1::fail);
+    const auto through_v2 = static_cast<from_errc>(&ce::v2::fail);
+    expect(through_ce == through_v1);
+    expect(through_ce == through_v2);
   };
 };
 
@@ -189,29 +183,10 @@ const boost::ut::suite<"config-inline-namespace-v1"> config_inline_namespace_v1 
 const boost::ut::suite<"config-v1-immutable"> config_v1_immutable = [] {
   using namespace boost::ut;
 
-  // Only part of this requirement is observable from inside the program. That a
-  // FUTURE breaking change lands in ce::v2 instead of mutating ce::v1 is a rule
-  // about commits that do not exist; no assertion can hold anyone to it, and review
-  // is what does. Asserting it anyway would be the dishonest move, so this suite
-  // does not.
-  //
-  // What a test CAN pin is the mechanism the rule depends on: v1-qualified
-  // spellings resolve today and name the same entities as the unqualified ones. A
-  // consumer that writes ce::v1::result therefore already has the pin it would need
-  // if a v2 appeared, and adding v2 alongside v1 cannot change what those spellings
-  // mean. If someone ever moved a declaration OUT of v1, these stop compiling.
-  "v1-qualified spellings resolve to the published entities"_test = [] {
-    static_assert(std::is_same_v<ce::v1::errc, ce::errc>);
-    static_assert(std::is_same_v<ce::v1::error, ce::error>);
-    static_assert(std::is_same_v<ce::v1::result<int>, ce::result<int>>);
-    static_assert(std::is_same_v<ce::v1::event, ce::event>);
-    expect(true);
-  };
-
-  // The enumerator values are part of the published API in a way the type identity
-  // above does not cover: renumbering errc is a silent ABI break for anyone who
-  // stored one. Pinning them is the part of "v1 keeps its existing declarations"
-  // that a test can actually enforce.
+  // The v1 event model's survival is pinned in test/v1/v1_generation_test.cpp,
+  // outside the clang-tidy gate. What stays here is what both generations share.
+  // Renumbering errc is a silent ABI break for anyone who stored one, and errc is
+  // shared by both generations.
   "the errc numbering published as v1 is unchanged"_test = [] {
     static_assert(static_cast<int>(ce::v1::errc::missing_required_attribute) == 1);
     static_assert(static_cast<int>(ce::v1::errc::invalid_attribute_name) == 2);

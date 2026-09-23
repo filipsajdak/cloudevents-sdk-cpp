@@ -113,6 +113,8 @@ if(CE_CODEC_NLOHMANN)
     PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 endif()
 
+add_subdirectory(v1)
+
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
 # not to ours. That is easy to get wrong later -- someone marks our own include
 # directory SYSTEM to silence something -- and the failure is invisible: the build

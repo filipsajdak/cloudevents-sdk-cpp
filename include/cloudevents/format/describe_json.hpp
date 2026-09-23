@@ -14,7 +14,7 @@
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v1 {
+namespace ce::inline v2 {
 
 namespace detail {
 
@@ -220,4 +220,4 @@ template<json::json_codec Codec, described T>
   return out;
 }
 
-}  // namespace ce::inline v1
+}  // namespace ce::inline v2

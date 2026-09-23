@@ -47,7 +47,7 @@ header without std::format in it."
 #  define CE_HAS_EXCEPTIONS 0
 #endif
 
-namespace ce::inline v1::detail {
+namespace ce::v1::detail {
 
 // spec: SWR-BUILD-0003
 inline constexpr bool has_expected = CE_HAS_EXPECTED == 1;
@@ -58,4 +58,4 @@ inline constexpr bool has_expansion_statements = CE_HAS_EXPANSION_STATEMENTS == 
 
 inline constexpr bool has_exceptions = CE_HAS_EXCEPTIONS == 1;
 
-}  // namespace ce::inline v1::detail
+}  // namespace ce::v1::detail

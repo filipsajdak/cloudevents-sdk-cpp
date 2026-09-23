@@ -18,7 +18,9 @@ C++ SDK for the CloudEvents v1.0.2 specification. The full work specification is
 - The library performs **no network I/O**. Bindings map events to/from a
   transport-neutral `ce::message`.
 - The only public macro allowed is `CE_DESCRIBE`.
-- Public API lives in `namespace ce::inline v1`.
+- Public API lives in `namespace ce::inline v2`. `ce::v1` is frozen at what v0.3.0
+  published (CR-0002, ADR-0009): never change a declaration there, only add or fix.
+  An entity unchanged since v0.3.0 is declared once in `ce::v1` and brought into `ce::v2`.
 
 ## Workflow
 

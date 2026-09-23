@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <iterator>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -20,17 +22,20 @@
 #endif
 
 // spec: SYS-DESC-0001
-namespace ce::inline v1 {
+namespace ce::v1 {
 
 // spec: SWR-DESC-0011
 enum class describe_backend : std::uint8_t { macro, reflection };
 
 template <std::size_t N>
 struct name {
-  std::array<char, N> value{};
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
+  char value[N]{};
 
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
-  consteval explicit(false) name(const char (&text)[N]) : value{std::to_array(text)} {}
+  consteval explicit(false) name(const char (&text)[N]) {
+    std::ranges::copy(text, std::ranges::begin(value));
+  }
 };
 
 template <std::size_t N>
@@ -122,7 +127,8 @@ template <described T>
 
 // spec: SWR-DESC-0002
 template <described T, class F>
-constexpr void for_each_field(T& object, const F& visit) {
+// NOLINTNEXTLINE(cppcoreguidelines-missing-std-forward)
+constexpr void for_each_field(T& object, F&& visit) {
   std::apply(
       [&object, &visit](auto... member) {
         (static_cast<void>(visit(member.name, object.*member.ptr)), ...);
@@ -131,7 +137,8 @@ constexpr void for_each_field(T& object, const F& visit) {
 }
 
 template <described T, class F>
-constexpr void for_each_field(const T& object, const F& visit) {
+// NOLINTNEXTLINE(cppcoreguidelines-missing-std-forward)
+constexpr void for_each_field(const T& object, F&& visit) {
   std::apply(
       [&object, &visit](auto... member) {
         (static_cast<void>(visit(member.name, object.*member.ptr)), ...);
@@ -154,4 +161,17 @@ template <described T>
   return supported;
 }
 
-}  // namespace ce::inline v1
+}  // namespace ce::v1
+
+namespace ce::inline v2 {
+using ce::v1::backend_of;
+using ce::v1::describe_backend;
+using ce::v1::described;
+using ce::v1::field_count;
+using ce::v1::field_names;
+using ce::v1::for_each_field;
+using ce::v1::members_supported;
+using ce::v1::name;
+using ce::v1::reflect;
+using ce::v1::skip;
+}  // namespace ce::inline v2

@@ -14,7 +14,7 @@
 
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v1 {
+namespace ce::inline v2 {
 
 enum class offset_form : std::uint8_t {
   utc_designator,
@@ -248,4 +248,4 @@ template <class Capture>
                      offset_magnitude % detail::minutes_per_hour);
 }
 
-}  // namespace ce::inline v1
+}  // namespace ce::inline v2

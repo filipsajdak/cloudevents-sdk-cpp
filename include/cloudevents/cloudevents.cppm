@@ -20,125 +20,125 @@ export module cloudevents;
 // spec: SWR-BUILD-0010
 export namespace ce {
 
-using ce::v1::errc;
-using ce::v1::error;
-using ce::v1::fail;
-using ce::v1::result;
-using ce::v1::static_error;
-using ce::v1::to_string_view;
-using ce::v1::widen;
+using ce::v2::errc;
+using ce::v2::error;
+using ce::v2::fail;
+using ce::v2::result;
+using ce::v2::static_error;
+using ce::v2::to_string_view;
+using ce::v2::widen;
 
-using ce::v1::datacontenttype;
-using ce::v1::dataschema;
-using ce::v1::extension_name;
-using ce::v1::id;
-using ce::v1::source;
-using ce::v1::spec_version;
-using ce::v1::subject;
-using ce::v1::type;
+using ce::v2::datacontenttype;
+using ce::v2::dataschema;
+using ce::v2::extension_name;
+using ce::v2::id;
+using ce::v2::source;
+using ce::v2::spec_version;
+using ce::v2::subject;
+using ce::v2::type;
 
 namespace literals {
-using ce::v1::literals::operator""_dataschema;
-using ce::v1::literals::operator""_ext;
-using ce::v1::literals::operator""_id;
-using ce::v1::literals::operator""_mediatype;
-using ce::v1::literals::operator""_source;
-using ce::v1::literals::operator""_subject;
-using ce::v1::literals::operator""_type;
+using ce::v2::literals::operator""_dataschema;
+using ce::v2::literals::operator""_ext;
+using ce::v2::literals::operator""_id;
+using ce::v2::literals::operator""_mediatype;
+using ce::v2::literals::operator""_source;
+using ce::v2::literals::operator""_subject;
+using ce::v2::literals::operator""_type;
 }  // namespace literals
 
-using ce::v1::attribute_value;
-using ce::v1::binary;
-using ce::v1::content_mode;
-using ce::v1::data_t;
-using ce::v1::event;
-using ce::v1::raw_headers;
-using ce::v1::is_json_content_type;
-using ce::v1::json_text;
-using ce::v1::lint_warning;
-using ce::v1::message;
-using ce::v1::parse_timestamp;
-using ce::v1::reserved_name;
-using ce::v1::timestamp;
-using ce::v1::to_bytes;
-using ce::v1::to_text;
-using ce::v1::to_string;
-using ce::v1::uri;
-using ce::v1::uri_ref;
-using ce::v1::valid_attribute_name;
+using ce::v2::attribute_value;
+using ce::v2::binary;
+using ce::v2::content_mode;
+using ce::v2::data_t;
+using ce::v2::event;
+using ce::v2::raw_headers;
+using ce::v2::is_json_content_type;
+using ce::v2::json_text;
+using ce::v2::lint_warning;
+using ce::v2::message;
+using ce::v2::parse_timestamp;
+using ce::v2::reserved_name;
+using ce::v2::timestamp;
+using ce::v2::to_bytes;
+using ce::v2::to_text;
+using ce::v2::to_string;
+using ce::v2::uri;
+using ce::v2::uri_ref;
+using ce::v2::valid_attribute_name;
 
-using ce::v1::backend_of;
-using ce::v1::describe_backend;
-using ce::v1::described;
-using ce::v1::field_count;
-using ce::v1::field_names;
-using ce::v1::for_each_field;
-using ce::v1::members_supported;
-using ce::v1::name;
-using ce::v1::reflect;
-using ce::v1::skip;
+using ce::v2::backend_of;
+using ce::v2::describe_backend;
+using ce::v2::described;
+using ce::v2::field_count;
+using ce::v2::field_names;
+using ce::v2::for_each_field;
+using ce::v2::members_supported;
+using ce::v2::name;
+using ce::v2::reflect;
+using ce::v2::skip;
 
-using ce::v1::base64_decode;
-using ce::v1::base64_encode;
-using ce::v1::data_as;
-using ce::v1::event_of;
-using ce::v1::from_json_value;
-using ce::v1::json_format;
-using ce::v1::set_data;
-using ce::v1::to_json_value;
+using ce::v2::base64_decode;
+using ce::v2::base64_encode;
+using ce::v2::data_as;
+using ce::v2::event_of;
+using ce::v2::from_json_value;
+using ce::v2::json_format;
+using ce::v2::set_data;
+using ce::v2::to_json_value;
 
 namespace json {
-using ce::v1::json::batch_content_type;
-using ce::v1::json::content_type;
-using ce::v1::json::json_codec;
-using ce::v1::json::kind;
+using ce::v2::json::batch_content_type;
+using ce::v2::json::content_type;
+using ce::v2::json::json_codec;
+using ce::v2::json::kind;
 }  // namespace json
 
 namespace binding {
-using ce::v1::binding::binding_traits;
-using ce::v1::binding::decode_structured;
-using ce::v1::binding::encode_structured;
-using ce::v1::binding::read_attributes;
-using ce::v1::binding::read_body;
-using ce::v1::binding::render_attribute;
-using ce::v1::binding::write_attributes;
-using ce::v1::binding::write_body;
+using ce::v2::binding::binding_traits;
+using ce::v2::binding::decode_structured;
+using ce::v2::binding::encode_structured;
+using ce::v2::binding::read_attributes;
+using ce::v2::binding::read_body;
+using ce::v2::binding::render_attribute;
+using ce::v2::binding::write_attributes;
+using ce::v2::binding::write_body;
 }  // namespace binding
 
 namespace http {
-using ce::v1::http::detect_content_mode;
-using ce::v1::http::from_batch_message;
-using ce::v1::http::from_message;
-using ce::v1::http::to_batch_message;
-using ce::v1::http::to_message;
+using ce::v2::http::detect_content_mode;
+using ce::v2::http::from_batch_message;
+using ce::v2::http::from_message;
+using ce::v2::http::to_batch_message;
+using ce::v2::http::to_message;
 }  // namespace http
 
 namespace kafka {
-using ce::v1::kafka::detect_content_mode;
-using ce::v1::kafka::from_message;
-using ce::v1::kafka::key_mapper;
-using ce::v1::kafka::no_key_mapper;
-using ce::v1::kafka::partitionkey_mapper;
-using ce::v1::kafka::record;
-using ce::v1::kafka::to_message;
-using ce::v1::kafka::to_record;
+using ce::v2::kafka::detect_content_mode;
+using ce::v2::kafka::from_message;
+using ce::v2::kafka::key_mapper;
+using ce::v2::kafka::no_key_mapper;
+using ce::v2::kafka::partitionkey_mapper;
+using ce::v2::kafka::record;
+using ce::v2::kafka::to_message;
+using ce::v2::kafka::to_record;
 }  // namespace kafka
 
 namespace nats {
-using ce::v1::nats::detect_content_mode;
-using ce::v1::nats::from_message;
-using ce::v1::nats::from_payload;
-using ce::v1::nats::to_message;
-using ce::v1::nats::to_payload;
+using ce::v2::nats::detect_content_mode;
+using ce::v2::nats::from_message;
+using ce::v2::nats::from_payload;
+using ce::v2::nats::to_message;
+using ce::v2::nats::to_payload;
 }  // namespace nats
 
 namespace ext {
-using ce::v1::ext::ce_describe_fields;
-using ce::v1::ext::dataref;
-using ce::v1::ext::partitioning;
-using ce::v1::ext::sampled_rate;
-using ce::v1::ext::sequence;
-using ce::v1::ext::tracing;
+using ce::v2::ext::ce_describe_fields;
+using ce::v2::ext::dataref;
+using ce::v2::ext::partitioning;
+using ce::v2::ext::sampled_rate;
+using ce::v2::ext::sequence;
+using ce::v2::ext::tracing;
 }  // namespace ext
 
 }  // namespace ce

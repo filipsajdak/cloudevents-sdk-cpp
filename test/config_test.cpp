@@ -261,18 +261,18 @@ const boost::ut::suite<"config-ce-has-constants"> config_ce_has_constants = [] {
   using namespace boost::ut;
 
   "capabilities are usable in a constant expression"_test = [] {
-    static_assert(ce::detail::has_expected == ce::detail::has_expected);
-    static_assert(ce::detail::has_reflection == ce::detail::has_reflection);
-    static_assert(ce::detail::has_expansion_statements == ce::detail::has_expansion_statements);
-    static_assert(ce::detail::has_exceptions == ce::detail::has_exceptions);
+    static_assert(ce::v1::detail::has_expected == ce::v1::detail::has_expected);
+    static_assert(ce::v1::detail::has_reflection == ce::v1::detail::has_reflection);
+    static_assert(ce::v1::detail::has_expansion_statements == ce::v1::detail::has_expansion_statements);
+    static_assert(ce::v1::detail::has_exceptions == ce::v1::detail::has_exceptions);
     expect(true);
   };
 
   "capability constants agree with their macros"_test = [] {
-    expect(ce::detail::has_expected == (CE_HAS_EXPECTED == 1));
-    expect(ce::detail::has_reflection == (CE_HAS_REFLECTION == 1));
-    expect(ce::detail::has_expansion_statements == (CE_HAS_EXPANSION_STATEMENTS == 1));
-    expect(ce::detail::has_exceptions == (CE_HAS_EXCEPTIONS == 1));
+    expect(ce::v1::detail::has_expected == (CE_HAS_EXPECTED == 1));
+    expect(ce::v1::detail::has_reflection == (CE_HAS_REFLECTION == 1));
+    expect(ce::v1::detail::has_expansion_statements == (CE_HAS_EXPANSION_STATEMENTS == 1));
+    expect(ce::v1::detail::has_exceptions == (CE_HAS_EXCEPTIONS == 1));
   };
 };
 
@@ -282,12 +282,12 @@ const boost::ut::suite<"config-feature-test-macros-only"> config_feature_test_ma
 
   // config.hpp turns this into an #error; the test records the invariant.
   "reflection implies expansion statements"_test = [] {
-    expect(!ce::detail::has_reflection || ce::detail::has_expansion_statements);
+    expect(!ce::v1::detail::has_reflection || ce::v1::detail::has_expansion_statements);
   };
 
   // Guarding reflection on __has_include(<meta>) alone would trip here.
   "expansion statements do not imply reflection"_test = [] {
-    expect(ce::detail::has_expansion_statements || !ce::detail::has_reflection);
+    expect(ce::v1::detail::has_expansion_statements || !ce::v1::detail::has_reflection);
   };
 };
 
@@ -322,15 +322,15 @@ const boost::ut::suite<"config-single-gate"> config_single_gate = [] {
   // (ADR-0006). A capability reachable only as a macro would force an #if into a
   // second header, which is exactly what SYS-BUILD-0001 forbids.
   "every capability is reachable as a constant carrying the same answer"_test = [] {
-    static_assert(std::is_same_v<decltype(ce::detail::has_expected), const bool>);
-    static_assert(std::is_same_v<decltype(ce::detail::has_reflection), const bool>);
-    static_assert(std::is_same_v<decltype(ce::detail::has_expansion_statements), const bool>);
-    static_assert(std::is_same_v<decltype(ce::detail::has_exceptions), const bool>);
+    static_assert(std::is_same_v<decltype(ce::v1::detail::has_expected), const bool>);
+    static_assert(std::is_same_v<decltype(ce::v1::detail::has_reflection), const bool>);
+    static_assert(std::is_same_v<decltype(ce::v1::detail::has_expansion_statements), const bool>);
+    static_assert(std::is_same_v<decltype(ce::v1::detail::has_exceptions), const bool>);
 
-    static_assert(ce::detail::has_expected == (CE_HAS_EXPECTED == 1));
-    static_assert(ce::detail::has_reflection == (CE_HAS_REFLECTION == 1));
-    static_assert(ce::detail::has_expansion_statements == (CE_HAS_EXPANSION_STATEMENTS == 1));
-    static_assert(ce::detail::has_exceptions == (CE_HAS_EXCEPTIONS == 1));
+    static_assert(ce::v1::detail::has_expected == (CE_HAS_EXPECTED == 1));
+    static_assert(ce::v1::detail::has_reflection == (CE_HAS_REFLECTION == 1));
+    static_assert(ce::v1::detail::has_expansion_statements == (CE_HAS_EXPANSION_STATEMENTS == 1));
+    static_assert(ce::v1::detail::has_exceptions == (CE_HAS_EXCEPTIONS == 1));
     expect(true);
   };
 };
@@ -452,10 +452,10 @@ const boost::ut::suite<"config-macro-leakage"> config_macro_leakage = [] {
 // A preset that asks for reflection must get it: without this, dropping
 // -freflection would leave every suite green while the backend stopped compiling.
 #if defined(CE_EXPECT_REFLECTION)
-static_assert(ce::detail::has_reflection,
+static_assert(ce::v1::detail::has_reflection,
               "this build was configured for the reflection backend, but reflection "
               "is not enabled: -freflection did not reach the compiler");
-static_assert(ce::detail::has_expansion_statements,
+static_assert(ce::v1::detail::has_expansion_statements,
               "reflection is enabled without expansion statements");
 #endif
 

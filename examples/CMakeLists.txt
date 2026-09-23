@@ -17,6 +17,7 @@ endfunction()
 # custom_codec deliberately links no codec target: supplying your own is the
 # whole point, and nothing here may include nlohmann.
 ce_add_example(custom_codec SOURCES custom_codec.cpp)
+add_subdirectory(v1)
 
 if(CE_CODEC_NLOHMANN)
   ce_add_example(produce SOURCES produce.cpp LIBS ce::codec_nlohmann)

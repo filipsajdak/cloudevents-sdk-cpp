@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace ce::inline v1::detail::poly {
+namespace ce::v1::detail::poly {
 
 // spec: SWR-ADOPT-0003
 [[noreturn]] inline void read_of_the_alternative_an_expected_does_not_hold() { std::abort(); }
@@ -232,4 +232,4 @@ class expected<void, E> {
   };
 };
 
-}  // namespace ce::inline v1::detail::poly
+}  // namespace ce::v1::detail::poly

@@ -190,7 +190,7 @@ const boost::ut::suite<"reflection-backend-describe"> reflection_backend_describ
   };
 #else
   "not exercised without -freflection"_test = [] {
-    expect(!ce::detail::has_reflection) << "this preset has no reflection backend to test";
+    expect(!ce::v1::detail::has_reflection) << "this preset has no reflection backend to test";
   };
 #endif
 };
@@ -207,7 +207,7 @@ const boost::ut::suite<"reflection-backend-public-only"> reflection_backend_publ
   };
 #else
   "not exercised without -freflection"_test = [] {
-    expect(!ce::detail::has_reflection) << "this preset has no reflection backend to test";
+    expect(!ce::v1::detail::has_reflection) << "this preset has no reflection backend to test";
   };
 #endif
 };
@@ -252,12 +252,12 @@ const boost::ut::suite<"unsupported-member-type-static-assert"> unsupported_memb
   // predicate behind it is tested instead: it must reject a type the format layer
   // has no mapping for.
   "the predicate rejects an unmappable member type"_test = [] {
-    static_assert(ce::detail::supported_field<std::int32_t>);
-    static_assert(ce::detail::supported_field<std::string>);
-    static_assert(ce::detail::supported_field<std::optional<std::string>>);
-    static_assert(!ce::detail::supported_field<void*>);
-    static_assert(!ce::detail::supported_field<char>);
-    static_assert(!ce::detail::supported_field<std::vector<void*>>);
+    static_assert(ce::v1::detail::supported_field<std::int32_t>);
+    static_assert(ce::v1::detail::supported_field<std::string>);
+    static_assert(ce::v1::detail::supported_field<std::optional<std::string>>);
+    static_assert(!ce::v1::detail::supported_field<void*>);
+    static_assert(!ce::v1::detail::supported_field<char>);
+    static_assert(!ce::v1::detail::supported_field<std::vector<void*>>);
     expect(true);
   };
 };

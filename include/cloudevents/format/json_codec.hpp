@@ -8,7 +8,7 @@
 
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v1::json {
+namespace ce::v1::json {
 
 // spec: SWR-JSON-0034
 enum class kind : std::uint8_t { null, boolean, integer, floating, string, array, object };
@@ -73,4 +73,8 @@ inline constexpr std::string_view content_type = "application/cloudevents+json";
 
 inline constexpr std::string_view batch_content_type = "application/cloudevents-batch+json";
 
-}  // namespace ce::inline v1::json
+}  // namespace ce::v1::json
+
+namespace ce::inline v2 {
+namespace json = ce::v1::json;
+}  // namespace ce::inline v2

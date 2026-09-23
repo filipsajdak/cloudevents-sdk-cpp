@@ -25,7 +25,7 @@
 
 // spec: SYS-CORE-0001
 // spec: SWR-BUILD-0005
-namespace ce::inline v1 {
+namespace ce::inline v2 {
 
 // spec: SWR-CORE-0005
 using binary = std::vector<std::byte>;
@@ -322,14 +322,14 @@ struct extension_name_policy {
   static constexpr bool names_offending_text = true;
   [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
       -> std::optional<static_error> {
-    if (!ce::v1::valid_attribute_name(text)) {
+    if (!ce::v2::valid_attribute_name(text)) {
       return static_error{
           .code = errc::invalid_attribute_name,
           .detail = "extension names must match [a-z0-9]+",
           .where = attribute,
       };
     }
-    if (ce::v1::reserved_name(text)) {
+    if (ce::v2::reserved_name(text)) {
       return static_error{
           .code = errc::reserved_attribute_name,
           .detail = "an extension may not redefine a context attribute",
@@ -723,4 +723,4 @@ template <class Attribute, class Text>
 
 }  // namespace detail
 
-}  // namespace ce::inline v1
+}  // namespace ce::inline v2

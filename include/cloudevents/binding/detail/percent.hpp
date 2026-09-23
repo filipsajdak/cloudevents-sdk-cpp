@@ -7,7 +7,7 @@
 #include <cloudevents/core.hpp>
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v1::binding::detail {
+namespace ce::inline v2::binding::detail {
 
 inline constexpr unsigned char first_printable = 0x21;
 inline constexpr unsigned char last_printable = 0x7E;
@@ -81,11 +81,11 @@ inline constexpr std::size_t escape_length = 3;
     out.push_back(static_cast<char>(static_cast<unsigned char>(byte)));
     text.remove_prefix(escape_length);
   }
-  if (!ce::v1::detail::is_valid_utf8(out)) {
+  if (!ce::v2::detail::is_valid_utf8(out)) {
     return fail(errc::invalid_utf8, "the decoded header value is not well-formed UTF-8",
                 std::string{whole});
   }
   return out;
 }
 
-}  // namespace ce::inline v1::binding::detail
+}  // namespace ce::inline v2::binding::detail

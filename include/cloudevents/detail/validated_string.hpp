@@ -9,7 +9,7 @@
 
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v1::detail {
+namespace ce::inline v2::detail {
 
 [[noreturn]] void this_literal_is_not_a_valid_cloudevents_attribute();
 
@@ -122,4 +122,4 @@ class validated_string {
   std::string_view borrowed_;
 };
 
-}  // namespace ce::inline v1::detail
+}  // namespace ce::inline v2::detail

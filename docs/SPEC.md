@@ -59,6 +59,8 @@ Rules that keep the C++29 upgrade cheap:
    rely on memory; record findings in `docs/DECISIONS.md`.
 3. Each polyfill mirrors the std surface exactly, so deleting it is a no-op for users.
 4. Inline namespace `ce::v1`. Breaking changes go to `v2`, never mutate `v1`.
+   *Applied in v0.4.0 (CR-0002, ADR-0009): the inline namespace is now `ce::v2`, and `ce::v1`
+   keeps what v0.3.0 published.*
 5. No deprecated or removed-in-C++26 library features. Deprecation warnings are errors.
 6. CI carries an allowed-to-fail job building with the newest available
    `-std=` flag on compiler trunk to surface breakage early.

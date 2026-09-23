@@ -14,7 +14,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SYS-KAFKA-0001
-namespace ce::inline v1::kafka {
+namespace ce::inline v2::kafka {
 
 namespace detail {
 
@@ -24,15 +24,15 @@ inline constexpr std::string_view attribute_prefix = "ce_";
 inline constexpr std::string_view content_type_header = "content-type";
 
 struct kafka_traits {
-  static constexpr std::string_view attribute_prefix = ce::v1::kafka::detail::attribute_prefix;
+  static constexpr std::string_view attribute_prefix = ce::v2::kafka::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
-      ce::v1::kafka::detail::content_type_header;
+      ce::v2::kafka::detail::content_type_header;
   // spec: SWR-KAFKA-0004
   static constexpr bool case_sensitive_names = true;
 
   // spec: SWR-KAFKA-0003
   [[nodiscard]] static auto encode_value(std::string_view text) -> result<std::string> {
-    if (!ce::v1::detail::is_valid_utf8(text)) {
+    if (!ce::v2::detail::is_valid_utf8(text)) {
       return fail(errc::invalid_utf8, "a Kafka header value must be a UTF-8 string");
     }
     return std::string{text};
@@ -160,4 +160,4 @@ template <json::json_codec Codec, key_mapper Keys = no_key_mapper>
   return record{.value = std::move(*laid_out), .key = Keys::key_of(cloud_event)};
 }
 
-}  // namespace ce::inline v1::kafka
+}  // namespace ce::inline v2::kafka

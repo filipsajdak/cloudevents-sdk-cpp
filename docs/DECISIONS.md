@@ -1165,6 +1165,20 @@ tidying the code would plausibly undo.
 | `codec/rapidjson.hpp`, `chars_of` | an empty view's pointer is replaced by `""` | RapidJSON asserts a non-null pointer, and the assertion is compiled out of a release build |
 | `detail/describe_reflection.hpp` | a wire name is interned with `define_static_string` | an extracted annotation is a prvalue whose array a `string_view` would outlive |
 
+## D-TIDY-4: The v1 headers are outside the clang-tidy gate
+
+`include/cloudevents/v1/` holds what v0.3.0 published, restored for ADR-0009.
+v0.3.0 predates the tidy gate, and D-TIDY-2 measured 76 findings against that
+code. Clearing them would mean reworking a generation whose whole purpose is to
+stay as it was published; `ce::v1` takes defect fixes, not clean-ups.
+
+The gate never saw them anyway: it lints the suites `ce_add_test` registers, and
+the restored v1 suites are registered by `ce_add_v1_test`, which does not record
+itself for the gate. So no v2 suite includes a v1 header, and no finding in one
+can reach the gate. The shared headers are the exception that matters: they are
+included by v2 suites and stay gated, which is why the restored describe seam
+carries the suppressions in D-TIDY-3.
+
 ## D-TIDY-3: Why each NOLINT is there
 
 A NOLINT stays in the header, because it is an instruction to the tool rather
@@ -1178,6 +1192,8 @@ than prose. Its reason is here.
 | `core.hpp`, `tagged_string` (two constructors) | explicit-constructor | see D-CODE-1: the implicit conversion is what makes `ce::uri` usable as an `attribute_value` alternative |
 | `detail/timestamp.hpp`, `fraction_digits(int)` | explicit-constructor | keeps `.fractional_digits = 3` working in a designated initializer; the constructor is `consteval` and refuses a count above nine |
 | `describe.hpp`, `name` constructor and deduction guide | avoid-c-arrays | a string literal's type is a C array, and it is the only form from which `N` can be deduced |
+| `describe.hpp`, `name::value` | avoid-c-arrays | the describe seam is shared with `ce::v1`, which published `char value[N]` in v0.3.0 and keeps that declaration (ADR-0009) |
+| `describe.hpp`, `for_each_field` (both overloads) | missing-std-forward | v0.3.0 published the visitor as `F&&`, which `ce::v1` keeps; it is called once per member, so forwarding it would move from it more than once |
 | `format/base64.hpp`, `base64_character` | pro-bounds-avoid-unchecked-container-access | the mask bounds the index, and a `static_assert` keeps the alphabet exactly as long as the mask allows |
 | `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
 | `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |

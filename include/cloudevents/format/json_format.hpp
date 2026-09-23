@@ -23,7 +23,7 @@ namespace ce::inline v1 {
 /// \brief Encodes and decodes events in the JSON format.
 template <json::json_codec Codec>
 struct json_format {
-  using value = typename Codec::value;
+  using value = Codec::value;
 
   static constexpr std::string_view content_type = json::content_type;
   static constexpr std::string_view batch_content_type = json::batch_content_type;
@@ -33,7 +33,7 @@ struct json_format {
   /// \brief Build the JSON document for one event.
   [[nodiscard]] static auto to_value(const event& cloud_event) -> result<value> {
     auto root = Codec::make_object();
-    Codec::set(root, "specversion", Codec::make_string(cloud_event.specversion().view()));
+    Codec::set(root, "specversion", Codec::make_string(spec_version::view()));
     Codec::set(root, "id", Codec::make_string(cloud_event.id().view()));
     Codec::set(root, "source", Codec::make_string(cloud_event.source().view()));
     Codec::set(root, "type", Codec::make_string(cloud_event.type().view()));
@@ -90,157 +90,163 @@ struct json_format {
     return Codec::dump(array);
   }
 
+  // --- decode helpers ------------------------------------------------------
+
+  /// A required member's string value, or a failure naming the member.
+  [[nodiscard]] static auto required_text(const value& document, std::string_view name)
+      -> result<std::string_view> {
+    const auto* member = Codec::find(document, name);
+    if (member == nullptr) {
+      return fail(errc::missing_required_attribute, "required attribute is absent",
+                  std::string{name});
+    }
+    auto text = Codec::as_string(*member);
+    if (!text) {
+      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
+    }
+    return *text;
+  }
+
+  /// An optional member's string value. Absent and null both read as absent
+  /// (JSON format section 2.2).
+  [[nodiscard]] static auto optional_text(const value& document, std::string_view name)
+      -> result<std::optional<std::string_view>> {
+    const auto* member = Codec::find(document, name);
+    if (member == nullptr || Codec::kind_of(*member) == json::kind::null) {
+      return std::optional<std::string_view>{};
+    }
+    auto text = Codec::as_string(*member);
+    if (!text) {
+      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
+    }
+    return std::optional<std::string_view>{*text};
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto read_required(const value& document, std::string_view name,
+                                          std::optional<Attribute>& slot) -> result<void> {
+    const auto text = required_text(document, name);
+    if (!text) {
+      return fail(text.error().code, text.error().detail, text.error().where);
+    }
+    return detail::store_attribute(slot, *text);
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto read_optional(const value& document, std::string_view name,
+                                          std::optional<Attribute>& slot) -> result<void> {
+    const auto text = optional_text(document, name);
+    if (!text) {
+      return fail(text.error().code, text.error().detail, text.error().where);
+    }
+    if (const auto& present = *text; present) {
+      return detail::store_attribute(slot, *present);
+    }
+    return {};
+  }
+
+  [[nodiscard]] static auto read_time(const value& document, event::options& into)
+      -> result<void> {
+    const auto text = optional_text(document, "time");
+    if (!text) {
+      return fail(text.error().code, text.error().detail, text.error().where);
+    }
+    if (const auto& present = *text; present) {
+      auto parsed = parse_timestamp(*present);
+      if (!parsed) {
+        return fail(parsed.error().code, parsed.error().detail, "time");
+      }
+      into.time = *parsed;
+    }
+    return {};
+  }
+
+  /// Every context attribute, each through its own factory, in the order the
+  /// specification lists them.
+  [[nodiscard]] static auto read_context_attributes(const value& document,
+                                                    event::builder& into) -> result<void> {
+    const auto version = required_text(document, "specversion");
+    if (!version) {
+      return fail(version.error().code, version.error().detail, version.error().where);
+    }
+    if (auto supported = spec_version::make(*version); !supported) {
+      return fail(supported.error().code, supported.error().detail, supported.error().where);
+    }
+    if (auto read = read_required(document, "id", into.id); !read) {
+      return read;
+    }
+    if (auto read = read_required(document, "source", into.source); !read) {
+      return read;
+    }
+    if (auto read = read_required(document, "type", into.type); !read) {
+      return read;
+    }
+    if (auto read = read_optional(document, "datacontenttype", into.rest.datacontenttype); !read) {
+      return read;
+    }
+    if (auto read = read_optional(document, "dataschema", into.rest.dataschema); !read) {
+      return read;
+    }
+    if (auto read = read_optional(document, "subject", into.rest.subject); !read) {
+      return read;
+    }
+    return read_time(document, into.rest);
+  }
+
+  /// Anything not a context attribute is an extension. JSON has no room for the
+  /// CloudEvents attribute type, so the type is inferred and documented as
+  /// lossy; the typed extension structs recover it.
+  [[nodiscard]] static auto read_extensions(const value& document, event::options& into)
+      -> result<void> {
+    result<void> outcome{};
+    Codec::for_each_member(document, [&](std::string_view name, const value& member) {
+      if (!outcome || reserved_name(name)) {
+        return;
+      }
+      // JSON format section 2.2: an attribute encoded as null MUST be treated as
+      // unset, and the format's own example carries an "unsetextension": null.
+      if (Codec::kind_of(member) == json::kind::null) {
+        return;
+      }
+      // An unknown member becomes an extension only if its name is one the spec
+      // allows, or decode would return an event the encoder then refuses.
+      auto attribute = extension_name::make(name);
+      if (!attribute) {
+        outcome = fail(attribute.error().code, attribute.error().detail, std::string{name});
+        return;
+      }
+      auto decoded = decode_attribute(member);
+      if (!decoded) {
+        outcome = fail(decoded.error().code, decoded.error().detail, std::string{name});
+        return;
+      }
+      into.extensions.insert_or_assign(std::move(*attribute), std::move(*decoded));
+    });
+    return outcome;
+  }
+
   // --- decode --------------------------------------------------------------
 
   /// \brief Read one event from a JSON document.
+  ///
+  /// The context attributes, then the payload, then the extensions: the order
+  /// decides which problem a document with several is reported for, and the
+  /// version comes first so a document from another version is named as such.
   [[nodiscard]] static auto from_value(const value& document) -> result<event> {
     if (Codec::kind_of(document) != json::kind::object) {
       return fail(errc::parse_error, "a CloudEvent must be a JSON object");
     }
 
     event::builder under_construction{};
-
-    auto required = [&](std::string_view name, auto assign) -> result<void> {
-      const auto* member = Codec::find(document, name);
-      if (member == nullptr) {
-        return fail(errc::missing_required_attribute, "required attribute is absent",
-                    std::string{name});
-      }
-      auto text = Codec::as_string(*member);
-      if (!text) {
-        return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
-      }
-      return assign(*text);
-    };
-
-    // Each required attribute goes through its own factory, which is the only
-    // thing that can refuse the text the document carried.
-    const auto store = []<class Attribute>(std::optional<Attribute>& slot) {
-      return [&slot](std::string_view text) -> result<void> {
-        auto made = Attribute::make(text);
-        if (!made) {
-          return fail(made.error().code, made.error().detail, made.error().where);
-        }
-        slot = std::move(*made);
-        return {};
-      };
-    };
-
-    if (auto read = required("specversion",
-                             [](std::string_view text) -> result<void> {
-                               auto version = spec_version::make(text);
-                               if (!version) {
-                                 return fail(version.error().code, version.error().detail,
-                                             version.error().where);
-                               }
-                               return {};
-                             });
-        !read) {
+    if (auto read = read_context_attributes(document, under_construction); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto read = required("id", store(under_construction.id)); !read) {
-      return fail(read.error().code, read.error().detail, read.error().where);
-    }
-    if (auto read = required("source", store(under_construction.source)); !read) {
-      return fail(read.error().code, read.error().detail, read.error().where);
-    }
-    if (auto read = required("type", store(under_construction.type)); !read) {
-      return fail(read.error().code, read.error().detail, read.error().where);
-    }
-
-    auto optional_string = [&](std::string_view name) -> result<std::optional<std::string>> {
-      const auto* member = Codec::find(document, name);
-      if (member == nullptr || Codec::kind_of(*member) == json::kind::null) {
-        return std::optional<std::string>{};
-      }
-      auto text = Codec::as_string(*member);
-      if (!text) {
-        return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
-      }
-      return std::optional<std::string>{std::string{*text}};
-    };
-
-    // An absent optional attribute stays absent; a present one goes through its
-    // factory, so the only way into the event is past its rule.
-    const auto store_optional = [&]<class Attribute>(std::string_view name,
-                                                     std::optional<Attribute>& slot) -> result<void> {
-      auto text = optional_string(name);
-      if (!text) {
-        return fail(text.error().code, text.error().detail, text.error().where);
-      }
-      if (!*text) {
-        return {};
-      }
-      auto made = Attribute::make(std::move(**text));
-      if (!made) {
-        return fail(made.error().code, made.error().detail, made.error().where);
-      }
-      slot = std::move(*made);
-      return {};
-    };
-
-    if (auto read = store_optional("datacontenttype", under_construction.rest.datacontenttype);
-        !read) {
-      return fail(read.error().code, read.error().detail, read.error().where);
-    }
-    if (auto read = store_optional("dataschema", under_construction.rest.dataschema); !read) {
-      return fail(read.error().code, read.error().detail, read.error().where);
-    }
-    if (auto read = store_optional("subject", under_construction.rest.subject); !read) {
-      return fail(read.error().code, read.error().detail, read.error().where);
-    }
-
-    if (auto time_text = optional_string("time"); !time_text) {
-      return fail(time_text.error().code, time_text.error().detail, time_text.error().where);
-    } else if (*time_text) {
-      auto parsed = parse_timestamp(**time_text);
-      if (!parsed) {
-        return fail(parsed.error().code, parsed.error().detail, "time");
-      }
-      under_construction.rest.time = *parsed;
-    }
-
     if (auto stored = decode_data(document, under_construction.rest); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
-
-    // Anything not a context attribute is an extension. JSON has no room for the
-    // CloudEvents attribute type, so the type is inferred and documented as lossy;
-    // the typed extension structs recover it.
-    result<void> extension_error{};
-    Codec::for_each_member(document, [&](std::string_view name, const value& member) {
-      if (!extension_error || reserved_name(name)) {
-        return;
-      }
-      // JSON format section 2.2: an attribute encoded as null MUST be treated as
-      // unset. The optional context attributes already do this; an extension is
-      // no different, and the format specification's own example carries an
-      // "unsetextension": null member to demonstrate it.
-      if (Codec::kind_of(member) == json::kind::null) {
-        return;
-      }
-      // An unknown member becomes an extension only if its name is one the spec
-      // allows. Accepting others would let decode return an event the encoder
-      // then refuses, so the same document would decode and fail to re-encode.
-      auto attribute = extension_name::make(name);
-      if (!attribute) {
-        extension_error =
-            fail(attribute.error().code, attribute.error().detail, std::string{name});
-        return;
-      }
-      auto decoded = decode_attribute(member);
-      if (!decoded) {
-        extension_error = fail(decoded.error().code, decoded.error().detail, std::string{name});
-        return;
-      }
-      under_construction.rest.extensions.insert_or_assign(std::move(*attribute),
-                                                          std::move(*decoded));
-    });
-    if (!extension_error) {
-      return fail(extension_error.error().code, extension_error.error().detail,
-                  extension_error.error().where);
+    if (auto read = read_extensions(document, under_construction.rest); !read) {
+      return fail(read.error().code, read.error().detail, read.error().where);
     }
-
     return std::move(under_construction).build();
   }
 

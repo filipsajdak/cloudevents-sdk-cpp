@@ -32,16 +32,17 @@ enum class describe_backend : std::uint8_t { macro, reflection };
 template <std::size_t N>
 struct name {
   // A std::string_view is not a structural type, so it cannot be an annotation.
-  char value[N];
+  // std::array is, and it copies whole rather than element by element.
+  std::array<char, N> value{};
 
-  consteval explicit(false) name(const char (&text)[N]) {
-    for (std::size_t i = 0; i < N; ++i) {
-      value[i] = text[i];
-    }
-  }
+  // The parameter stays a reference to a C array: that is the type of a string
+  // literal, and the only form from which N can be deduced.
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
+  consteval explicit(false) name(const char (&text)[N]) : value{std::to_array(text)} {}
 };
 
 template <std::size_t N>
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
 name(const char (&)[N]) -> name<N>;
 
 /// \brief Annotation excluding a member from the description.
@@ -128,32 +129,29 @@ inline constexpr std::size_t field_count =
 /// \brief The wire names of `T`'s members, in declaration order.
 template <described T>
 [[nodiscard]] constexpr auto field_names() -> std::array<std::string_view, field_count<T>> {
-  std::array<std::string_view, field_count<T>> names{};
-  std::apply(
-      [&names](auto... member) {
-        std::size_t index = 0;
-        ((names[index++] = member.name), ...);
+  return std::apply(
+      [](auto... member) {
+        return std::array<std::string_view, field_count<T>>{member.name...};
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());
-  return names;
 }
 
 /// \brief Call `visit(wire_name, member)` for each member, in declaration order.
 template <described T, class F>
-constexpr void for_each_field(T& object, F&& visit) {
+constexpr void for_each_field(T& object, const F& visit) {
   std::apply(
       [&object, &visit](auto... member) {
-        (static_cast<void>(visit(member.name, object.*(member.ptr))), ...);
+        (static_cast<void>(visit(member.name, object.*member.ptr)), ...);
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());
 }
 
 /// \brief Call `visit(wire_name, member)` for each member of a const object.
 template <described T, class F>
-constexpr void for_each_field(const T& object, F&& visit) {
+constexpr void for_each_field(const T& object, const F& visit) {
   std::apply(
       [&object, &visit](auto... member) {
-        (static_cast<void>(visit(member.name, object.*(member.ptr))), ...);
+        (static_cast<void>(visit(member.name, object.*member.ptr)), ...);
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());
 }
@@ -169,7 +167,7 @@ template <described T>
       [&supported](auto... member) {
         ((supported = supported &&
                       detail::supported_field<
-                          std::remove_cvref_t<decltype(std::declval<T&>().*(member.ptr))>>),
+                          std::remove_cvref_t<decltype(std::declval<T&>().*member.ptr)>>),
          ...);
       },
       detail::descriptor_of<std::remove_cvref_t<T>>());

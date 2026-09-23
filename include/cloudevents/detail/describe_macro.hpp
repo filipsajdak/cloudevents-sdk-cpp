@@ -37,13 +37,13 @@ field(std::string_view, M T::*) -> field<T, M>;
 // The paren probe needs two indirections. Written as
 // CE_DETAIL_SECOND(CE_DETAIL_PROBE x, 0, ~) it always yields 0, because the
 // arguments are parsed before PROBE is rescanned.
-#define CE_DETAIL_CAT(a_, b_) CE_DETAIL_CAT_(a_, b_)
-#define CE_DETAIL_CAT_(a_, b_) a_##b_
+#define CE_DETAIL_CAT(a_, b_) CE_DETAIL_CAT_IMPL(a_, b_)
+#define CE_DETAIL_CAT_IMPL(a_, b_) a_##b_
 #define CE_DETAIL_SECOND(a_, b_, ...) b_
 #define CE_DETAIL_UNPAREN(...) __VA_ARGS__
 #define CE_DETAIL_PROBE(...) ~, 1,
-#define CE_DETAIL_IS_PAREN(x_) CE_DETAIL_IS_PAREN_(CE_DETAIL_PROBE x_)
-#define CE_DETAIL_IS_PAREN_(...) CE_DETAIL_SECOND(__VA_ARGS__, 0, ~)
+#define CE_DETAIL_IS_PAREN(x_) CE_DETAIL_IS_PAREN_IMPL(CE_DETAIL_PROBE x_)
+#define CE_DETAIL_IS_PAREN_IMPL(...) CE_DETAIL_SECOND(__VA_ARGS__, 0, ~)
 
 /// \brief Give a member a wire name that differs from its identifier.
 #define CE_FIELD(member_, wire_) (member_, wire_)
@@ -54,8 +54,8 @@ field(std::string_view, M T::*) -> field<T, M>;
 #define CE_DETAIL_ENTRY_1A(...) CE_DETAIL_ENTRY_1B(__VA_ARGS__)
 #define CE_DETAIL_ENTRY_1B(T_, m_, w_) ::ce::v1::detail::field{::std::string_view{w_}, &T_::m_}
 
-#define CE_DETAIL_NARG(...) CE_DETAIL_NARG_(__VA_ARGS__, 32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0)
-#define CE_DETAIL_NARG_(...) CE_DETAIL_ARGN(__VA_ARGS__)
+#define CE_DETAIL_NARG(...) CE_DETAIL_NARG_IMPL(__VA_ARGS__, 32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0)
+#define CE_DETAIL_NARG_IMPL(...) CE_DETAIL_ARGN(__VA_ARGS__)
 #define CE_DETAIL_ARGN(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,N_,...) N_
 
 #define CE_DETAIL_FE_1(T_, e_) CE_DETAIL_ENTRY(T_, e_)

@@ -5,10 +5,14 @@
 ///
 /// Strict on produce, tolerant on consume.
 
+#include <algorithm>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -96,7 +100,7 @@ inline constexpr auto content_type_pattern =
     ctll::fixed_string{R"(^\s*([A-Za-z0-9!#$%&'*+.^_`|~\-]+)/([A-Za-z0-9!#$%&'*+.^_`|~\-]+)\s*(;.*)?$)"};
 
 /// The reserved context attribute names. An extension may not shadow one.
-inline constexpr std::string_view reserved_names[] = {
+inline constexpr std::array<std::string_view, 10> reserved_names = {
     "id",      "source",  "specversion", "type",    "datacontenttype",
     "dataschema", "subject", "time",     "data",    "data_base64",
 };
@@ -111,27 +115,23 @@ inline constexpr std::string_view reserved_names[] = {
 /// \brief Case-insensitive ASCII comparison, for media types and header names.
 [[nodiscard]] constexpr auto iequals(std::string_view left, std::string_view right) noexcept
     -> bool {
-  if (left.size() != right.size()) {
-    return false;
-  }
-  for (std::size_t i = 0; i < left.size(); ++i) {
-    if (ascii_lower(left[i]) != ascii_lower(right[i])) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::equal(left, right, {}, ascii_lower, ascii_lower);
 }
 
 /// \brief True when a string ends with a suffix, compared case-insensitively.
 [[nodiscard]] constexpr auto iends_with(std::string_view text, std::string_view suffix) noexcept
     -> bool {
-  return text.size() >= suffix.size() && iequals(text.substr(text.size() - suffix.size()), suffix);
+  return text.size() >= suffix.size() &&
+         std::ranges::equal(
+             text | std::views::drop(static_cast<std::ptrdiff_t>(text.size() - suffix.size())),
+             suffix, {}, ascii_lower, ascii_lower);
 }
 
 [[nodiscard]] constexpr auto starts_with_ignoring_case(std::string_view text,
                                                        std::string_view prefix) noexcept -> bool {
   return text.size() >= prefix.size() &&
-         ce::detail::iequals(text.substr(0, prefix.size()), prefix);
+         std::ranges::equal(text | std::views::take(static_cast<std::ptrdiff_t>(prefix.size())),
+                            prefix, {}, ascii_lower, ascii_lower);
 }
 
 /// The UTF-8 encoding, as the tables in Unicode 15 chapter 3 state it. Each
@@ -189,55 +189,70 @@ inline constexpr std::uint32_t last_code_point = 0x10FFFFU;
 /// Rejects overlong encodings, surrogates and values above U+10FFFF, because each
 /// of those is a way to smuggle a second spelling of the same text past a
 /// consumer that compares strings.
+/// What a lead byte announces: how many bytes the sequence has, and the bits of
+/// the code point the lead itself carries. A length of zero is a byte that
+/// cannot start a sequence.
+struct utf8_lead {
+  std::size_t length;
+  std::uint32_t payload;
+};
+
+[[nodiscard]] constexpr auto read_utf8_lead(unsigned char lead) noexcept -> utf8_lead {
+  if (lead < utf8::ascii_limit) {
+    return {.length = 1, .payload = lead};
+  }
+  if ((lead & utf8::two_byte_mask) == utf8::two_byte_marker) {
+    return {.length = 2, .payload = lead & utf8::two_byte_payload};
+  }
+  if ((lead & utf8::three_byte_mask) == utf8::three_byte_marker) {
+    return {.length = 3, .payload = lead & utf8::three_byte_payload};
+  }
+  if ((lead & utf8::four_byte_mask) == utf8::four_byte_marker) {
+    return {.length = 4, .payload = lead & utf8::four_byte_payload};
+  }
+  return {.length = 0, .payload = 0};
+}
+
+/// The smallest code point a sequence of `length` bytes may encode. Below it
+/// the sequence is overlong: a second spelling of what a shorter one spells.
+[[nodiscard]] constexpr auto utf8_floor(std::size_t length) noexcept -> std::uint32_t {
+  switch (length) {
+    case 2:
+      return utf8::two_byte_floor;
+    case 3:
+      return utf8::three_byte_floor;
+    default:
+      return utf8::four_byte_floor;
+  }
+}
+
+/// True when a decoded multi-byte sequence names a code point UTF-8 may carry.
+[[nodiscard]] constexpr auto utf8_code_point_allowed(std::size_t length, std::uint32_t code) noexcept
+    -> bool {
+  return code >= utf8_floor(length) && code <= utf8::last_code_point &&
+         (code < utf8::first_surrogate || code > utf8::last_surrogate);
+}
+
 [[nodiscard]] constexpr auto is_valid_utf8(std::string_view text) noexcept -> bool {
-  std::size_t index = 0;
-  while (index < text.size()) {
-    const auto lead = static_cast<unsigned char>(text[index]);
-    std::size_t length = 0;
-    std::uint32_t code = 0;
-
-    if (lead < utf8::ascii_limit) {
-      ++index;
-      continue;
-    }
-    if ((lead & utf8::two_byte_mask) == utf8::two_byte_marker) {
-      length = 2;
-      code = lead & utf8::two_byte_payload;
-    } else if ((lead & utf8::three_byte_mask) == utf8::three_byte_marker) {
-      length = 3;
-      code = lead & utf8::three_byte_payload;
-    } else if ((lead & utf8::four_byte_mask) == utf8::four_byte_marker) {
-      length = 4;
-      code = lead & utf8::four_byte_payload;
-    } else {
+  while (!text.empty()) {
+    const auto [length, payload] = read_utf8_lead(static_cast<unsigned char>(text.front()));
+    if (length == 0 || length > text.size()) {
       return false;
     }
-
-    if (index + length > text.size()) {
-      return false;
-    }
-    for (std::size_t offset = 1; offset < length; ++offset) {
-      const auto continuation = static_cast<unsigned char>(text[index + offset]);
+    std::uint32_t code = payload;
+    const auto continuations =
+        text | std::views::drop(1) | std::views::take(static_cast<std::ptrdiff_t>(length - 1));
+    for (const char byte : continuations) {
+      const auto continuation = static_cast<unsigned char>(byte);
       if ((continuation & utf8::continuation_mask) != utf8::continuation_marker) {
         return false;
       }
       code = (code << utf8::continuation_bits) | (continuation & utf8::continuation_payload);
     }
-
-    if (length == 2 && code < utf8::two_byte_floor) {
+    if (length > 1 && !utf8_code_point_allowed(length, code)) {
       return false;
     }
-    if (length == 3 && code < utf8::three_byte_floor) {
-      return false;
-    }
-    if (length == 4 && code < utf8::four_byte_floor) {
-      return false;
-    }
-    if (code > utf8::last_code_point ||
-        (code >= utf8::first_surrogate && code <= utf8::last_surrogate)) {
-      return false;
-    }
-    index += length;
+    text.remove_prefix(length);
   }
   return true;
 }
@@ -253,12 +268,7 @@ inline constexpr std::uint32_t last_code_point = 0x10FFFFU;
 /// \brief True when `name` is a reserved context attribute that an extension may
 /// not redefine.
 [[nodiscard]] constexpr auto reserved_name(std::string_view name) noexcept -> bool {
-  for (const auto reserved : detail::reserved_names) {
-    if (reserved == name) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::find(detail::reserved_names, name) != detail::reserved_names.end();
 }
 
 /// \brief True when a media type denotes JSON: any type whose subtype is `json`
@@ -420,7 +430,7 @@ class spec_version {
     return spec_version{};
   }
 
-  [[nodiscard]] constexpr auto view() const noexcept -> std::string_view { return "1.0"; }
+  [[nodiscard]] static constexpr auto view() noexcept -> std::string_view { return "1.0"; }
 
   [[nodiscard]] friend auto operator==(spec_version, spec_version) noexcept -> bool = default;
 };
@@ -494,7 +504,7 @@ struct extension_value_type<std::optional<U>> {
   using type = U;
 };
 template <class F>
-using extension_value_t = typename extension_value_type<std::remove_cvref_t<F>>::type;
+using extension_value_t = extension_value_type<std::remove_cvref_t<F>>::type;
 
 template <class F>
 inline constexpr bool is_optional_field = false;
@@ -525,11 +535,11 @@ template <extension_field F>
     if (text == "false") {
       return false;
     }
-    return fail(errc::type_mismatch, "expected \"true\" or \"false\"", std::string{where});
+    return fail(errc::type_mismatch, R"(expected "true" or "false")", std::string{where});
   } else if constexpr (std::is_same_v<value_type, std::int32_t>) {
     std::int32_t parsed = 0;
-    const char* const first = text.data();
-    const char* const last = first + text.size();
+    const char* const first = std::to_address(text.begin());
+    const char* const last = std::to_address(text.end());
     const auto [stop, code] = std::from_chars(first, last, parsed);
     if (code != std::errc{} || stop != last) {
       return fail(errc::type_mismatch, "expected an integer", std::string{where});
@@ -669,7 +679,7 @@ class event {
   [[nodiscard]] auto id() const noexcept -> const ce::id& { return id_; }
   [[nodiscard]] auto source() const noexcept -> const ce::source& { return source_; }
   [[nodiscard]] auto type() const noexcept -> const ce::type& { return type_; }
-  [[nodiscard]] auto specversion() const noexcept -> spec_version { return {}; }
+  [[nodiscard]] static auto specversion() noexcept -> spec_version { return {}; }
 
   [[nodiscard]] auto datacontenttype() const noexcept -> const std::optional<ce::datacontenttype>& {
     return rest_.datacontenttype;
@@ -823,5 +833,23 @@ class event {
   ce::type type_;
   options rest_;
 };
+
+namespace detail {
+
+/// \brief Make an attribute from the text a decoder read and put it in its slot.
+///
+/// The attribute's own factory is the only thing that can refuse the text, so a
+/// decoder never checks a rule itself (SWR-CORE-0026).
+template <class Attribute, class Text>
+[[nodiscard]] auto store_attribute(std::optional<Attribute>& slot, Text&& text) -> result<void> {
+  auto made = Attribute::make(std::forward<Text>(text));
+  if (!made) {
+    return fail(made.error().code, made.error().detail, made.error().where);
+  }
+  slot = std::move(*made);
+  return {};
+}
+
+}  // namespace detail
 
 }  // namespace ce::inline v1

@@ -1085,3 +1085,40 @@ treated the class as complete in its default member initializers, and a default
 argument inside the class body is exactly such a premature use. GCC 16 rejects
 it; the same default argument at namespace scope, in a test helper for example,
 is fine.
+
+## D-TIDY-2: The tidy gate is on, and it gates the headers only
+
+The baseline D-TIDY-1 recorded was 469 findings. That number counted each header
+finding once per suite that included the header. Counted once by location, with
+the four checks D-TIDY-1 left off switched on as well, the real number was
+**76**, measured 2026-09-23 with Homebrew LLVM 23.1.1.
+
+They sorted the way D-TIDY-1 said they would:
+
+| kind | count | answer |
+|---|---|---|
+| real | 5 | fixed: two `noexcept` functions that could throw, a missing move assignment on the copy-on-write `validated_string`, an uninitialised `ce::name`, an unchecked optional |
+| clearer code satisfies it | 32 | restructured: index-based walks now consume their input (18), the four magic numbers are named (8, two checks each), and four over-complex functions are split into named steps (4) |
+| mechanical | 29 | applied |
+| wrong for this code | 10 | exempted at the site: `return {x};` on `nlohmann::json` builds a one-element array, its object `operator[]` inserts rather than indexes, and a string literal's type is a C array, so `ce::name`'s constructor and deduction guide must take one |
+
+`readability-magic-numbers`, `cppcoreguidelines-avoid-magic-numbers`,
+`cppcoreguidelines-pro-bounds-constant-array-index` and
+`cppcoreguidelines-pro-bounds-pointer-arithmetic` are now on.
+
+D-TIDY-1 also assumed `HeaderFilterRegex` kept the findings to
+`include/cloudevents`. It does not: clang-tidy always reports the file it was
+given, so linting the suites directly enforces the whole check set on the test
+code too. The gate therefore runs through `cmake/tidy_gate.py`, which keeps the
+findings located under `include/cloudevents/` and fails on any of them, or on a
+suite that does not parse. Two alternatives were rejected. A translation unit
+that only includes the headers would leave every class template uninstantiated,
+which is most of this library. And a `test/.clang-tidy` that switched checks off
+would switch them off for the headers as well, because a header finding is
+judged by the configuration of the file that included it.
+
+The CI job uses Homebrew's LLVM on macOS, not Ubuntu's packaged clang-tidy,
+which is several releases older and reports a different set. A gate that
+disagrees with what a contributor sees locally teaches people to ignore it. The
+cost is that a new LLVM release can add findings on its own; when one does, they
+take the same three-way sort, in their own change.

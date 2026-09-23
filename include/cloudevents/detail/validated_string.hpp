@@ -104,9 +104,20 @@ class validated_string {
     other.borrowed_ = {};
   }
 
-  auto operator=(validated_string other) noexcept -> validated_string& {
-    owned_.swap(other.owned_);
-    borrowed_ = owned_.empty() ? other.borrowed_ : std::string_view{owned_};
+  auto operator=(const validated_string& other) -> validated_string& {
+    if (this != &other) {
+      owned_ = other.owned_;
+      borrowed_ = owned_.empty() ? other.borrowed_ : std::string_view{owned_};
+    }
+    return *this;
+  }
+
+  auto operator=(validated_string&& other) noexcept -> validated_string& {
+    if (this != &other) {
+      owned_ = std::move(other.owned_);
+      borrowed_ = owned_.empty() ? other.borrowed_ : std::string_view{owned_};
+      other.borrowed_ = {};
+    }
     return *this;
   }
 

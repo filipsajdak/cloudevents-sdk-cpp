@@ -58,7 +58,7 @@ struct element_probe {
 /// The shipped nlohmann codec returns 1 for a scalar where others return 0; do
 /// not depend on either.
 template <class C>
-concept json_codec = requires(typename C::value value, const typename C::value& const_value,
+concept json_codec = requires(C::value value, const C::value& const_value,
                               std::string_view text, std::int64_t integer, double number,
                               bool boolean) {
   typename C::value;

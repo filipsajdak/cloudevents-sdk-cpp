@@ -110,6 +110,26 @@ jobs:
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
 
+  tidy:
+    # .clang-tidy with WarningsAsErrors: '*', over every public header the suites
+    # include (D-TIDY-2). Homebrew's LLVM rather than Ubuntu's packaged
+    # clang-tidy, which is several releases older and reports a different set:
+    # the gate has to agree with what a contributor sees locally.
+    name: clang-tidy
+    needs: gate
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install llvm ninja
+      - run: echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++"
+          -DCMAKE_CXX_STANDARD=20
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - run: cmake --build build --target tidy
+
   no-exceptions:
     name: exceptions disabled
     needs: gate

@@ -173,7 +173,8 @@ concept key_mapper = requires(const event& cloud_event) {
 
 /// \brief The default: no key, so the broker partitions round-robin.
 struct no_key_mapper {
-  [[nodiscard]] static auto key_of(const event&) -> std::optional<std::string> {
+  [[nodiscard]] static auto key_of([[maybe_unused]] const event& cloud_event)
+      -> std::optional<std::string> {
     return std::nullopt;
   }
 };

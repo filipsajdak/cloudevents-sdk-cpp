@@ -64,7 +64,7 @@ consteval auto reflected_name() -> std::string_view {
                   std::meta::template_of(annotation_type) == ^^name) {
       constexpr auto renamed = std::meta::extract<typename[:annotation_type:]>(annotation);
       return std::define_static_string(
-          std::string_view{static_cast<const char*>(renamed.value), sizeof(renamed.value) - 1});
+          std::string_view{renamed.value.data(), renamed.value.size() - 1});
     }
   }
   return std::define_static_string(std::meta::identifier_of(M));

@@ -20,6 +20,11 @@ function(ce_add_test name)
   add_executable(${name} ${ARG_SOURCES})
   target_link_libraries(${name} PRIVATE ce::core ce::warnings Boost::ut ${ARG_LIBS})
   add_test(NAME ${name} COMMAND ${name})
+  # The tidy gate lints exactly the suites that are built, which leaves out the
+  # must-not-compile probes and anything a disabled option did not add.
+  foreach(source IN LISTS ARG_SOURCES)
+    set_property(GLOBAL APPEND PROPERTY CE_TIDY_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+  endforeach()
 endfunction()
 
 # A suite that runs over every enabled codec, rather than over one named codec.

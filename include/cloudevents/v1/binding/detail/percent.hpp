@@ -62,7 +62,8 @@ namespace ce::v1::binding::detail {
     if (high < 0 || low < 0) {
       return fail(errc::parse_error, "percent escape is not hexadecimal", std::string{text});
     }
-    out.push_back(static_cast<char>((high << 4) | low));
+    const auto byte = static_cast<unsigned>(high) << 4U | static_cast<unsigned>(low);
+    out.push_back(static_cast<char>(static_cast<unsigned char>(byte)));
     index += 2;
   }
   if (!ce::v1::detail::is_valid_utf8(out)) {

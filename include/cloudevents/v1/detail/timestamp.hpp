@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -127,6 +128,7 @@ template <class Capture>
   };
 }
 
+// spec: SWR-BUILD-0011
 [[nodiscard]] inline auto to_string(const timestamp& value) -> std::string {
   const auto local = value.utc + value.offset;
   const auto days = std::chrono::floor<std::chrono::days>(local);
@@ -140,13 +142,15 @@ template <class Capture>
   const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(since_midnight - hours -
                                                                           minutes - seconds);
 
+  constexpr std::uint8_t max_fractional_digits = 9;
+  const std::uint8_t shown = std::min(value.fractional_digits, max_fractional_digits);
   std::string fraction;
-  if (value.fractional_digits > 0) {
-    fraction.reserve(std::size_t{value.fractional_digits} + 1);
+  if (shown > 0) {
+    fraction.reserve(std::size_t{shown} + 1);
     fraction.push_back('.');
     auto place =
         std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds{100});
-    for (std::uint8_t i = 0; i < value.fractional_digits; ++i) {
+    for (std::uint8_t i = 0; i < shown; ++i) {
       fraction.push_back(static_cast<char>('0' + (nanos / place) % 10));
       place /= 10;
     }

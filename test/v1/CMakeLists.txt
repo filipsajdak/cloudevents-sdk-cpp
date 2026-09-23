@@ -65,6 +65,7 @@ if(CE_CODEC_NLOHMANN)
   ce_add_v1_test(conformance_test SOURCES conformance_test.cpp LIBS ce::codec_nlohmann)
   target_compile_definitions(v1_conformance_test
     PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/conformance\"")
+  ce_add_v1_test(fixes_test SOURCES v1_fixes_test.cpp LIBS ce::codec_nlohmann)
   ce_add_v1_test(interop_test SOURCES interop_test.cpp LIBS ce::codec_nlohmann)
   target_compile_definitions(v1_interop_test
     PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../fixtures\"")

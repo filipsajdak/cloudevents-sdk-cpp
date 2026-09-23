@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -156,12 +158,22 @@ template <binding_traits T>
   bool saw_source = false;
   bool saw_type = false;
   result<void> header_error{};
+  std::set<std::string, std::less<>> seen;
 
   for (const auto& [name, raw_value] : fields) {
     if (!detail::carries_prefix<T>(name)) {
       continue;
     }
     const std::string attribute = detail::attribute_name_of<T>(name);
+
+    // spec: SWR-BUILD-0011
+    if (!seen.insert(attribute).second) {
+      header_error = fail(errc::invalid_argument,
+                          "two fields carry the same attribute, so which one is meant is "
+                          "undecidable",
+                          name);
+      break;
+    }
 
     auto decoded = T::decode_value(raw_value);
     if (!decoded) {
@@ -173,6 +185,14 @@ template <binding_traits T>
       if (attribute == "datacontenttype") {
         subject.datacontenttype = *decoded;
         continue;
+      }
+    } else {
+      if (attribute == "datacontenttype") {
+        header_error = fail(errc::invalid_argument,
+                            "this binding carries datacontenttype in its content-type field, "
+                            "not as a prefixed attribute",
+                            attribute);
+        break;
       }
     }
 

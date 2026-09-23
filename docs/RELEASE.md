@@ -3,10 +3,10 @@
 Everything here is a gate that a machine can run. A step that reads "check that
 ..." without a command is not a step.
 
-The API was fixed at `v0.1.0`: `SWR-BUILD-0006` requires a new version
-namespace for any breaking change after it. A later tag may add to `ce::v1` and
-may not remove from it, so anything that should go has to go before the *first*
-tag of a namespace, not this one.
+A generation's API is fixed at its first tag: `ce::v1` at `v0.1.0`, `ce::v2` at
+`v0.4.0`. `SWR-BUILD-0006` requires a new version namespace for any breaking
+change after that. A later tag may add to a generation and may not remove from it,
+so anything that should go has to go before the *first* tag of a namespace.
 
 Run every command from a clean `main` at the commit being tagged.
 
@@ -49,7 +49,9 @@ Run every command from a clean `main` at the commit being tagged.
 
 ## The API is frozen at the tag
 
-- [ ] No entity in `ce::v1` is one you would rather remove. Check the `errc`
+- [ ] Diff the headers against the previous tag with comments stripped: no
+      declaration in an already-tagged generation changed (`SWR-BUILD-0006`).
+- [ ] No entity in the current generation is one you would rather remove. Check the `errc`
       enumerators in particular: a code nothing can produce is dead surface, and
       `SWR-SEC-0003` requires a negative test for every one of them.
 - [ ] `test/build_test.cpp` pins the `errc` values. Confirm the pins match the

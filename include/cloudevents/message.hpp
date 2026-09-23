@@ -8,10 +8,10 @@
 #include <utility>
 #include <vector>
 
-#include <cloudevents/core.hpp>
+#include <cloudevents/attributes.hpp>
 
 // spec: SYS-MSG-0001
-namespace ce::inline v2 {
+namespace ce::v2 {
 
 // spec: SWR-HTTP-0002
 class raw_headers {
@@ -153,4 +153,13 @@ enum class content_mode : std::uint8_t {
   batched,
 };
 
-}  // namespace ce::inline v2
+}  // namespace ce::v2
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3 {
+using ce::v2::content_mode;
+using ce::v2::headers;
+using ce::v2::message;
+using ce::v2::name_matching;
+using ce::v2::raw_headers;
+}  // namespace ce::inline v3

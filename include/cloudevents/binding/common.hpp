@@ -14,7 +14,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SYS-BIND-0001
-namespace ce::inline v2::binding {
+namespace ce::inline v3::binding {
 
 // spec: SWR-BIND-0001
 template <class T>
@@ -58,7 +58,7 @@ template <binding_traits T>
   if constexpr (T::case_sensitive_names) {
     return name.starts_with(std::string_view{T::attribute_prefix});
   } else {
-    return ce::v2::detail::starts_with_ignoring_case(name, T::attribute_prefix);
+    return ce::v3::detail::starts_with_ignoring_case(name, T::attribute_prefix);
   }
 }
 
@@ -67,7 +67,7 @@ template <binding_traits T>
   std::string name{field.substr(std::string_view{T::attribute_prefix}.size())};
   if constexpr (!T::case_sensitive_names) {
     for (char& character : name) {
-      character = ce::v2::detail::ascii_lower(character);
+      character = ce::v3::detail::ascii_lower(character);
     }
   }
   return name;
@@ -79,7 +79,7 @@ template <binding_traits T>
     -> result<void> {
   if (attribute == "datacontenttype") {
     if constexpr (content_type_policy<T>::as_attribute) {
-      return ce::v2::detail::store_attribute(into.rest.datacontenttype, std::move(value));
+      return ce::v3::detail::store_attribute(into.rest.datacontenttype, std::move(value));
     } else {
       return fail(errc::invalid_argument,
                   "this binding carries datacontenttype in its content-type field, "
@@ -94,19 +94,19 @@ template <binding_traits T>
     return {};
   }
   if (attribute == "id") {
-    return ce::v2::detail::store_attribute(into.id, std::move(value));
+    return ce::v3::detail::store_attribute(into.id, std::move(value));
   }
   if (attribute == "source") {
-    return ce::v2::detail::store_attribute(into.source, std::move(value));
+    return ce::v3::detail::store_attribute(into.source, std::move(value));
   }
   if (attribute == "type") {
-    return ce::v2::detail::store_attribute(into.type, std::move(value));
+    return ce::v3::detail::store_attribute(into.type, std::move(value));
   }
   if (attribute == "dataschema") {
-    return ce::v2::detail::store_attribute(into.rest.dataschema, std::move(value));
+    return ce::v3::detail::store_attribute(into.rest.dataschema, std::move(value));
   }
   if (attribute == "subject") {
-    return ce::v2::detail::store_attribute(into.rest.subject, std::move(value));
+    return ce::v3::detail::store_attribute(into.rest.subject, std::move(value));
   }
   if (attribute == "time") {
     auto parsed = parse_timestamp(value);
@@ -271,4 +271,4 @@ template <json::json_codec Codec>
   return json_format<Codec>::decode(to_text(from.body));
 }
 
-}  // namespace ce::inline v2::binding
+}  // namespace ce::inline v3::binding

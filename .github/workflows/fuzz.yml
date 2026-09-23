@@ -48,7 +48,7 @@ jobs:
           - { target: fuzz_nats_payload, dir: fuzz, seeds: nats }
           - { target: fuzz_typed, dir: fuzz, seeds: typed }
           # The ce::v1 decoders parse the same untrusted input, so SWR-SEC-0001
-          # covers them too. They share the seed corpora with the v2 targets.
+          # covers them too. They share the seed corpora with the v3 targets.
           - { target: v1_fuzz_timestamp, dir: fuzz/v1, seeds: timestamp }
           - { target: v1_fuzz_base64, dir: fuzz/v1, seeds: base64 }
           - { target: v1_fuzz_json_decode, dir: fuzz/v1, seeds: json }
@@ -56,6 +56,15 @@ jobs:
           - { target: v1_fuzz_kafka_message, dir: fuzz/v1, seeds: kafka }
           - { target: v1_fuzz_nats_payload, dir: fuzz/v1, seeds: nats }
           - { target: v1_fuzz_typed, dir: fuzz/v1, seeds: typed }
+          # The ce::v2 decoders are the v0.4.0 ones, frozen by CR-0003, and parse
+          # the same untrusted input as well.
+          - { target: v2_fuzz_timestamp, dir: fuzz/v2, seeds: timestamp }
+          - { target: v2_fuzz_base64, dir: fuzz/v2, seeds: base64 }
+          - { target: v2_fuzz_json_decode, dir: fuzz/v2, seeds: json }
+          - { target: v2_fuzz_http_message, dir: fuzz/v2, seeds: http }
+          - { target: v2_fuzz_kafka_message, dir: fuzz/v2, seeds: kafka }
+          - { target: v2_fuzz_nats_payload, dir: fuzz/v2, seeds: nats }
+          - { target: v2_fuzz_typed, dir: fuzz/v2, seeds: typed }
     steps:
       - uses: actions/checkout@v4
       - name: Install compiler

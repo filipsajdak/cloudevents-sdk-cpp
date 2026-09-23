@@ -2,7 +2,7 @@
 uid: SWR-BUILD-0012
 title: The v0.5.0 API is ce::v3, and ce::v2 keeps what v0.4.0 published
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   CR-0003 adds an alternative to data_t, which v0.4.0 published in ce::v2.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/v2/core.hpp]
+verified_by: [test:test/v2/CMakeLists.txt::ce-v2-suites, test:test/v2/v2_generation_test.cpp::v2-declarations-survive]
 owner: filip.sajdak
 version: 1
 ---

@@ -11,7 +11,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SWR-EXT-0006
-namespace ce::inline v2 {
+namespace ce::inline v3 {
 
 // spec: SWR-EXT-0005
 template<described T, json::json_codec Codec>
@@ -65,13 +65,13 @@ class event_of {
   explicit event_of(event cloud_event) : event_{std::move(cloud_event)} {}
 
   [[nodiscard]] static auto with_data(event cloud_event, const T& value) -> event_of {
-    ce::v2::set_data<T, Codec>(cloud_event, value);
+    ce::v3::set_data<T, Codec>(cloud_event, value);
     return event_of{std::move(cloud_event)};
   }
 
   [[nodiscard]] auto data() const -> result<T> { return data_as<T, Codec>(event_); }
 
-  void set_data(const T& value) { ce::v2::set_data<T, Codec>(event_, value); }
+  void set_data(const T& value) { ce::v3::set_data<T, Codec>(event_, value); }
 
   [[nodiscard]] auto underlying() const noexcept -> const event& { return event_; }
 
@@ -81,4 +81,4 @@ class event_of {
   event event_;
 };
 
-}  // namespace ce::inline v2
+}  // namespace ce::inline v3

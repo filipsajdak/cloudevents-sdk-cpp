@@ -14,7 +14,7 @@
 
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v2 {
+namespace ce::v2 {
 
 enum class offset_form : std::uint8_t {
   utc_designator,
@@ -248,4 +248,18 @@ template <class Capture>
                      offset_magnitude % detail::minutes_per_hour);
 }
 
-}  // namespace ce::inline v2
+}  // namespace ce::v2
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3 {
+using ce::v2::fraction_digits;
+using ce::v2::offset_form;
+using ce::v2::parse_timestamp;
+using ce::v2::timestamp;
+using ce::v2::to_string;
+}  // namespace ce::inline v3
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3::detail {
+using ce::v2::detail::rfc3339_pattern;
+}  // namespace ce::inline v3::detail

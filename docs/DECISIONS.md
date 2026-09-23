@@ -1165,6 +1165,17 @@ tidying the code would plausibly undo.
 | `codec/rapidjson.hpp`, `chars_of` | an empty view's pointer is replaced by `""` | RapidJSON asserts a non-null pointer, and the assertion is compiled out of a release build |
 | `detail/describe_reflection.hpp` | a wire name is interned with `define_static_string` | an extracted annotation is a prvalue whose array a `string_view` would outlive |
 
+## D-TIDY-5: The v2 copies are outside the clang-tidy gate
+
+`include/cloudevents/v2/` holds what v0.4.0 published, copied for ADR-0010.
+They were copied from headers the gate had passed, so today they carry no finding.
+They stay outside it all the same: a check added later could only be satisfied by reshaping a generation that exists to stay as it was published, and `ce::v2` takes defect fixes, not clean-ups.
+
+The mechanism is the one D-TIDY-4 uses.
+The copied v0.4.0 suites are registered by `ce_add_v2_test`, which does not record itself for the gate, and no gated suite includes a `v2/` header.
+That is why the check that `ce::v2::event` and `ce::event` are distinct types lives in `test/v2/v2_generation_test.cpp` and not in `test/build_test.cpp`.
+The headers `ce::v2` shares with `ce::v3`, such as `attributes.hpp` and `message.hpp`, are included by gated suites and stay gated.
+
 ## D-TIDY-4: The v1 headers are outside the clang-tidy gate
 
 `include/cloudevents/v1/` holds what v0.3.0 published, restored for ADR-0009.

@@ -1,8 +1,11 @@
 #include <boost/ut.hpp>
 
+#include <cloudevents/attributes.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/detail/config.hpp>
 #include <cloudevents/detail/expected_polyfill.hpp>
+#include <cloudevents/detail/timestamp.hpp>
+#include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
 #include <concepts>
@@ -144,27 +147,47 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
 };
 
 // spec: SWR-BUILD-0005
-const boost::ut::suite<"config-inline-namespace-v2"> config_inline_namespace_v2 = [] {
+const boost::ut::suite<"config-inline-namespace-v3"> config_inline_namespace_v3 = [] {
   using namespace boost::ut;
 
-  // Compiling AND matching is what pins v2 as inline: if it were a plain
+  // Compiling AND matching is what pins v3 as inline: if it were a plain
   // namespace `ce::event` would name nothing, and if the names were declared
-  // twice is_same_v would be false.
-  "ce::v2 is inline, so the qualified and unqualified names are one entity"_test = [] {
-    static_assert(std::is_same_v<ce::event, ce::v2::event>);
-    static_assert(std::is_same_v<ce::timestamp, ce::v2::timestamp>);
-    static_assert(std::is_same_v<ce::result<int>, ce::v2::result<int>>);
+  // twice is_same_v would be false. That ce::v2::event is a different type is
+  // pinned in test/v2/v2_generation_test.cpp, because including a v2 copy here
+  // would put the frozen generation under the clang-tidy gate (D-TIDY-5).
+  "ce::v3 is inline, so the qualified and unqualified names are one entity"_test = [] {
+    static_assert(std::is_same_v<ce::event, ce::v3::event>);
+    static_assert(std::is_same_v<ce::data_t, ce::v3::data_t>);
+    static_assert(std::is_same_v<ce::timestamp, ce::v3::timestamp>);
+    static_assert(std::is_same_v<ce::result<int>, ce::v3::result<int>>);
+    expect(true);
+  };
+
+  // The attribute types did not change in v0.5.0, so they are declared once, in
+  // ce::v2, and brought into ce::v3: code of both generations exchanges them
+  // without a conversion.
+  "an attribute type shared with v2 is one type through every spelling"_test = [] {
+    static_assert(std::is_same_v<ce::v2::id, ce::v3::id>);
+    static_assert(std::is_same_v<ce::v2::source, ce::v3::source>);
+    static_assert(std::is_same_v<ce::v2::extension_name, ce::v3::extension_name>);
+    static_assert(std::is_same_v<ce::v2::attribute_value, ce::v3::attribute_value>);
+    static_assert(std::is_same_v<ce::v2::json_text, ce::v3::json_text>);
+    static_assert(std::is_same_v<ce::v2::timestamp, ce::v3::timestamp>);
+    static_assert(std::is_same_v<ce::v2::message, ce::v3::message>);
     expect(true);
   };
 
   // An entity unchanged since v0.3.0 is declared once, in ce::v1, and brought into
-  // ce::v2, so all three spellings are one type rather than three equal ones.
-  "an unchanged entity is one type through every spelling"_test = [] {
+  // ce::v2 and ce::v3, so every spelling is one type rather than several equal ones.
+  "an entity shared with v1 is one type through every spelling"_test = [] {
     static_assert(std::is_same_v<ce::errc, ce::v1::errc>);
+    static_assert(std::is_same_v<ce::v2::errc, ce::v3::errc>);
+    static_assert(std::is_same_v<ce::v1::errc, ce::v3::errc>);
     static_assert(std::is_same_v<ce::error, ce::v1::error>);
     static_assert(std::is_same_v<ce::failure, ce::v1::failure>);
     static_assert(std::is_same_v<ce::static_error, ce::v1::static_error>);
     static_assert(std::is_same_v<ce::result<int>, ce::v1::result<int>>);
+    static_assert(std::is_same_v<ce::v2::result<int>, ce::v3::result<int>>);
 
     // fail is an overload set, so decltype on the bare name is ambiguous. The
     // address of one overload taken through each spelling says more than a type
@@ -174,8 +197,10 @@ const boost::ut::suite<"config-inline-namespace-v2"> config_inline_namespace_v2 
     const auto through_ce = static_cast<from_errc>(&ce::fail);
     const auto through_v1 = static_cast<from_errc>(&ce::v1::fail);
     const auto through_v2 = static_cast<from_errc>(&ce::v2::fail);
+    const auto through_v3 = static_cast<from_errc>(&ce::v3::fail);
     expect(through_ce == through_v1);
     expect(through_ce == through_v2);
+    expect(through_ce == through_v3);
   };
 };
 

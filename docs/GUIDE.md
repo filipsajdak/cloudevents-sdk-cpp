@@ -701,10 +701,32 @@ The types rule out an invalid event, but they cannot rule out these.
 
 ## 11. API generations
 
-Everything in this guide is `ce::v2`, the inline namespace, so `ce::event` names it.
+Everything in this guide is `ce::v3`, the inline namespace, so `ce::event` names it.
 
+`ce::v2` holds what v0.4.0 published: the `event` class whose `data_t` has four alternatives, and the format and bindings built on it.
 `ce::v1` holds what v0.3.0 published: the aggregate `event` with `validate()`, and the format and bindings built on it.
-It stays as it was, and it takes defect fixes but no changes.
+Both stay as they were, and they take defect fixes but no changes.
+
+Code written against v0.4.0 keeps compiling if it spells `ce::v2::` and includes the `v2/` headers:
+
+```cpp
+#include <cloudevents/v2/binding/http.hpp>
+#include <cloudevents/v2/core.hpp>
+
+inline auto v2_request() -> ce::v2::result<ce::v2::message> {
+  auto order = ce::v2::event::builder{
+      .id = "A1"_id,
+      .source = "/orders"_source,
+      .type = "com.example.order.placed"_type,
+  }.build();
+  if (!order) {
+    return ce::v2::fail(order.error().code, order.error().detail, order.error().where);
+  }
+  return ce::v2::http::to_message<ce::v2::codec::nlohmann_codec>(*order,
+                                                                  ce::v2::content_mode::binary_mode);
+}
+```
+
 Code written against v0.3.0 keeps compiling if it spells `ce::v1::` and includes the `v1/` headers:
 
 ```cpp
@@ -718,9 +740,10 @@ inline auto legacy_request() -> ce::v1::result<ce::v1::message> {
 }
 ```
 
-What did not change between the generations is one type through both spellings: `errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam.
-So a codec written for v0.3.0 works with v2 unchanged.
-The optional C++20 module exports `ce::v2` only.
+What did not change between the generations is one type through every spelling.
+`errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam are shared by all three generations, so a codec written for v0.3.0 works with v3 unchanged.
+The attribute types, `timestamp`, `message` and the typed extensions are shared by v2 and v3, so `ce::v2::id` and `ce::id` are one type, and a v2 event and a v3 event exchange attributes and messages without a conversion.
+The optional C++20 module exports `ce::v3` only.
 
 ## Also available
 

@@ -24,8 +24,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SYS-CORE-0001
-// spec: SWR-BUILD-0005
-namespace ce::inline v2 {
+namespace ce::v2 {
 
 // spec: SWR-CORE-0005
 using binary = std::vector<std::byte>;
@@ -537,4 +536,51 @@ template <class Attribute, class Text>
 
 }  // namespace detail
 
-}  // namespace ce::inline v2
+}  // namespace ce::v2
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3 {
+using ce::v2::attribute_value;
+using ce::v2::binary;
+using ce::v2::datacontenttype;
+using ce::v2::dataschema;
+using ce::v2::extension_name;
+using ce::v2::id;
+using ce::v2::is_json_content_type;
+using ce::v2::json_text;
+using ce::v2::lint_warning;
+using ce::v2::reserved_name;
+using ce::v2::source;
+using ce::v2::spec_version;
+using ce::v2::subject;
+using ce::v2::to_bytes;
+using ce::v2::to_text;
+using ce::v2::type;
+using ce::v2::uri;
+using ce::v2::uri_ref;
+using ce::v2::valid_attribute_name;
+}  // namespace ce::inline v3
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3::literals {
+using ce::v2::literals::operator""_dataschema;
+using ce::v2::literals::operator""_ext;
+using ce::v2::literals::operator""_id;
+using ce::v2::literals::operator""_mediatype;
+using ce::v2::literals::operator""_source;
+using ce::v2::literals::operator""_subject;
+using ce::v2::literals::operator""_type;
+}  // namespace ce::inline v3::literals
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3::detail {
+using ce::v2::detail::ascii_lower;
+using ce::v2::detail::extension_fields_supported;
+using ce::v2::detail::iequals;
+using ce::v2::detail::is_optional_field;
+using ce::v2::detail::is_valid_utf8;
+using ce::v2::detail::read_attribute;
+using ce::v2::detail::reserved_names;
+using ce::v2::detail::starts_with_ignoring_case;
+using ce::v2::detail::store_attribute;
+}  // namespace ce::inline v3::detail

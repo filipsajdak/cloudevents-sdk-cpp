@@ -24,7 +24,7 @@
 
 // spec: SYS-CORE-0001
 // spec: SWR-BUILD-0005
-namespace ce::inline v2 {
+namespace ce::inline v3 {
 
 // spec: SWR-CORE-0012
 using data_t = std::variant<std::monostate, std::string, binary, json_text>;
@@ -212,4 +212,4 @@ class event {
   options rest_;
 };
 
-}  // namespace ce::inline v2
+}  // namespace ce::inline v3

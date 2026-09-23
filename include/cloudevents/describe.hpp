@@ -163,7 +163,7 @@ template <described T>
 
 }  // namespace ce::v1
 
-namespace ce::inline v2 {
+namespace ce::v2 {
 using ce::v1::backend_of;
 using ce::v1::describe_backend;
 using ce::v1::described;
@@ -174,4 +174,18 @@ using ce::v1::members_supported;
 using ce::v1::name;
 using ce::v1::reflect;
 using ce::v1::skip;
-}  // namespace ce::inline v2
+}  // namespace ce::v2
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3 {
+using ce::v1::backend_of;
+using ce::v1::describe_backend;
+using ce::v1::described;
+using ce::v1::field_count;
+using ce::v1::field_names;
+using ce::v1::for_each_field;
+using ce::v1::members_supported;
+using ce::v1::name;
+using ce::v1::reflect;
+using ce::v1::skip;
+}  // namespace ce::inline v3

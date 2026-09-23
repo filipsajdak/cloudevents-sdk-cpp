@@ -114,6 +114,7 @@ if(CE_CODEC_NLOHMANN)
 endif()
 
 add_subdirectory(v1)
+add_subdirectory(v2)
 
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
 # not to ours. That is easy to get wrong later -- someone marks our own include

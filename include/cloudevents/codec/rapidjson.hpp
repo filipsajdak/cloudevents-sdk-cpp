@@ -162,6 +162,11 @@ static_assert(json::json_codec<rapidjson_codec>);
 
 }  // namespace ce::v1::codec
 
-namespace ce::inline v2 {
+namespace ce::v2 {
 namespace codec = ce::v1::codec;
-}  // namespace ce::inline v2
+}  // namespace ce::v2
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3 {
+namespace codec = ce::v1::codec;
+}  // namespace ce::inline v3

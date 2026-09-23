@@ -18,6 +18,7 @@ endfunction()
 # whole point, and nothing here may include nlohmann.
 ce_add_example(custom_codec SOURCES custom_codec.cpp)
 add_subdirectory(v1)
+add_subdirectory(v2)
 
 if(CE_CODEC_NLOHMANN)
   ce_add_example(produce SOURCES produce.cpp LIBS ce::codec_nlohmann)

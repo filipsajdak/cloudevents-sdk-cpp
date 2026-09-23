@@ -18,7 +18,7 @@
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v2 {
+namespace ce::inline v3 {
 
 // spec: SYS-JSON-0001
 // spec: SWR-JSON-0010
@@ -511,4 +511,4 @@ struct json_format {
   }
 };
 
-}  // namespace ce::inline v2
+}  // namespace ce::inline v3

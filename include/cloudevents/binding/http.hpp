@@ -18,22 +18,22 @@
 #include <cloudevents/result.hpp>
 
 // spec: SYS-HTTP-0001
-namespace ce::inline v2::http {
+namespace ce::inline v3::http {
 
 namespace detail {
 
 inline constexpr std::string_view attribute_prefix = "ce-";
 inline constexpr std::string_view content_type_header = "Content-Type";
 
-using ce::v2::to_bytes;
-using ce::v2::to_text;
-using ce::v2::detail::is_valid_utf8;
-using ce::v2::detail::starts_with_ignoring_case;
-using ce::v2::binding::detail::hex_digit;
-using ce::v2::binding::detail::hex_value;
-using ce::v2::binding::detail::needs_escape;
-using ce::v2::binding::detail::percent_decode;
-using ce::v2::binding::detail::percent_encode;
+using ce::v3::to_bytes;
+using ce::v3::to_text;
+using ce::v3::detail::is_valid_utf8;
+using ce::v3::detail::starts_with_ignoring_case;
+using ce::v3::binding::detail::hex_digit;
+using ce::v3::binding::detail::hex_value;
+using ce::v3::binding::detail::needs_escape;
+using ce::v3::binding::detail::percent_decode;
+using ce::v3::binding::detail::percent_encode;
 
 inline constexpr unsigned char first_printable_ascii = 0x20U;
 inline constexpr unsigned char delete_character = 0x7FU;
@@ -41,9 +41,9 @@ inline constexpr unsigned char delete_character = 0x7FU;
 // spec: SWR-BIND-0004
 template <class Values>
 struct http_traits {
-  static constexpr std::string_view attribute_prefix = ce::v2::http::detail::attribute_prefix;
+  static constexpr std::string_view attribute_prefix = ce::v3::http::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
-      ce::v2::http::detail::content_type_header;
+      ce::v3::http::detail::content_type_header;
   static constexpr bool case_sensitive_names = false;
 
   [[nodiscard]] static auto encode_value(std::string_view text) -> result<std::string> {
@@ -209,4 +209,4 @@ template <json::json_codec Codec>
   return json_format<Codec>::decode_batch(detail::to_text(request.body));
 }
 
-}  // namespace ce::inline v2::http
+}  // namespace ce::inline v3::http

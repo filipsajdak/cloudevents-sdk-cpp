@@ -70,8 +70,8 @@ lefthook install
 - **No exceptions.** A fallible function returns `ce::result<T>`.
 - **No dependencies in `ce::core`** except CTRE. Every regular expression is CTRE; nlohmann/json appears only behind `ce::codec_nlohmann`.
 - **No network I/O.** A binding maps an event to and from a `ce::message`.
-- **Public API lives in `namespace ce::inline v2`**, and `CE_DESCRIBE` is the only public macro.
-  `ce::v1` holds what v0.3.0 published, under `include/cloudevents/v1/`; a declaration there never changes.
+- **Public API lives in `namespace ce::inline v3`**, and `CE_DESCRIBE` is the only public macro.
+  `ce::v2` holds what v0.4.0 published, under `include/cloudevents/v2/`, and `ce::v1` holds what v0.3.0 published, under `include/cloudevents/v1/`; a declaration in either never changes.
 - **Build a value in one braced expression**: a designated initializer for an aggregate, an initializer list for a container. Required members come first with no default member initializer.
 - **Every time quantity is a `std::chrono` type**, intermediates included.
 - **Warnings are errors**: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror`, or `/W4 /WX /permissive-` on MSVC.

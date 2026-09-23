@@ -12,7 +12,7 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-DESC-0001]
-satisfied_by: [code:include/cloudevents/core.hpp]
+satisfied_by: [code:include/cloudevents/attributes.hpp]
 verified_by: [test:test/extensions_test.cpp::extensions-type-recovery]
 owner: filip.sajdak
 version: 1

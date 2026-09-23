@@ -12,10 +12,10 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
-verified_by: [test:test/build_test.cpp::config-v1-immutable, test:test/v1/v1_generation_test.cpp::v1-declarations-survive]
+verified_by: [test:test/build_test.cpp::config-v1-immutable, test:test/v1/v1_generation_test.cpp::v1-declarations-survive, test:test/v2/v2_generation_test.cpp::v2-declarations-survive]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
 When a change breaks the published API, the changed entities shall be declared
-in a new namespace `ce::v2` while the entities in `ce::v1` keep their existing
-declarations.
+in a new version namespace while the entities of every earlier generation keep
+their existing declarations.

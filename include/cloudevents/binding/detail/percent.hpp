@@ -4,10 +4,10 @@
 #include <string>
 #include <string_view>
 
-#include <cloudevents/core.hpp>
+#include <cloudevents/attributes.hpp>
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v2::binding::detail {
+namespace ce::v2::binding::detail {
 
 inline constexpr unsigned char first_printable = 0x21;
 inline constexpr unsigned char last_printable = 0x7E;
@@ -88,4 +88,13 @@ inline constexpr std::size_t escape_length = 3;
   return out;
 }
 
-}  // namespace ce::inline v2::binding::detail
+}  // namespace ce::v2::binding::detail
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3::binding::detail {
+using ce::v2::binding::detail::hex_digit;
+using ce::v2::binding::detail::hex_value;
+using ce::v2::binding::detail::needs_escape;
+using ce::v2::binding::detail::percent_decode;
+using ce::v2::binding::detail::percent_encode;
+}  // namespace ce::inline v3::binding::detail

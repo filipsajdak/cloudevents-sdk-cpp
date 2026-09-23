@@ -166,7 +166,13 @@ inline constexpr unsigned two_octet_padding = 2;
 
 }  // namespace ce::v1
 
-namespace ce::inline v2 {
+namespace ce::v2 {
 using ce::v1::base64_decode;
 using ce::v1::base64_encode;
-}  // namespace ce::inline v2
+}  // namespace ce::v2
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3 {
+using ce::v1::base64_decode;
+using ce::v1::base64_encode;
+}  // namespace ce::inline v3

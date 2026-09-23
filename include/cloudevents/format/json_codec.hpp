@@ -75,6 +75,14 @@ inline constexpr std::string_view batch_content_type = "application/cloudevents-
 
 }  // namespace ce::v1::json
 
-namespace ce::inline v2 {
+namespace ce::v2 {
 namespace json = ce::v1::json;
-}  // namespace ce::inline v2
+}  // namespace ce::v2
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v3::json {
+using ce::v1::json::batch_content_type;
+using ce::v1::json::content_type;
+using ce::v1::json::json_codec;
+using ce::v1::json::kind;
+}  // namespace ce::inline v3::json

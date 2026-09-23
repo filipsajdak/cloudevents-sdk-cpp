@@ -2,6 +2,41 @@
 
 Notable changes per release. Dates are the tag date.
 
+## Unreleased
+
+A third API generation, `ce::v3`, is the inline namespace.
+For now it behaves exactly as `ce::v2` does; the changes CR-0003 asks for land in it next.
+`ce::v2` keeps what v0.4.0 published, so v0.4.0 code has a way to keep compiling.
+
+### Three generations
+
+- **`ce::v3` is the inline namespace**, so `ce::event` now names the v3 class.
+- **`ce::v2` holds the v0.4.0 surface.**
+  The headers that mention `event` or `data_t` are copied under `include/cloudevents/v2/`: `core.hpp`, `format/json_format.hpp`, `format/typed_payload.hpp` and the four binding headers.
+  A v2 declaration does not change; v2 takes defect fixes only.
+- **The attribute types are shared by v2 and v3**: `id`, `source`, `timestamp`, `message`, the literals, the typed extensions and the rest of `attributes.hpp` are declared once, in `ce::v2`, and are one type through `ce::`, `ce::v2::` and `ce::v3::`.
+- **What v0.3.0 already shared stays shared**: `errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam are one type through all three generations.
+- The optional module exports `ce::v3` only.
+
+CR-0003 and ADR-0010 record why: the v0.5.0 event model adds an alternative to `data_t`, and SPEC section 3 rule 4 sends a breaking change to a new generation.
+
+### Staying on v0.4.0 code
+
+`ce::X` is now the v3 entity.
+To keep the v0.4.0 declarations, spell `ce::v2::X` and include the `v2/` copy of each header that has one:
+
+```cpp
+#include <cloudevents/v2/binding/http.hpp>
+
+using namespace ce::v2::literals;
+auto order = ce::v2::event::builder{.id = "A1"_id, .source = "/orders"_source,
+                                    .type = "com.example.placed"_type}.build();
+auto request = ce::v2::http::to_message<ce::v2::codec::nlohmann_codec>(
+    *order, ce::v2::content_mode::binary_mode);
+```
+
+Code that names only shared entities, such as an attribute type or a codec, needs no change.
+
 ## v0.4.0
 
 A second API generation, `ce::v2`, in which an invalid CloudEvent cannot be

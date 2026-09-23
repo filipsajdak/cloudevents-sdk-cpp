@@ -53,3 +53,4 @@ if(CE_CODEC_NLOHMANN)
 endif()
 
 add_subdirectory(v1)
+add_subdirectory(v2)

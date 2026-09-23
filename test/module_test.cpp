@@ -74,26 +74,26 @@ constexpr std::array exported_names{CE_MODULE_EXPORTS(CE_NAME_STRING)};
 /// Names exported from a nested namespace inside the module. Checked for
 /// presence in the file, and their existence is proven by the includes above.
 constexpr std::array nested_exports{
-    "ce::v2::json::json_codec"sv, "ce::v2::json::kind"sv,
-    "ce::v2::http::from_message"sv, "ce::v2::http::to_message"sv,
-    "ce::v2::ext::tracing"sv,       "ce::v2::ext::dataref"sv,
-    "ce::v2::binding::binding_traits"sv,
-    "ce::v2::binding::write_attributes"sv,
-    "ce::v2::binding::read_attributes"sv,
-    "ce::v2::kafka::to_record"sv,
-    "ce::v2::kafka::from_message"sv,
-    "ce::v2::kafka::partitionkey_mapper"sv,
-    "ce::v2::nats::to_payload"sv,
-    "ce::v2::nats::from_payload"sv,
-    "ce::v2::nats::to_message"sv,
-    "ce::v2::nats::from_message"sv,
-    "ce::v2::literals::operator\"\"_dataschema"sv,
-    "ce::v2::literals::operator\"\"_ext"sv,
-    "ce::v2::literals::operator\"\"_id"sv,
-    "ce::v2::literals::operator\"\"_mediatype"sv,
-    "ce::v2::literals::operator\"\"_source"sv,
-    "ce::v2::literals::operator\"\"_subject"sv,
-    "ce::v2::literals::operator\"\"_type"sv,
+    "ce::v3::json::json_codec"sv, "ce::v3::json::kind"sv,
+    "ce::v3::http::from_message"sv, "ce::v3::http::to_message"sv,
+    "ce::v3::ext::tracing"sv,       "ce::v3::ext::dataref"sv,
+    "ce::v3::binding::binding_traits"sv,
+    "ce::v3::binding::write_attributes"sv,
+    "ce::v3::binding::read_attributes"sv,
+    "ce::v3::kafka::to_record"sv,
+    "ce::v3::kafka::from_message"sv,
+    "ce::v3::kafka::partitionkey_mapper"sv,
+    "ce::v3::nats::to_payload"sv,
+    "ce::v3::nats::from_payload"sv,
+    "ce::v3::nats::to_message"sv,
+    "ce::v3::nats::from_message"sv,
+    "ce::v3::literals::operator\"\"_dataschema"sv,
+    "ce::v3::literals::operator\"\"_ext"sv,
+    "ce::v3::literals::operator\"\"_id"sv,
+    "ce::v3::literals::operator\"\"_mediatype"sv,
+    "ce::v3::literals::operator\"\"_source"sv,
+    "ce::v3::literals::operator\"\"_subject"sv,
+    "ce::v3::literals::operator\"\"_type"sv,
 };
 
 [[nodiscard]] auto read_module() -> std::string {
@@ -117,11 +117,12 @@ constexpr std::array nested_exports{
     const std::string relative = std::filesystem::relative(entry.path(), root).generic_string();
     // Any detail/ segment, not only the top-level one: binding/detail/ is just
     // as private, and a header there is not something a module consumer names.
-    // cloudevents/v1/ is the frozen generation, which the module does not export
-    // (ADR-0009): a using-declaration of a v1 name into ce::v1 exports nothing.
+    // cloudevents/v1/ and cloudevents/v2/ are the frozen generations, which the
+    // module does not export (ADR-0009, ADR-0010): a using-declaration of a v1 or
+    // v2 name into ce::v3 exports nothing.
     if (relative.find("/detail/") != std::string::npos ||
         relative.find("cloudevents/codec/") != std::string::npos ||
-        relative.starts_with("cloudevents/v1/")) {
+        relative.starts_with("cloudevents/v1/") || relative.starts_with("cloudevents/v2/")) {
       continue;
     }
     found.push_back(relative);
@@ -180,7 +181,7 @@ const boost::ut::suite<"module-wrapper-optional"> module_wrapper = [] {
     // these names exist; this proves the module actually exports them.
     const std::string source = read_module();
     for (const auto exported : exported_names) {
-      const std::string declaration = "using ce::v2::" + std::string{exported} + ";";
+      const std::string declaration = "using ce::v3::" + std::string{exported} + ";";
       expect(source.find(declaration) != std::string::npos)
           << "the module does not export ce::" << exported;
     }
@@ -199,7 +200,7 @@ const boost::ut::suite<"module-wrapper-optional"> module_wrapper = [] {
     }
     std::size_t pos = 0;
     std::size_t counted = 0;
-    const std::string marker = "using ce::v2::";
+    const std::string marker = "using ce::v3::";
     while ((pos = source.find(marker, pos)) != std::string::npos) {
       const std::size_t start = pos + marker.size();
       const std::size_t end = source.find(';', start);
@@ -207,7 +208,7 @@ const boost::ut::suite<"module-wrapper-optional"> module_wrapper = [] {
         break;
       }
       const std::string symbol = source.substr(start, end - start);
-      // Nested exports are spelled ce::v2::json::x and handled above.
+      // Nested exports are spelled ce::v3::json::x and handled above.
       if (symbol.find("::") == std::string::npos) {
         expect(named.contains(symbol)) << "the module exports ce::" << symbol
                                        << ", which this test does not name";

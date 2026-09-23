@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed 2026-09-23, on CR-0003.
+Accepted 2026-09-23, on CR-0003.
 It applies ADR-0009's layout a second time and extends ADR-0004.
 
 ## Context
@@ -54,10 +54,16 @@ A parsed DOM can occupy many times its text, so the limit bounds what one event 
 
 **Layout, following ADR-0009.**
 `include/cloudevents/` holds v3 and the shared headers.
-`include/cloudevents/v2/` holds the v2 copies of every header whose declarations change, restored from the v0.4.0 tag in `namespace ce::v2`.
-That is every header that mentions `event` or `data_t`, and `format/json_codec.hpp`, whose concept changes.
-The v0.4.0 suites, examples and fuzzers move to `test/v2/`, `examples/v2/` and `fuzz/v2/`, without `// spec:` markers.
-Entities unchanged since v0.4.0 are brought into `ce::inline v3` by using-declarations, as v2 does with v1.
+`include/cloudevents/v2/` holds the v2 copies of every header that mentions `event` or `data_t`, in `namespace ce::v2`: `core.hpp`, `format/json_format.hpp`, `format/typed_payload.hpp` and the four binding headers.
+They are copied at the freeze, which is v0.4.0 plus fixes that kept its declarations.
+
+`core.hpp` is split first, so the attribute types are not copied.
+Everything above `data_t` moves to a shared `attributes.hpp`: `binary`, `uri`, `attribute_value`, `json_text`, the validated attribute types, `spec_version`, the literals and the extension-field traits.
+With it, `detail/timestamp.hpp`, `detail/validated_string.hpp`, `message.hpp`, `extensions.hpp`, `format/describe_json.hpp` and `binding/detail/percent.hpp` become shared: declared in `ce::v2`, brought into `ce::inline v3`.
+So `ce::v2::id` and `ce::v3::id` are one type, and code of both generations exchanges attributes and messages without conversion.
+
+The v3 codec concept is declared in `ce::v3::json` beside the shared `ce::v1::json` entities, so `format/json_codec.hpp` is not copied.
+The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/` and `fuzz/v2/`, without `// spec:` markers.
 
 ## Consequences
 

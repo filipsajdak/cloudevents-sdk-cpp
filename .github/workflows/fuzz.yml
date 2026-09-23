@@ -40,13 +40,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: fuzz_timestamp, seeds: timestamp }
-          - { target: fuzz_base64, seeds: base64 }
-          - { target: fuzz_json_decode, seeds: json }
-          - { target: fuzz_http_message, seeds: http }
-          - { target: fuzz_kafka_message, seeds: kafka }
-          - { target: fuzz_nats_payload, seeds: nats }
-          - { target: fuzz_typed, seeds: typed }
+          - { target: fuzz_timestamp, dir: fuzz, seeds: timestamp }
+          - { target: fuzz_base64, dir: fuzz, seeds: base64 }
+          - { target: fuzz_json_decode, dir: fuzz, seeds: json }
+          - { target: fuzz_http_message, dir: fuzz, seeds: http }
+          - { target: fuzz_kafka_message, dir: fuzz, seeds: kafka }
+          - { target: fuzz_nats_payload, dir: fuzz, seeds: nats }
+          - { target: fuzz_typed, dir: fuzz, seeds: typed }
+          # The ce::v1 decoders parse the same untrusted input, so SWR-SEC-0001
+          # covers them too. They share the seed corpora with the v2 targets.
+          - { target: v1_fuzz_timestamp, dir: fuzz/v1, seeds: timestamp }
+          - { target: v1_fuzz_base64, dir: fuzz/v1, seeds: base64 }
+          - { target: v1_fuzz_json_decode, dir: fuzz/v1, seeds: json }
+          - { target: v1_fuzz_http_message, dir: fuzz/v1, seeds: http }
+          - { target: v1_fuzz_kafka_message, dir: fuzz/v1, seeds: kafka }
+          - { target: v1_fuzz_nats_payload, dir: fuzz/v1, seeds: nats }
+          - { target: v1_fuzz_typed, dir: fuzz/v1, seeds: typed }
     steps:
       - uses: actions/checkout@v4
       - name: Install compiler
@@ -80,7 +89,7 @@ jobs:
         run: |
           set -e
           mkdir -p found
-          ./build/fuzz/${{ matrix.target }} found fuzz/corpus/${{ matrix.seeds }} \
+          ./build/${{ matrix.dir }}/${{ matrix.target }} found fuzz/corpus/${{ matrix.seeds }} \
             -max_total_time="$CE_FUZZ_SECONDS" -timeout=25 -rss_limit_mb=4096 \
             -print_final_stats=1 -artifact_prefix=found/
 
@@ -91,7 +100,7 @@ jobs:
         run: |
           set -e
           mkdir -p merged
-          ./build/fuzz/${{ matrix.target }} -merge=1 merged found fuzz/corpus/${{ matrix.seeds }}
+          ./build/${{ matrix.dir }}/${{ matrix.target }} -merge=1 merged found fuzz/corpus/${{ matrix.seeds }}
           rm -rf found && mv merged found
       - uses: actions/cache/save@v4
         if: success() && fromJSON(env.CE_FUZZ_SECONDS) >= 600

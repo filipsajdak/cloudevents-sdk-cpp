@@ -1178,6 +1178,8 @@ than prose. Its reason is here.
 | `core.hpp`, `tagged_string` (two constructors) | explicit-constructor | see D-CODE-1: the implicit conversion is what makes `ce::uri` usable as an `attribute_value` alternative |
 | `detail/timestamp.hpp`, `fraction_digits(int)` | explicit-constructor | keeps `.fractional_digits = 3` working in a designated initializer; the constructor is `consteval` and refuses a count above nine |
 | `describe.hpp`, `name` constructor and deduction guide | avoid-c-arrays | a string literal's type is a C array, and it is the only form from which `N` can be deduced |
+| `describe.hpp`, `name::value` | avoid-c-arrays | the describe seam is shared with `ce::v1`, which published `char value[N]` in v0.3.0 and keeps that declaration (ADR-0009) |
+| `describe.hpp`, `for_each_field` (both overloads) | missing-std-forward | v0.3.0 published the visitor as `F&&`, which `ce::v1` keeps; it is called once per member, so forwarding it would move from it more than once |
 | `format/base64.hpp`, `base64_character` | pro-bounds-avoid-unchecked-container-access | the mask bounds the index, and a `static_assert` keeps the alphabet exactly as long as the mask allows |
 | `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
 | `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |

@@ -6,11 +6,13 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
-#include <cloudevents/core.hpp>
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v1 {
+namespace ce::v1 {
+
+using binary = std::vector<std::byte>;
 
 namespace detail {
 
@@ -162,4 +164,9 @@ inline constexpr unsigned two_octet_padding = 2;
   return out;
 }
 
-}  // namespace ce::inline v1
+}  // namespace ce::v1
+
+namespace ce::inline v2 {
+using ce::v1::base64_decode;
+using ce::v1::base64_encode;
+}  // namespace ce::inline v2

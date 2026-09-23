@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <iterator>
 #include <string_view>
 #include <tuple>
 #include <vector>
@@ -9,14 +10,14 @@
 
 #include <cloudevents/detail/describe_macro.hpp>
 
-namespace ce::inline v1 {
+namespace ce::v1 {
 template <std::size_t N>
 struct name;
 struct skip;
 struct reflect;
-}  // namespace ce::inline v1
+}  // namespace ce::v1
 
-namespace ce::inline v1::detail {
+namespace ce::v1::detail {
 
 template <class T>
 consteval auto reflection_opted_in() -> bool {
@@ -49,7 +50,7 @@ consteval auto reflected_name() -> std::string_view {
                   std::meta::template_of(annotation_type) == ^^name) {
       constexpr auto renamed = std::meta::extract<typename[:annotation_type:]>(annotation);
       return std::define_static_string(
-          std::string_view{renamed.value.data(), renamed.value.size() - 1});
+          std::string_view{std::data(renamed.value), std::size(renamed.value) - 1});
     }
   }
   return std::define_static_string(std::meta::identifier_of(M));
@@ -67,4 +68,4 @@ consteval auto reflect_describe_fields() {
   }(std::make_index_sequence<reflected_members_of<T>.size()>{});
 }
 
-}  // namespace ce::inline v1::detail
+}  // namespace ce::v1::detail

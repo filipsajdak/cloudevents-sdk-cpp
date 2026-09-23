@@ -12,7 +12,7 @@
 #include <expected>
 #endif
 
-namespace ce::inline v1 {
+namespace ce::v1 {
 
 // spec: SWR-CORE-0001
 enum class errc : std::uint8_t {
@@ -112,4 +112,16 @@ using failure = detail::poly::unexpected<error>;
   }};
 }
 
-}  // namespace ce::inline v1
+}  // namespace ce::v1
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v2 {
+using ce::v1::errc;
+using ce::v1::error;
+using ce::v1::fail;
+using ce::v1::failure;
+using ce::v1::result;
+using ce::v1::static_error;
+using ce::v1::to_string_view;
+using ce::v1::widen;
+}  // namespace ce::inline v2

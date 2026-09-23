@@ -1,79 +1,26 @@
 #pragma once
 
-#include <algorithm>
-#include <array>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
-#include <ranges>
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include <ctre.hpp>
 
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v2 {
+namespace ce::v1 {
 
 enum class offset_form : std::uint8_t {
   utc_designator,
   numeric,
 };
 
-namespace detail {
-
-inline constexpr std::size_t max_fractional_digits = 9;
-
-inline constexpr int decimal_radix = 10;
-
-inline constexpr int last_hour = 23;
-inline constexpr int last_minute = 59;
-inline constexpr int leap_second = 60;
-
-inline constexpr int minutes_per_hour = 60;
-
-[[noreturn]] void this_digit_count_is_more_than_a_nanosecond_instant_can_express();
-
-}  // namespace detail
-
-// spec: SWR-CORE-0030
-class fraction_digits {
- public:
-  constexpr fraction_digits() noexcept = default;
-
-  // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
-  consteval fraction_digits(int count) : count_{static_cast<std::uint8_t>(count)} {
-    if (count < 0 || std::cmp_greater(count, detail::max_fractional_digits)) {
-      detail::this_digit_count_is_more_than_a_nanosecond_instant_can_express();
-    }
-  }
-
-  [[nodiscard]] static auto make(std::size_t count) -> result<fraction_digits> {
-    if (count > detail::max_fractional_digits) {
-      return fail(errc::invalid_attribute_value,
-                  "a nanosecond instant expresses at most nine fractional digits",
-                  std::to_string(count));
-    }
-    fraction_digits out;
-    out.count_ = static_cast<std::uint8_t>(count);
-    return out;
-  }
-
-  [[nodiscard]] constexpr auto count() const noexcept -> std::uint8_t { return count_; }
-
-  friend auto operator==(fraction_digits, fraction_digits) noexcept -> bool = default;
-
- private:
-  std::uint8_t count_ = 0;
-};
-
-// spec: SWR-CORE-0007
 struct timestamp {
   std::chrono::sys_time<std::chrono::nanoseconds> utc;
   std::chrono::minutes offset = {};
   offset_form form = offset_form::utc_designator;
-  fraction_digits fractional_digits = {};
+  std::uint8_t fractional_digits = 0;
 
   friend auto operator==(const timestamp&, const timestamp&) -> bool = default;
 };
@@ -83,28 +30,11 @@ namespace detail {
 inline constexpr auto rfc3339_pattern = ctll::fixed_string{
     R"(^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:([Zz])|([+\-])(\d{2}):(\d{2}))$)"};
 
-namespace rfc3339_group {
-inline constexpr std::size_t year = 1;
-inline constexpr std::size_t month = 2;
-inline constexpr std::size_t day = 3;
-inline constexpr std::size_t hour = 4;
-inline constexpr std::size_t minute = 5;
-inline constexpr std::size_t second = 6;
-inline constexpr std::size_t fraction = 7;
-inline constexpr std::size_t utc_designator = 8;
-inline constexpr std::size_t offset_sign = 9;
-inline constexpr std::size_t offset_hour = 10;
-inline constexpr std::size_t offset_minute = 11;
-}  // namespace rfc3339_group
-
-inline constexpr std::chrono::nanoseconds first_fraction_place =
-    std::chrono::nanoseconds{std::chrono::seconds{1}} / decimal_radix;
-
 template <class Capture>
 [[nodiscard]] constexpr auto to_int(Capture capture) noexcept -> int {
   int value = 0;
   for (const char digit : capture) {
-    value = (value * decimal_radix) + (digit - '0');
+    value = value * 10 + (digit - '0');
   }
   return value;
 }
@@ -117,60 +47,53 @@ template <class Capture>
 
 }  // namespace detail
 
-// spec: SWR-CORE-0008
-// spec: SWR-CORE-0010
-// spec: SWR-CORE-0011
 [[nodiscard]] inline auto parse_timestamp(std::string_view text) -> result<timestamp> {
   const auto match = ctre::match<detail::rfc3339_pattern>(text);
   if (!match) {
     return fail(errc::invalid_timestamp, "not an RFC 3339 date-time", std::string{text});
   }
 
-  namespace group = detail::rfc3339_group;
-  const int year = detail::to_int(match.get<group::year>());
-  const auto month = static_cast<unsigned>(detail::to_int(match.get<group::month>()));
-  const auto day = static_cast<unsigned>(detail::to_int(match.get<group::day>()));
-  const int hour = detail::to_int(match.get<group::hour>());
-  const int minute = detail::to_int(match.get<group::minute>());
-  const int second = detail::to_int(match.get<group::second>());
+  const int year = detail::to_int(match.get<1>());
+  const auto month = static_cast<unsigned>(detail::to_int(match.get<2>()));
+  const auto day = static_cast<unsigned>(detail::to_int(match.get<3>()));
+  const int hour = detail::to_int(match.get<4>());
+  const int minute = detail::to_int(match.get<5>());
+  const int second = detail::to_int(match.get<6>());
 
   if (!detail::is_valid_date(year, month, day)) {
     return fail(errc::invalid_timestamp, "no such calendar date", std::string{text});
   }
-  if (hour > detail::last_hour || minute > detail::last_minute) {
+  if (hour > 23 || minute > 59) {
     return fail(errc::invalid_timestamp, "hour or minute out of range", std::string{text});
   }
-  if (second > detail::leap_second) {
+  if (second > 60) {
     return fail(errc::invalid_timestamp, "second out of range", std::string{text});
   }
 
-  fraction_digits fractional_digits{};
+  std::uint8_t fractional_digits = 0;
   std::chrono::nanoseconds subsecond{0};
-  if (const auto fraction = match.get<group::fraction>(); fraction) {
+  if (const auto fraction = match.get<7>(); fraction) {
     const auto digits = fraction.to_view();
-    auto counted = fraction_digits::make(digits.size());
-    if (!counted) {
-      return fail(counted.error().code, counted.error().detail, std::string{text});
-    }
-    fractional_digits = *counted;
-    auto place = detail::first_fraction_place;
+    fractional_digits = static_cast<std::uint8_t>(digits.size());
+    auto place = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::milliseconds{100});
     for (const char digit : digits) {
       subsecond += place * (digit - '0');
-      place /= detail::decimal_radix;
+      place /= 10;
     }
   }
 
   auto form = offset_form::utc_designator;
   std::chrono::minutes offset{0};
-  if (!match.get<group::utc_designator>()) {
+  if (!match.get<8>()) {
     form = offset_form::numeric;
-    const int offset_hour = detail::to_int(match.get<group::offset_hour>());
-    const int offset_minute = detail::to_int(match.get<group::offset_minute>());
-    if (offset_hour > detail::last_hour || offset_minute > detail::last_minute) {
+    const int offset_hour = detail::to_int(match.get<10>());
+    const int offset_minute = detail::to_int(match.get<11>());
+    if (offset_hour > 23 || offset_minute > 59) {
       return fail(errc::invalid_timestamp, "offset out of range", std::string{text});
     }
     offset = std::chrono::hours{offset_hour} + std::chrono::minutes{offset_minute};
-    if (match.get<group::offset_sign>().to_view() == "-") {
+    if (match.get<9>().to_view() == "-") {
       offset = -offset;
     }
   }
@@ -204,7 +127,6 @@ template <class Capture>
   };
 }
 
-// spec: SWR-CORE-0009
 [[nodiscard]] inline auto to_string(const timestamp& value) -> std::string {
   const auto local = value.utc + value.offset;
   const auto days = std::chrono::floor<std::chrono::days>(local);
@@ -219,17 +141,15 @@ template <class Capture>
                                                                           minutes - seconds);
 
   std::string fraction;
-  if (value.fractional_digits.count() > 0) {
-    std::array<char, detail::max_fractional_digits> rendered{};
-    auto remaining = nanos.count();
-    for (char& digit : rendered | std::views::reverse) {
-      digit = static_cast<char>('0' + (remaining % detail::decimal_radix));
-      remaining /= detail::decimal_radix;
-    }
-    const auto shown = std::min<std::size_t>(value.fractional_digits.count(), rendered.size());
-    fraction.reserve(shown + 1);
+  if (value.fractional_digits > 0) {
+    fraction.reserve(std::size_t{value.fractional_digits} + 1);
     fraction.push_back('.');
-    fraction.append(rendered.data(), shown);
+    auto place =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds{100});
+    for (std::uint8_t i = 0; i < value.fractional_digits; ++i) {
+      fraction.push_back(static_cast<char>('0' + (nanos / place) % 10));
+      place /= 10;
+    }
   }
 
   const auto offset_minutes = value.offset.count();
@@ -244,8 +164,7 @@ template <class Capture>
                      static_cast<int>(ymd.year()), static_cast<unsigned>(ymd.month()),
                      static_cast<unsigned>(ymd.day()), hours.count(), minutes.count(),
                      seconds.count(), fraction, offset_minutes < 0 ? '-' : '+',
-                     offset_magnitude / detail::minutes_per_hour,
-                     offset_magnitude % detail::minutes_per_hour);
+                     offset_magnitude / 60, offset_magnitude % 60);
 }
 
-}  // namespace ce::inline v2
+}  // namespace ce::v1

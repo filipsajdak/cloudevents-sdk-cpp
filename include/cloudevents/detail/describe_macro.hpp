@@ -9,7 +9,7 @@
 /permissive- does not imply it, and the traditional preprocessor miscounts the member list."
 #endif
 
-namespace ce::inline v1::detail {
+namespace ce::v1::detail {
 
 template <class T>
 struct describe_tag {};
@@ -23,7 +23,7 @@ struct field {
 template <class T, class M>
 field(std::string_view, M T::*) -> field<T, M>;
 
-}  // namespace ce::inline v1::detail
+}  // namespace ce::v1::detail
 
 #define CE_DETAIL_CAT(a_, b_) CE_DETAIL_CAT_IMPL(a_, b_)
 #define CE_DETAIL_CAT_IMPL(a_, b_) a_##b_

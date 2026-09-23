@@ -18,7 +18,7 @@
 #include <string_view>
 #include <utility>
 
-namespace ce::inline v1::codec {
+namespace ce::v1::codec {
 
 struct boost_json_codec {
   using value = boost::json::value;
@@ -140,4 +140,8 @@ struct boost_json_codec {
 
 static_assert(json::json_codec<boost_json_codec>);
 
-}  // namespace ce::inline v1::codec
+}  // namespace ce::v1::codec
+
+namespace ce::inline v2 {
+namespace codec = ce::v1::codec;
+}  // namespace ce::inline v2

@@ -4,11 +4,10 @@
 #include <optional>
 #include <string>
 
-#include <cloudevents/core.hpp>
+#include <cloudevents/v1/core.hpp>
 #include <cloudevents/describe.hpp>
 
-// spec: SWR-EXT-0001
-namespace ce::inline v2::ext {
+namespace ce::v1::ext {
 
 struct tracing {
   std::string traceparent;
@@ -55,4 +54,4 @@ CE_DESCRIBE(sampled_rate, sampledrate);
 CE_DESCRIBE(sequence, CE_FIELD(value, "sequence"));
 CE_DESCRIBE(dataref, CE_FIELD(value, "dataref"));
 
-}  // namespace ce::inline v2::ext
+}  // namespace ce::v1::ext

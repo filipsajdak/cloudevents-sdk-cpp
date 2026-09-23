@@ -7,5 +7,5 @@
 int main() {
   // Reading a capability constant is enough to require that the header was found,
   // parsed, and placed its symbols in the expected namespace.
-  return ce::detail::has_exceptions ? 0 : 0;
+  return ce::v1::detail::has_exceptions ? 0 : 0;
 }

@@ -14,7 +14,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/v1/core.hpp]
 verified_by: [test:test/v1/CMakeLists.txt::ce-v1-suites]
 owner: filip.sajdak
 version: 1

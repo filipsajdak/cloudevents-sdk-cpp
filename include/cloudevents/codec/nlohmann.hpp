@@ -13,7 +13,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SWR-JSON-0008
-namespace ce::inline v1::codec {
+namespace ce::v1::codec {
 
 struct nlohmann_codec {
   using value = nlohmann::json;
@@ -133,4 +133,8 @@ struct nlohmann_codec {
 
 static_assert(json::json_codec<nlohmann_codec>);
 
-}  // namespace ce::inline v1::codec
+}  // namespace ce::v1::codec
+
+namespace ce::inline v2 {
+namespace codec = ce::v1::codec;
+}  // namespace ce::inline v2

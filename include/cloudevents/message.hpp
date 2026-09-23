@@ -11,7 +11,7 @@
 #include <cloudevents/core.hpp>
 
 // spec: SYS-MSG-0001
-namespace ce::inline v1 {
+namespace ce::inline v2 {
 
 // spec: SWR-HTTP-0002
 class raw_headers {
@@ -153,4 +153,4 @@ enum class content_mode : std::uint8_t {
   batched,
 };
 
-}  // namespace ce::inline v1
+}  // namespace ce::inline v2

@@ -1122,3 +1122,16 @@ which is several releases older and reports a different set. A gate that
 disagrees with what a contributor sees locally teaches people to ignore it. The
 cost is that a new LLVM release can add findings on its own; when one does, they
 take the same three-way sort, in their own change.
+
+## D-DOCS-1: The guide's code is extracted and run, not copied into an example
+
+`docs/GUIDE.md` is the only user documentation, so a snippet that no longer
+compiles is the documentation lying. The `example_guide` test is generated from
+the guide itself by `cmake/extract_guide_snippets.py`: every `cpp` block is
+compiled, and every `cpp body` block also runs. A `#line` directive points a
+compiler error at the guide's own line.
+
+Keeping the snippets in `examples/` and pasting them into the guide was
+rejected, because nothing would notice the two drifting apart. The cost is a
+Python 3 interpreter wherever the examples are built, which the examples job,
+the sanitizer job and the coverage job already have.

@@ -24,4 +24,19 @@ if(CE_CODEC_NLOHMANN)
   ce_add_example(described_payload
     SOURCES described_payload.cpp
     LIBS ce::codec_nlohmann)
+
+  # Every C++ block in the user guide, compiled and run, so the guide cannot
+  # show an API the headers no longer have. Regenerated whenever the guide is.
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  set(guide_source "${CMAKE_CURRENT_BINARY_DIR}/guide_snippets.cpp")
+  add_custom_command(
+    OUTPUT "${guide_source}"
+    COMMAND Python3::Interpreter "${PROJECT_SOURCE_DIR}/cmake/extract_guide_snippets.py"
+            "${PROJECT_SOURCE_DIR}/docs/GUIDE.md" "${guide_source}"
+    DEPENDS "${PROJECT_SOURCE_DIR}/docs/GUIDE.md"
+            "${PROJECT_SOURCE_DIR}/cmake/extract_guide_snippets.py"
+    COMMENT "Extracting the C++ blocks from docs/GUIDE.md")
+  ce_add_example(guide
+    SOURCES "${guide_source}"
+    LIBS ce::codec_nlohmann ce::binding_http ce::binding_kafka ce::binding_nats)
 endif()

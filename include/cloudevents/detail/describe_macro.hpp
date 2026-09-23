@@ -1,12 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The C++20 `CE_DESCRIBE` backend.
-///
-/// `CE_DESCRIBE` is written at namespace scope, beside the type it describes. It
-/// defines a function found by ADL rather than a specialization, because an
-/// explicit specialization of a `ce::` template would have to sit at global scope.
-
 #include <cstddef>
 #include <string_view>
 #include <tuple>
@@ -18,11 +11,9 @@
 
 namespace ce::inline v1::detail {
 
-/// \brief Ties a type to its description without naming it in a signature.
 template <class T>
 struct describe_tag {};
 
-/// \brief One described member: its wire name and a pointer to it.
 template <class T, class M>
 struct field {
   std::string_view name;
@@ -34,9 +25,6 @@ field(std::string_view, M T::*) -> field<T, M>;
 
 }  // namespace ce::inline v1::detail
 
-// The paren probe needs two indirections. Written as
-// CE_DETAIL_SECOND(CE_DETAIL_PROBE x, 0, ~) it always yields 0, because the
-// arguments are parsed before PROBE is rescanned.
 #define CE_DETAIL_CAT(a_, b_) CE_DETAIL_CAT_IMPL(a_, b_)
 #define CE_DETAIL_CAT_IMPL(a_, b_) a_##b_
 #define CE_DETAIL_SECOND(a_, b_, ...) b_
@@ -45,7 +33,7 @@ field(std::string_view, M T::*) -> field<T, M>;
 #define CE_DETAIL_IS_PAREN(x_) CE_DETAIL_IS_PAREN_IMPL(CE_DETAIL_PROBE x_)
 #define CE_DETAIL_IS_PAREN_IMPL(...) CE_DETAIL_SECOND(__VA_ARGS__, 0, ~)
 
-/// \brief Give a member a wire name that differs from its identifier.
+// spec: SWR-DESC-0005
 #define CE_FIELD(member_, wire_) (member_, wire_)
 
 #define CE_DETAIL_ENTRY(T_, e_) CE_DETAIL_CAT(CE_DETAIL_ENTRY_, CE_DETAIL_IS_PAREN(e_))(T_, e_)
@@ -92,12 +80,10 @@ field(std::string_view, M T::*) -> field<T, M>;
 #define CE_DETAIL_FE_32(T_, e_, ...) CE_DETAIL_ENTRY(T_, e_), CE_DETAIL_FE_31(T_, __VA_ARGS__)
 #define CE_DETAIL_FE(T_, ...) CE_DETAIL_CAT(CE_DETAIL_FE_, CE_DETAIL_NARG(__VA_ARGS__))(T_, __VA_ARGS__)
 
-/// \brief Describe a type's members, at namespace scope beside the type.
-///
-/// Up to 32 members. Use CE_FIELD(member, "wire") to rename one.
-#define CE_DESCRIBE(Type_, ...)                                                      \
+// spec: SWR-DESC-0004
+#define CE_DESCRIBE(Type_, ...)                                                     \
   [[maybe_unused]] inline constexpr auto ce_describe_fields(                          \
-      ::ce::v1::detail::describe_tag<Type_> /*unused*/) noexcept {                     \
+      [[maybe_unused]] ::ce::v1::detail::describe_tag<Type_> ce_tag_) noexcept {        \
     return ::std::tuple{CE_DETAIL_FE(Type_, __VA_ARGS__)};                             \
   }                                                                                    \
   static_assert(true, "CE_DESCRIBE requires a trailing semicolon")

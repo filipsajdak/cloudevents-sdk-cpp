@@ -1,8 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The CloudEvents JSON event format, over any `json_codec`.
-
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -20,17 +17,16 @@
 
 namespace ce::inline v1 {
 
-/// \brief Encodes and decodes events in the JSON format.
+// spec: SYS-JSON-0001
+// spec: SWR-JSON-0010
 template <json::json_codec Codec>
 struct json_format {
   using value = Codec::value;
 
+  // spec: SWR-JSON-0025
   static constexpr std::string_view content_type = json::content_type;
   static constexpr std::string_view batch_content_type = json::batch_content_type;
 
-  // --- encode --------------------------------------------------------------
-
-  /// \brief Build the JSON document for one event.
   [[nodiscard]] static auto to_value(const event& cloud_event) -> result<value> {
     auto root = Codec::make_object();
     Codec::set(root, "specversion", Codec::make_string(spec_version::view()));
@@ -38,8 +34,6 @@ struct json_format {
     Codec::set(root, "source", Codec::make_string(cloud_event.source().view()));
     Codec::set(root, "type", Codec::make_string(cloud_event.type().view()));
 
-    // Bound once rather than called twice: nothing says the second call yields
-    // the engaged optional the first one tested.
     if (const auto& media_type = cloud_event.datacontenttype(); media_type) {
       Codec::set(root, "datacontenttype", Codec::make_string(media_type->view()));
     }
@@ -68,7 +62,6 @@ struct json_format {
     return root;
   }
 
-  /// \brief Serialize one event.
   [[nodiscard]] static auto encode(const event& cloud_event) -> result<std::string> {
     auto document = to_value(cloud_event);
     if (!document) {
@@ -77,7 +70,7 @@ struct json_format {
     return Codec::dump(*document);
   }
 
-  /// \brief Serialize a batch. An empty batch is a valid empty array.
+  // spec: SWR-JSON-0026
   [[nodiscard]] static auto encode_batch(std::span<const event> events) -> result<std::string> {
     auto array = Codec::make_array();
     for (const auto& cloud_event : events) {
@@ -90,9 +83,6 @@ struct json_format {
     return Codec::dump(array);
   }
 
-  // --- decode helpers ------------------------------------------------------
-
-  /// A required member's string value, or a failure naming the member.
   [[nodiscard]] static auto required_text(const value& document, std::string_view name)
       -> result<std::string_view> {
     const auto* member = Codec::find(document, name);
@@ -107,8 +97,6 @@ struct json_format {
     return *text;
   }
 
-  /// An optional member's string value. Absent and null both read as absent
-  /// (JSON format section 2.2).
   [[nodiscard]] static auto optional_text(const value& document, std::string_view name)
       -> result<std::optional<std::string_view>> {
     const auto* member = Codec::find(document, name);
@@ -161,8 +149,6 @@ struct json_format {
     return {};
   }
 
-  /// Every context attribute, each through its own factory, in the order the
-  /// specification lists them.
   [[nodiscard]] static auto read_context_attributes(const value& document,
                                                     event::builder& into) -> result<void> {
     const auto version = required_text(document, "specversion");
@@ -193,9 +179,9 @@ struct json_format {
     return read_time(document, into.rest);
   }
 
-  /// Anything not a context attribute is an extension. JSON has no room for the
-  /// CloudEvents attribute type, so the type is inferred and documented as
-  /// lossy; the typed extension structs recover it.
+  // spec: SWR-JSON-0022
+  // spec: SWR-JSON-0023
+  // spec: SWR-JSON-0032
   [[nodiscard]] static auto read_extensions(const value& document, event::options& into)
       -> result<void> {
     result<void> outcome{};
@@ -203,13 +189,9 @@ struct json_format {
       if (!outcome || reserved_name(name)) {
         return;
       }
-      // JSON format section 2.2: an attribute encoded as null MUST be treated as
-      // unset, and the format's own example carries an "unsetextension": null.
       if (Codec::kind_of(member) == json::kind::null) {
         return;
       }
-      // An unknown member becomes an extension only if its name is one the spec
-      // allows, or decode would return an event the encoder then refuses.
       auto attribute = extension_name::make(name);
       if (!attribute) {
         outcome = fail(attribute.error().code, attribute.error().detail, std::string{name});
@@ -225,13 +207,7 @@ struct json_format {
     return outcome;
   }
 
-  // --- decode --------------------------------------------------------------
-
-  /// \brief Read one event from a JSON document.
-  ///
-  /// The context attributes, then the payload, then the extensions: the order
-  /// decides which problem a document with several is reported for, and the
-  /// version comes first so a document from another version is named as such.
+  // spec: SWR-JSON-0031
   [[nodiscard]] static auto from_value(const value& document) -> result<event> {
     if (Codec::kind_of(document) != json::kind::object) {
       return fail(errc::parse_error, "a CloudEvent must be a JSON object");
@@ -250,7 +226,6 @@ struct json_format {
     return std::move(under_construction).build();
   }
 
-  /// \brief Read one event from JSON text.
   [[nodiscard]] static auto decode(std::string_view text) -> result<event> {
     auto document = Codec::parse(text);
     if (!document) {
@@ -259,7 +234,6 @@ struct json_format {
     return from_value(*document);
   }
 
-  /// \brief Read a batch. `[]` is a valid empty batch.
   [[nodiscard]] static auto decode_batch(std::string_view text) -> result<std::vector<event>> {
     auto document = Codec::parse(text);
     if (!document) {
@@ -290,6 +264,9 @@ struct json_format {
   }
 
  private:
+  // spec: SWR-JSON-0011
+  // spec: SWR-JSON-0013
+  // spec: SWR-JSON-0014
   [[nodiscard]] static auto encode_attribute(const attribute_value& attribute) -> result<value> {
     return std::visit(
         [](const auto& held) -> result<value> {
@@ -305,14 +282,15 @@ struct json_format {
           } else if constexpr (std::is_same_v<held_type, timestamp>) {
             return Codec::make_string(to_string(held));
           } else {
-            // uri and uri_ref are textual on the wire; only the declared type
-            // distinguishes them, and JSON cannot carry it.
             return Codec::make_string(held.view());
           }
         },
         attribute);
   }
 
+  // spec: SWR-JSON-0012
+  // spec: SWR-JSON-0024
+  // spec: SWR-JSON-0035
   [[nodiscard]] static auto decode_attribute(const value& member) -> result<attribute_value> {
     switch (Codec::kind_of(member)) {
       case json::kind::boolean: {
@@ -341,8 +319,6 @@ struct json_format {
         return attribute_value{std::string{*held}};
       }
       case json::kind::floating:
-        // The CloudEvents type system has no floating-point attribute, and
-        // rounding would change the value silently (SPEC section 9, D6).
         return fail(errc::type_mismatch, "the CloudEvents type system has no floating-point type");
       case json::kind::null:
       case json::kind::array:
@@ -352,6 +328,9 @@ struct json_format {
     return fail(errc::type_mismatch, "an extension attribute must be a boolean, integer or string");
   }
 
+  // spec: SWR-JSON-0015
+  // spec: SWR-JSON-0016
+  // spec: SWR-JSON-0017
   [[nodiscard]] static auto encode_data(value& root, const data_t& data) -> result<void> {
     return std::visit(
         [&root](const auto& held) -> result<void> {
@@ -365,9 +344,6 @@ struct json_format {
             Codec::set(root, "data", Codec::make_string(held));
             return {};
           } else {
-            // Pre-serialized JSON is parsed and spliced, so the output is one
-            // well-formed document rather than an escaped blob. This is the only
-            // place the SDK validates a json_text.
             auto parsed = Codec::parse(held.raw);
             if (!parsed) {
               return fail(errc::parse_error, "data is not well-formed JSON", "/data");
@@ -379,6 +355,10 @@ struct json_format {
         data);
   }
 
+  // spec: SWR-JSON-0018
+  // spec: SWR-JSON-0019
+  // spec: SWR-JSON-0020
+  // spec: SWR-JSON-0021
   [[nodiscard]] static auto decode_data(const value& document, event::options& into)
       -> result<void> {
     const auto* data = Codec::find(document, "data");
@@ -406,8 +386,6 @@ struct json_format {
       return {};
     }
 
-    // A JSON string under `data` is the payload itself when the content type says
-    // it is not JSON. Otherwise the member is carried through as JSON.
     const auto& media_type = into.datacontenttype;
     const bool declared_non_json = media_type && !is_json_content_type(media_type->view());
     if (declared_non_json && Codec::kind_of(*data) == json::kind::string) {

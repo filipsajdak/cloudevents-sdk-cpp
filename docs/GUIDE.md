@@ -407,6 +407,16 @@ It talks to a codec: a struct of static functions over some JSON DOM, checked by
 Build with `-DCE_CODECS="nlohmann;rapidjson"` to choose which codec targets exist.
 `bench/` holds the measurements behind the table.
 
+Two things matter if you call a codec directly rather than through `json_format`:
+
+- **RapidJSON:** a pointer returned by `find` is invalidated by a later `set` on the same object, because members sit in one contiguous array.
+  Call `find` again after a `set`.
+  nlohmann's DOM is node-stable, so code that is correct against one codec can be wrong against the other.
+- **Boost.JSON:** it is a compiled library, so your compiler and standard library must match the ones Boost was built with.
+  On macOS, Homebrew's Boost uses libc++, and a GCC build against it compiles and then fails to link.
+
+Any codec may be used from several threads at once on separate documents, but never on one shared value.
+
 ### Writing your own
 
 `examples/custom_codec.cpp` is a complete codec over a DOM the SDK has never seen.

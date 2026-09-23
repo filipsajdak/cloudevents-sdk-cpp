@@ -11,7 +11,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-HTTP-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/message.hpp]
 verified_by: [test:test/http_binding_test.cpp::headers-ordered-multimap]
 owner: filip.sajdak
 version: 1

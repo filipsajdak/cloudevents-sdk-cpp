@@ -771,7 +771,7 @@ array, so a later `set` on the same object may invalidate it. nlohmann's DOM is
 node-stable and does not behave this way, so code that is correct against one is
 wrong against the other. `json_format` never mutates a document it is reading, so
 the SDK cannot observe it - but a caller using the codec directly can, and the
-header says so.
+guide says so.
 
 **Two defects in the prototype, both fixed here.** `kind_of` reported an integer
 above `INT64_MAX` as `kind::floating`, which would make the format layer diagnose
@@ -821,7 +821,7 @@ passed every local test and failed on CI, and the failure was
 This is the Glaze trap from the benchmark, in a second library:
 `glz::generic_json{std::string{...}}` also compiled and yielded an array. Braces
 invite an `initializer_list` overload; parentheses cannot select one. Every value
-constructor in this codec uses parentheses, and the header says why.
+constructor in this codec uses parentheses.
 
 **No FetchContent fallback.** Boost.JSON is a compiled library, unlike every
 other dependency here. An INTERFACE target cannot supply the translation unit it
@@ -834,7 +834,7 @@ A related constraint worth knowing: because it is compiled, the consumer's
 compiler and standard library must match the ones Boost was built with. On macOS
 a Homebrew Boost is built against libc++, so a GCC/libstdc++ build compiles the
 header and then fails to link on mangling differences. That is an ABI mismatch,
-not a defect, and the header says so.
+not a defect, and the guide says so.
 
 ## D-BUILD-3: A codec header may carry a conditional that only refuses
 
@@ -1135,3 +1135,49 @@ Keeping the snippets in `examples/` and pasting them into the guide was
 rejected, because nothing would notice the two drifting apart. The cost is a
 Python 3 interpreter wherever the examples are built, which the examples job,
 the sanitizer job and the coverage job already have.
+
+## D-CODE-1: Why the header code is shaped the way it is
+
+The public headers carry no prose: only `// spec:` markers, `// TODO(#NN):`
+markers, NOLINT directives and the namespace closers clang-format maintains.
+The caller-facing contract is in `docs/GUIDE.md`. The reasons below were
+comments in the headers and are recorded nowhere else. Each is a shape someone
+tidying the code would plausibly undo.
+
+| where | the shape | why |
+|---|---|---|
+| `core.hpp`, `detail::utf8` | payload masks are `std::uint32_t` | two `unsigned char` operands promote to `int`, so the code point would be assembled in signed arithmetic |
+| `core.hpp`, `tagged_string` | implicit constructors from `std::string` and `const char*` | an exact `std::string` still selects the `std::string` alternative of `attribute_value`, because an exact match beats a user-defined conversion |
+| `core.hpp`, `event::get` | the struct is filled field by field | the fields are reached through the describe seam, so no designated initializer can name them; the same holds in `from_json_value` |
+| `detail/validated_string.hpp` | `owned_` empty means the text is borrowed | sound only because every policy refuses the empty string, so an owning instance never holds one |
+| `detail/validated_string.hpp`, `detail/timestamp.hpp` | a bad literal calls a declared, undefined function | calling it in a constant expression is the error and its name is the message; a `throw` would break the no-exceptions preset |
+| `detail/timestamp.hpp`, `parse_timestamp` | the range is checked in seconds, with one second of headroom | the overflow is silent once the value is widened to nanoseconds, and the headroom keeps the sub-second part from tipping it over |
+| `detail/timestamp.hpp`, `parse_timestamp` | `fraction_digits::make` is called although the grammar admits at most nine digits | the bound belongs to the type, so a change to the pattern is reported rather than truncated |
+| `detail/config.hpp` | reflection needs `__cpp_impl_reflection`, not `__has_include(<meta>)` | `<meta>` and `__cpp_expansion_statements` both exist at plain `-std=c++2c`, where reflection is off |
+| `result.hpp`, `widen` | a free function, not a converting constructor | declaring any constructor on `error` would stop it being an aggregate, and every call site builds one with a designated initializer |
+| `binding/detail/percent.hpp`, `percent_decode` | the byte is assembled unsigned | `hex_value` returns `int` to report "not a hex digit" as -1, and shifting a signed value into a byte's high bit is implementation-defined past `CHAR_MAX` |
+| `binding/common.hpp`, `content_type_policy` | `content_type_is_attribute` is detected, not required | a traits type written before the flag existed still satisfies `binding_traits` and keeps its meaning |
+| `binding/http.hpp`, `http::detail` | helpers are using-declarations, not wrappers | a using-declaration keeps `constexpr`, which the suites' `static_assert(ce::http::detail::needs_escape(...))` depends on |
+| `binding/http.hpp`, `binding/kafka.hpp`, `detect_content_mode` | the batch prefix is tested first | `application/cloudevents-batch+json` also starts with `application/cloudevents`; tested second, a batch reaches the format layer and is reported as a parse error instead of a mode error |
+| `binding/kafka.hpp`, `record` | the key sits beside the message rather than in it | `message` is shared by every binding and its shape is pinned by `SWR-HTTP-0001` |
+| `format/json_format.hpp`, `from_value` | context attributes, then the payload, then the extensions, with `specversion` first | the order decides which problem a document with several is reported for, and a document from another version is named as such |
+| `codec/nlohmann.hpp`, `as_int` | `is_number_unsigned` is tested before `is_number_integer` | the latter is also true for an unsigned value, which would make the range check dead code (D-JSON-3) |
+| `codec/rapidjson.hpp`, `chars_of` | an empty view's pointer is replaced by `""` | RapidJSON asserts a non-null pointer, and the assertion is compiled out of a release build |
+| `detail/describe_reflection.hpp` | a wire name is interned with `define_static_string` | an extracted annotation is a prvalue whose array a `string_view` would outlive |
+
+## D-TIDY-3: Why each NOLINT is there
+
+A NOLINT stays in the header, because it is an instruction to the tool rather
+than prose. Its reason is here.
+
+| where | check suppressed | why |
+|---|---|---|
+| `detail/validated_string.hpp`, `literal(const char*)` | explicit-constructor | the implicit conversion from a literal is the literal path; the constructor is `consteval`, so it cannot accept anything it has not checked |
+| `detail/validated_string.hpp`, `validated_string(literal)` | explicit-constructor | the only implicit entry point, reachable only from a value the compiler already accepted |
+| `detail/expected_polyfill.hpp`, `expected(T)` and `expected(unexpected<E>)` | explicit-constructor | implicit, as `std::expected`'s are; `ce::fail()` converts into any `result<T>` through them |
+| `core.hpp`, `tagged_string` (two constructors) | explicit-constructor | see D-CODE-1: the implicit conversion is what makes `ce::uri` usable as an `attribute_value` alternative |
+| `detail/timestamp.hpp`, `fraction_digits(int)` | explicit-constructor | keeps `.fractional_digits = 3` working in a designated initializer; the constructor is `consteval` and refuses a count above nine |
+| `describe.hpp`, `name` constructor and deduction guide | avoid-c-arrays | a string literal's type is a C array, and it is the only form from which `N` can be deduced |
+| `format/base64.hpp`, `base64_character` | pro-bounds-avoid-unchecked-container-access | the mask bounds the index, and a `static_assert` keeps the alphabet exactly as long as the mask allows |
+| `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
+| `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |

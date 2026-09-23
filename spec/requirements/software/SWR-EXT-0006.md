@@ -11,7 +11,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp]
 verified_by: [test:test/typed_payload_test.cpp::typed-payload-layering]
 owner: filip.sajdak
 version: 1

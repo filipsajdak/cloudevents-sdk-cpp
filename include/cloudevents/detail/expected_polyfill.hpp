@@ -1,12 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief A stand-in for std::expected implementing exactly the subset ADR-0002
-/// permits, so building against it is what enforces that subset.
-///
-/// `value()` and the monadic operations are absent on purpose: `value()` throws,
-/// which -fno-exceptions forbids.
-
 #include <cstdlib>
 #include <memory>
 #include <type_traits>
@@ -14,13 +7,7 @@
 
 namespace ce::inline v1::detail::poly {
 
-/// \brief Reading the alternative an expected does not hold.
-///
-/// Not constexpr, deliberately: a constant-evaluated wrong read becomes a
-/// compile error naming this function. At run time it aborts rather than
-/// returning a value the caller would go on to believe. std::expected leaves the
-/// same read undefined, so the polyfill is the stricter of the two, and the
-/// C++20 floor preset is where a mistake surfaces.
+// spec: SWR-ADOPT-0003
 [[noreturn]] inline void read_of_the_alternative_an_expected_does_not_hold() { std::abort(); }
 
 constexpr void require(bool holds) noexcept {
@@ -29,7 +16,6 @@ constexpr void require(bool holds) noexcept {
   }
 }
 
-/// \brief The error carrier, mirroring std::unexpected's role.
 template <class E>
 class unexpected {
  public:
@@ -46,11 +32,8 @@ class unexpected {
 template <class E>
 unexpected(E) -> unexpected<E>;
 
-/// \brief Holds either a value or an error.
-///
-/// `operator*`, `operator->` and `error()` have preconditions rather than checks
-/// and never throw. Calling one on the wrong alternative is undefined, as for
-/// std::expected.
+// spec: SWR-CORE-0003
+// spec: SWR-BUILD-0004
 template <class T, class E>
 class expected {
  public:
@@ -61,11 +44,9 @@ class expected {
     requires std::is_default_constructible_v<T>
       : has_value_(true), value_() {}
 
-  // Implicit by design, as std::expected is.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   constexpr expected(T value) : has_value_(true), value_(std::move(value)) {}
 
-  // Implicit by design: ce::fail() converts into any result<T>.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   constexpr expected(unexpected<E> error) : has_value_(false), error_(std::move(error).error()) {}
 
@@ -171,14 +152,6 @@ class expected {
   };
 };
 
-/// \brief Success carries nothing, so there is no operator*.
-///
-/// The error lives in a union, as it does in the primary template above. An
-/// earlier version held a default-constructed `E` unconditionally, which made
-/// `error()` on a successful result return `errc{0}` - a code with no
-/// enumerator, printing as "unknown" - where std::expected leaves that read
-/// undefined. A misread therefore behaved differently depending on which backend
-/// the build selected, which is the one thing the polyfill must never do.
 template <class E>
 class expected<void, E> {
  public:
@@ -187,7 +160,6 @@ class expected<void, E> {
 
   constexpr expected() noexcept : has_value_(true), empty_() {}
 
-  // Implicit by design: ce::fail() converts into any result<T>.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   constexpr expected(unexpected<E> error) : has_value_(false), error_(std::move(error).error()) {}
 

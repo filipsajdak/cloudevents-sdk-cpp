@@ -1,14 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief Percent-encoding, for the bindings whose field values need it.
-///
-/// HTTP field values are a restricted ASCII grammar, so a header value has to be
-/// escaped. Kafka record headers, AMQP application-properties and MQTT user
-/// properties are UTF-8 strings or opaque bytes and do not. This header is
-/// therefore included by the HTTP binding and not by the others, rather than
-/// living somewhere every binding would drag it in from.
-
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -18,27 +9,17 @@
 
 namespace ce::inline v1::binding::detail {
 
-/// The printable ASCII range the binding specification names, exclusive of
-/// space at its lower end: U+0021 through U+007E.
 inline constexpr unsigned char first_printable = 0x21;
 inline constexpr unsigned char last_printable = 0x7E;
 
-/// A byte splits into two hex digits of four bits each.
 inline constexpr unsigned hex_shift = 4U;
 inline constexpr unsigned hex_mask = 0x0FU;
 inline constexpr unsigned hex_radix = 10U;
 
-/// Not a hex digit. Negative so it cannot be mistaken for a value.
 inline constexpr int not_a_hex_digit = -1;
 
-/// An escape is the percent sign and the two hex digits of one byte.
 inline constexpr std::size_t escape_length = 3;
 
-/// \brief True when a byte must be percent-encoded in a header value.
-///
-/// The binding requires escaping anything outside printable ASCII, plus space,
-/// double quote and percent. Space is excluded by the printable-range test, and
-/// percent has to be escaped or decoding could not tell an escape from a literal.
 [[nodiscard]] constexpr auto needs_escape(unsigned char byte) noexcept -> bool {
   return byte < first_printable || byte > last_printable || byte == '"' || byte == '%';
 }
@@ -60,7 +41,6 @@ inline constexpr std::size_t escape_length = 3;
   return not_a_hex_digit;
 }
 
-/// \brief Percent-encode a header value, treating it as UTF-8 bytes.
 [[nodiscard]] inline auto percent_encode(std::string_view text) -> std::string {
   std::string out;
   out.reserve(text.size());
@@ -77,10 +57,6 @@ inline constexpr std::size_t escape_length = 3;
   return out;
 }
 
-/// \brief Percent-decode a header value.
-///
-/// Any octet may be escaped, because a sender is free to escape more than the
-/// minimum. The result must still be well-formed UTF-8.
 [[nodiscard]] inline auto percent_decode(std::string_view text) -> result<std::string> {
   const std::string_view whole = text;
   std::string out;
@@ -100,13 +76,6 @@ inline constexpr std::size_t escape_length = 3;
     if (high < 0 || low < 0) {
       return fail(errc::parse_error, "percent escape is not hexadecimal", std::string{whole});
     }
-    // Assembled unsigned. hex_value returns int because it reports "not a hex
-    // digit" as -1, and shifting a signed value into the high bit of a byte is
-    // implementation-defined once the result passes CHAR_MAX. Every compiler
-    // this is built with does the obvious thing, which is why it has never
-    // produced a wrong byte - but percent_decode reads from an untrusted peer,
-    // and the rest of it checks lengths, escapes and encoding precisely because
-    // of that.
     const auto byte =
         static_cast<unsigned>(high) << hex_shift | static_cast<unsigned>(low);
     out.push_back(static_cast<char>(static_cast<unsigned char>(byte)));

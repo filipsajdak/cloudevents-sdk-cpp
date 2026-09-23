@@ -1,11 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The C++26 static reflection backend.
-///
-/// Produces the same `field{name, ptr}` tuple the macro backend does, so nothing
-/// downstream can tell which one described a type.
-
 #include <cstddef>
 #include <string_view>
 #include <tuple>
@@ -24,16 +18,12 @@ struct reflect;
 
 namespace ce::inline v1::detail {
 
-/// \brief True when `T` carries `[[=ce::reflect]]`.
-///
-/// Reflection describes only types that ask for it. Adopting every aggregate
-/// would make `described<T>` depend on a compiler flag (ADR-0003).
 template <class T>
 consteval auto reflection_opted_in() -> bool {
   return !std::meta::annotations_of_with_type(^^T, ^^reflect).empty();
 }
 
-/// \brief The public, non-skipped members of `T`, in declaration order.
+// spec: SWR-DESC-0007
 consteval auto reflected_members(std::meta::info type) -> std::vector<std::meta::info> {
   std::vector<std::meta::info> kept;
   for (const std::meta::info member :
@@ -49,11 +39,6 @@ consteval auto reflected_members(std::meta::info type) -> std::vector<std::meta:
   return kept;
 }
 
-/// \brief A member's wire name: its `[[=ce::name("x")]]` if it has one, else its
-/// identifier.
-///
-/// The result is interned with `define_static_string`, because extracting an
-/// annotation yields a prvalue whose array a `string_view` would outlive.
 template <std::meta::info M>
 consteval auto reflected_name() -> std::string_view {
   template for (constexpr std::meta::info annotation :
@@ -73,7 +58,7 @@ consteval auto reflected_name() -> std::string_view {
 template <class T>
 constexpr auto reflected_members_of = std::define_static_array(reflected_members(^^T));
 
-/// \brief Build the descriptor tuple for `T`.
+// spec: SWR-DESC-0006
 template <class T>
 consteval auto reflect_describe_fields() {
   return [&]<std::size_t... I>(std::index_sequence<I...>) {

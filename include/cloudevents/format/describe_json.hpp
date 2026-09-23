@@ -1,8 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief Described structs to and from JSON, over any `json_codec`.
-
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -68,7 +65,6 @@ template<json::json_codec Codec, class F>
                                    std::string_view where,
                                    F& out) -> result<void>;
 
-/// A JSON array into a std::vector field, element by element.
 template<json::json_codec Codec, class F>
 [[nodiscard]] auto array_from_json(const typename Codec::value& held,
                                    std::string_view where,
@@ -92,7 +88,6 @@ template<json::json_codec Codec, class F>
   return outcome;
 }
 
-/// A JSON object into a std::map field, member by member.
 template<json::json_codec Codec, class F>
 [[nodiscard]] auto object_from_json(const typename Codec::value& held,
                                     std::string_view where,
@@ -116,7 +111,6 @@ template<json::json_codec Codec, class F>
   return outcome;
 }
 
-/// A JSON scalar into a bool, string, double or integer field.
 template<json::json_codec Codec, class F>
 [[nodiscard]] auto scalar_from_json(const typename Codec::value& held,
                                     std::string_view where,
@@ -147,8 +141,6 @@ template<json::json_codec Codec, class F>
     if (!read) {
       return fail(errc::type_mismatch, "expected a JSON integer", std::string{where});
     }
-    // A narrower field must not take a value it cannot hold: silently wrapping
-    // would make the decoded struct disagree with the document.
     if (*read < static_cast<std::int64_t>(std::numeric_limits<F>::min()) ||
         *read > static_cast<std::int64_t>(std::numeric_limits<F>::max())) {
       return fail(
@@ -185,7 +177,6 @@ template<json::json_codec Codec, class F>
 
 }  // namespace detail
 
-/// \brief Build the JSON document for a described struct.
 template<json::json_codec Codec, described T>
 [[nodiscard]] auto to_json_value(const T& held) -> Codec::value {
   static_assert(members_supported<T>(),
@@ -199,10 +190,6 @@ template<json::json_codec Codec, described T>
   return object;
 }
 
-/// \brief Read a described struct out of a JSON document.
-///
-/// A member that is absent leaves the field at its default, so an optional field
-/// need not be written; a member that is present must match the declared type.
 template<json::json_codec Codec, described T>
 [[nodiscard]] auto from_json_value(const typename Codec::value& document) -> result<T> {
   static_assert(members_supported<T>(),
@@ -213,8 +200,6 @@ template<json::json_codec Codec, described T>
     return fail(errc::type_mismatch, "a described type decodes from a JSON object");
   }
 
-  // Filled field by field because the fields are reached generically; a
-  // designated initializer cannot name what only the describe seam knows.
   T out{};
   result<void> field_error{};
 

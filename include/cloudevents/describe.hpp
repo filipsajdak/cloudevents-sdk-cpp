@@ -1,9 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief One field-enumeration interface over user structs, served by either
-/// backend. Consumers never branch on which.
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -23,20 +19,16 @@
 #include <cloudevents/detail/describe_reflection.hpp>
 #endif
 
+// spec: SYS-DESC-0001
 namespace ce::inline v1 {
 
-/// \brief Which backend described a type. Queryable so a test can pin it.
+// spec: SWR-DESC-0011
 enum class describe_backend : std::uint8_t { macro, reflection };
 
-/// \brief Annotation giving a member a wire name, for the reflection backend.
 template <std::size_t N>
 struct name {
-  // A std::string_view is not a structural type, so it cannot be an annotation.
-  // std::array is, and it copies whole rather than element by element.
   std::array<char, N> value{};
 
-  // The parameter stays a reference to a C array: that is the type of a string
-  // literal, and the only form from which N can be deduced.
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
   consteval explicit(false) name(const char (&text)[N]) : value{std::to_array(text)} {}
 };
@@ -45,14 +37,8 @@ template <std::size_t N>
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
 name(const char (&)[N]) -> name<N>;
 
-/// \brief Annotation excluding a member from the description.
 struct skip {};
 
-/// \brief Annotation opting a type into the reflection backend.
-///
-/// Reflection never adopts a type on its own. Without this, enabling
-/// `-freflection` would make `described<T>` newly true for every aggregate,
-/// silently changing serialization for types nobody described (ADR-0003).
 struct reflect {};
 
 namespace detail {
@@ -68,8 +54,7 @@ template <class T>
 concept reflection_described = false;
 #endif
 
-/// The one backend-varying function. The macro is tested first, so a type
-/// carrying CE_DESCRIBE keeps its description when reflection is switched on.
+// spec: SWR-DESC-0008
 template <class T>
 [[nodiscard]] constexpr auto descriptor_of() {
   if constexpr (macro_described<T>) {
@@ -83,6 +68,7 @@ template <class T>
   }
 }
 
+// spec: SWR-DESC-0009
 template <class M>
 struct supported_field_type : std::false_type {};
 
@@ -109,24 +95,22 @@ concept supported_field = supported_field_type<std::remove_cvref_t<M>>::value;
 
 }  // namespace detail
 
-/// \brief True when a type carries a field description.
+// spec: SWR-DESC-0001
 template <class T>
 concept described =
     detail::macro_described<std::remove_cvref_t<T>> ||
     detail::reflection_described<std::remove_cvref_t<T>>;
 
-/// \brief Which backend describes `T`.
 template <described T>
 inline constexpr describe_backend backend_of =
     detail::macro_described<std::remove_cvref_t<T>> ? describe_backend::macro
                                                     : describe_backend::reflection;
 
-/// \brief How many members `T` describes.
+// spec: SWR-DESC-0003
 template <described T>
 inline constexpr std::size_t field_count =
     std::tuple_size_v<decltype(detail::descriptor_of<std::remove_cvref_t<T>>())>;
 
-/// \brief The wire names of `T`'s members, in declaration order.
 template <described T>
 [[nodiscard]] constexpr auto field_names() -> std::array<std::string_view, field_count<T>> {
   return std::apply(
@@ -136,7 +120,7 @@ template <described T>
       detail::descriptor_of<std::remove_cvref_t<T>>());
 }
 
-/// \brief Call `visit(wire_name, member)` for each member, in declaration order.
+// spec: SWR-DESC-0002
 template <described T, class F>
 constexpr void for_each_field(T& object, const F& visit) {
   std::apply(
@@ -146,7 +130,6 @@ constexpr void for_each_field(T& object, const F& visit) {
       detail::descriptor_of<std::remove_cvref_t<T>>());
 }
 
-/// \brief Call `visit(wire_name, member)` for each member of a const object.
 template <described T, class F>
 constexpr void for_each_field(const T& object, const F& visit) {
   std::apply(
@@ -156,10 +139,7 @@ constexpr void for_each_field(const T& object, const F& visit) {
       detail::descriptor_of<std::remove_cvref_t<T>>());
 }
 
-/// \brief True when every described member of `T` has a mappable type.
-///
-/// Reported through a `static_assert` at the point of use, so the diagnostic
-/// names the offending struct rather than a template deep in the format layer.
+// spec: SWR-DESC-0010
 template <described T>
 [[nodiscard]] consteval auto members_supported() -> bool {
   bool supported = true;

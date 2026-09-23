@@ -18,6 +18,12 @@ This gate closes that hole in both directions:
   requirement's `verified_by`. Unlisted is an ERROR. This is the direction that
   actually rots: a test gets written, the requirement is never updated, and the
   traceability matrix quietly under-reports coverage.
+- A `// spec: <UID>` marker in a public header is evidence for `satisfied_by`, not
+  `verified_by`, so it is checked separately and in both directions: the
+  requirement must list `code:<that header>`, and a requirement listing a header
+  must be marked somewhere in it. Either gap is an ERROR. The markers are the
+  only comments the headers carry, so this is what keeps them from decaying into
+  decoration.
 
 Test identity is the boost-ext/ut SUITE name, the string literal in
 `boost::ut::suite<"suite name">`. Individual `"case"_test` names inside a suite are
@@ -42,6 +48,11 @@ TEST_DIRS = [REPO_ROOT / "test", REPO_ROOT / "fuzz", REPO_ROOT / "examples"]
 SKIP_DIR_PARTS = {"_build", "build", ".venv", "venv", "_deps", "node_modules", ".git"}
 
 CPP_SUFFIXES = {".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".h", ".inl"}
+
+# The public headers, whose markers name the requirement an entity implements.
+IMPLEMENTATION_DIR = REPO_ROOT / "include"
+IMPLEMENTATION_SUFFIXES = {".hpp", ".cppm"}
+IMPLEMENTATION_PREFIX = "code:include/"
 
 UID_RE = r"(?:STK|SYS|SWR)-[A-Z0-9]+-[0-9]{4}"
 # Mirrors the `test_marker` form used by the other Scudo repositories.
@@ -199,6 +210,43 @@ def check_reverse(reqs, ut_index) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def check_implementation_markers(reqs) -> list[str]:
+    """Header markers and `satisfied_by` must name each other."""
+    by_uid = {req.uid: req for req in reqs}
+    marked: dict[str, set[str]] = {}
+    errors: list[str] = []
+
+    for path in _walk(IMPLEMENTATION_DIR, IMPLEMENTATION_SUFFIXES):
+        rel = str(path.relative_to(REPO_ROOT))
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for line_no, line in enumerate(lines, start=1):
+            for uid in MARKER_RE.findall(line):
+                if uid not in by_uid:
+                    errors.append(f"{rel}:{line_no}: marker cites unknown requirement '{uid}'")
+                    continue
+                marked.setdefault(rel, set()).add(uid)
+                if f"code:{rel}" not in (by_uid[uid].meta.get("satisfied_by") or []):
+                    errors.append(
+                        f"{rel}:{line_no}: marker cites {uid}, but {uid} does not list "
+                        f"'code:{rel}' in satisfied_by"
+                    )
+
+    for req in reqs:
+        if req.meta.get("status") == "obsolete":
+            continue
+        for ref in req.meta.get("satisfied_by") or []:
+            if not ref.startswith(IMPLEMENTATION_PREFIX):
+                continue
+            header = ref.partition(":")[2]
+            if req.uid not in marked.get(header, set()):
+                errors.append(
+                    f"{req.path.relative_to(REPO_ROOT)}: satisfied_by '{ref}', but {header} "
+                    f"carries no '// spec: {req.uid}' marker"
+                )
+
+    return errors
+
+
 def main() -> int:
     try:
         reqs = reqlib.load_requirements()
@@ -210,8 +258,9 @@ def main() -> int:
 
     fwd_errors, fwd_warnings = check_forward(reqs, ut_index)
     rev_errors, rev_warnings = check_reverse(reqs, ut_index)
+    impl_errors = check_implementation_markers(reqs)
 
-    errors = fwd_errors + rev_errors
+    errors = fwd_errors + rev_errors + impl_errors
     warnings = fwd_warnings + rev_warnings
 
     if warnings:

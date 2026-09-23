@@ -1,10 +1,9 @@
 # cloudevents-cpp
 
-A C++20 implementation of [CloudEvents v1.0.2](https://github.com/cloudevents/spec):
-the core event model, the JSON event format and the HTTP protocol binding.
+A header-only C++20 SDK for [CloudEvents v1.0.2](https://github.com/cloudevents/spec): the event model, the JSON event format, and the HTTP, Kafka and NATS bindings.
 
-Header-only, no exceptions, and no HTTP or JSON library of its own. You supply
-the JSON codec; the SDK never picks one for you.
+It throws no exceptions, performs no network I/O and brings no JSON library of its own.
+You choose the codec.
 
 ```cpp
 #include <cloudevents/binding/http.hpp>
@@ -27,28 +26,16 @@ const ce::event order{
 auto request = ce::http::to_message<codec>(order, ce::content_mode::binary_mode);
 ```
 
-Each attribute is a type that refuses what CloudEvents forbids, and a literal is
-checked when the program compiles: `""_id` does not build. So an invalid event
-cannot be written down, and there is no validation step to remember before
-sending one. Text that arrives at run time goes through `ce::id::make(text)` and
-its siblings, which return a result.
+Each attribute is a type that refuses what CloudEvents forbids, and a literal is checked at compile time: `""_id` does not build.
+So an invalid event cannot be written down, and there is no validation step to forget.
 
 ## What you get
 
-- **Three protocol bindings.** HTTP, Kafka and NATS, in both directions, over a
-  transport-neutral `ce::message`. The SDK performs no network I/O and names no
-  type from any client library: moving a message onto the wire is yours.
-- **The three content modes.** Binary, structured and batched, where the binding
-  defines them. Kafka has no batch mode and NATS is structured-only, and the SDK
-  refuses what the transport does not have rather than inventing it.
-- **Typed extensions.** The five documented CloudEvents extensions as structs.
-  `event.get<ce::ext::tracing>()` returns a struct, and the declared field type
-  is restored even when the wire form threw it away - which HTTP binary mode
-  always does.
-- **Typed payloads.** Describe your own struct once and carry it as the payload:
-  `set_data<order>(event, value)` and `data_as<order>(event)`.
-- **Your JSON library.** `ce::json::json_codec` is a concept over a DOM. An
-  nlohmann codec ships in the box; anything else is about eighty lines.
+- **Three bindings**: HTTP, Kafka and NATS, in both directions, over a transport-neutral `ce::message`.
+- **Every content mode the binding defines**: binary, structured and batched. The SDK refuses a mode the transport does not have.
+- **Typed extensions**: the five documented extensions as structs, with the declared type restored after the wire loses it.
+- **Typed payloads**: describe a struct once and carry it as the payload.
+- **Your JSON library**: a codec is a concept over a DOM. nlohmann, RapidJSON and Boost.JSON codecs ship in the box.
 
 ## Requirements
 
@@ -60,15 +47,8 @@ C++20, and a standard library with `std::format`:
 | libc++ | 17 |
 | MSVC STL | 19.29 |
 
-The compiler version is a shorthand for the library version, and the library is
-the real constraint. `detail/config.hpp` stops the build with a named `#error`
-when the library is too old, so the diagnosis never depends on reading a table.
-
-libc++ 17 and 18 implement `std::format` without defining `__cpp_lib_format`,
-so the SDK carves them out by version. See `D-CI-1` in `docs/DECISIONS.md`.
-
-Tested on GCC 13, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17,
-AppleClang, and MSVC 19.
+Tested on GCC 13, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17, AppleClang and MSVC 19.
+`detail/config.hpp` stops the build with a named `#error` on an older library.
 
 ## Installing
 
@@ -77,153 +57,23 @@ cmake -S . -B build
 cmake --build build --target install
 ```
 
-Then, from your project:
-
 ```cmake
 find_package(cloudevents REQUIRED)
-target_link_libraries(app PRIVATE ce::core ce::format_json ce::binding_http)
+target_link_libraries(app PRIVATE ce::core ce::format_json ce::codec_nlohmann ce::binding_http)
 ```
 
-Four targets, and the dependency direction only goes downward:
+`ce::core` depends on nothing but CTRE.
 
-| target | what it is | depends on |
-|---|---|---|
-| `ce::core` | the event model, validation, timestamps | CTRE, nothing else |
-| `ce::format_json` | the JSON event format, over any codec | `ce::core` |
-| `ce::binding_http` | the HTTP protocol binding | `ce::core` |
-| `ce::binding_kafka` | the Kafka protocol binding | `ce::core` |
-| `ce::binding_nats` | the NATS protocol binding | `ce::core` |
-| `ce::codec_nlohmann` | the nlohmann codec, the default | `ce::core`, nlohmann |
-| `ce::codec_rapidjson` | the RapidJSON codec, opt in with `-DCE_CODECS=` | `ce::core`, RapidJSON |
-| `ce::codec_boost_json` | the Boost.JSON codec, opt in; needs exceptions | `ce::core`, Boost.JSON |
+## Documentation
 
-`ce::core` depends on no third-party library except CTRE, and a test in
-`test/consumer/` is built against the installed package to keep it that way.
+- [docs/GUIDE.md](docs/GUIDE.md) - the user guide: every feature, with examples that are compiled and run in CI.
+- [examples/](examples/) - four complete programs: produce, consume, a custom codec and a described payload.
+- [docs/README.md](docs/README.md) - which of the other documents to read.
 
-## Using your own JSON library
+## Contributing and security
 
-The format layer names only `Codec::` statics, so a codec is a struct of static
-functions over your DOM. `examples/custom_codec.cpp` is a complete one.
-
-```cpp
-static_assert(ce::json::json_codec<my_codec>);
-using format = ce::json_format<my_codec>;
-```
-
-The concept is what reports a missing operation, naming it, rather than failing
-inside a template.
-
-### Which codec
-
-Three ship in the box. `bench/` measures them over CloudEvents-sized workloads;
-these are its findings, not a recommendation to take on trust.
-
-| codec | choose it when |
-|---|---|
-| `nlohmann` | you already depend on it, or you want the default and no decision |
-| `rapidjson` | throughput matters: fastest on event-sized documents, smallest binary, shortest compile |
-| `boost_json` | documents run large (it wins at 64 KiB), or you already link Boost |
-
-`boost_json` needs exceptions; the build refuses it under `-fno-exceptions`
-rather than failing at link. Glaze was measured too and is not shipped: it needs
-C++23 and this SDK's floor is C++20.
-
-## Errors
-
-Nothing throws. Every fallible call returns `ce::result<T>`, which is
-`std::expected` where the library has it and a polyfill of the same subset
-where it does not.
-
-```cpp
-auto decoded = ce::http::from_message<codec>(request);
-if (!decoded) {
-  // code, a human-readable detail, and which attribute it was
-  log(decoded.error().code, decoded.error().detail, decoded.error().where);
-}
-```
-
-`errc::not_a_cloudevent` is deliberately distinct from a malformed event: a
-receiver usually passes the first along unchanged rather than rejecting it.
-
-## Examples
-
-```bash
-cmake -S . -B build -DCE_BUILD_EXAMPLES=ON
-cmake --build build
-```
-
-- `examples/produce.cpp` - build an event, send it in all three modes
-- `examples/consume.cpp` - receive without knowing which mode arrived
-- `examples/custom_codec.cpp` - the SDK with a JSON library it has never seen
-- `examples/described_payload.cpp` - carry your own struct as the payload
-
-Each is also a test, because an example that compiles but does not work is
-exactly what a reader hits first.
-
-## Optional module interface
-
-`cloudevents.cppm` re-exports the headers as a named module. It is off by
-default, because module support across the supported toolchains is uneven and a
-module target that switched itself on would break the floor configuration.
-
-```bash
-cmake -S . -B build -DCE_BUILD_MODULE=ON   # needs CMake 3.28+
-```
-
-See `D-MODULE-1` in `docs/DECISIONS.md` for what works and what does not.
-
-## Interoperability
-
-`interop/run.sh` regenerates goldens with the Go and Java SDKs and checks both
-directions. That covers the JSON event format, which is also what the NATS
-binding carries.
-
-**One known incompatibility, in HTTP binary mode.** The binding spec requires
-header values containing space, double quote, percent or non-ASCII to be
-percent-encoded. Measured on 2026-09-21, sdk-go v2.15.2 and sdk-java do neither
-encode nor decode, so an event whose `subject` is `a b` reaches a Go application
-as `a%20b`. Name the opt-in policy when you talk to them:
-
-```cpp
-auto request = ce::http::to_message<codec, ce::http::literal_values>(
-    event, ce::content_mode::binary_mode);
-```
-
-The default stays spec-conformant. `docs/DECISIONS.md` (D-HTTP-1) has the full
-table and the reasoning. Kafka is unaffected: no SDK escapes anything there.
-
-
-There is no reference C++ CloudEvents SDK to agree with, so agreement with the
-Go and Java SDKs is the external correctness measure.
-
-`test/fixtures/interop/` holds golden documents produced by each, and the
-documents this SDK produced for them to read. `interop/run.sh` regenerates them
-in Docker and fails if either SDK rejects anything this one wrote. The
-generators are committed alongside their output.
-
-One measured difference worth knowing: given the same `text/plain` payload, Go
-and this SDK write a JSON string under `data`, while Java writes `data_base64`.
-Both are permitted. A consumer that assumes either will break against the other.
-
-## Building and testing
-
-```bash
-cmake --preset gcc-cxx20 && cmake --build --preset gcc-cxx20 && ctest --preset gcc-cxx20
-```
-
-Presets cover the toolchain floor, C++20 and C++23, the forced `result<T>`
-polyfill, exceptions disabled, no default codec, C++26 static reflection,
-sanitizers and fuzzing. CI runs all of them.
-
-## Specification and traceability
-
-`docs/SPEC.md` is the work specification. `spec/requirements/` holds the
-requirements it was decomposed into, and every test cites the requirement it
-verifies with a `// spec: SWR-AREA-NNNN` marker. Two gates run in CI and refuse
-a stale link in either direction.
-
-`docs/DECISIONS.md` records the judgement calls, with the measurement behind
-each.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the build, the spec-first workflow and the gates.
+[SECURITY.md](SECURITY.md) says how to report a vulnerability.
 
 ## Licence
 

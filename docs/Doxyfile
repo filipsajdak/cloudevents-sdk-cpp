@@ -6,9 +6,8 @@
 PROJECT_NAME           = "cloudevents-cpp"
 PROJECT_BRIEF          = "CloudEvents v1.0.2 for C++20"
 OUTPUT_DIRECTORY       = doxygen
-INPUT                  = ../include ../README.md
-USE_MDFILE_AS_MAINPAGE = ../README.md
-FILE_PATTERNS          = *.hpp *.cppm *.md
+INPUT                  = ../include
+FILE_PATTERNS          = *.hpp *.cppm
 RECURSIVE              = YES
 
 # detail/ is private. Documenting it would advertise a surface the SDK does not

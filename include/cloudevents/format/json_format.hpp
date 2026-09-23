@@ -1,8 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -85,98 +88,47 @@ struct json_format {
 
   [[nodiscard]] static auto required_text(const value& document, std::string_view name)
       -> result<std::string_view> {
-    const auto* member = Codec::find(document, name);
-    if (member == nullptr) {
-      return fail(errc::missing_required_attribute, "required attribute is absent",
-                  std::string{name});
-    }
-    auto text = Codec::as_string(*member);
-    if (!text) {
-      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
-    }
-    return *text;
+    return required_text_of(Codec::find(document, name), name);
   }
 
   [[nodiscard]] static auto optional_text(const value& document, std::string_view name)
       -> result<std::optional<std::string_view>> {
-    const auto* member = Codec::find(document, name);
-    if (member == nullptr || Codec::kind_of(*member) == json::kind::null) {
-      return std::optional<std::string_view>{};
-    }
-    auto text = Codec::as_string(*member);
-    if (!text) {
-      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
-    }
-    return std::optional<std::string_view>{*text};
+    return optional_text_of(Codec::find(document, name), name);
   }
 
   template <class Attribute>
   [[nodiscard]] static auto read_required(const value& document, std::string_view name,
                                           std::optional<Attribute>& slot) -> result<void> {
-    const auto text = required_text(document, name);
-    if (!text) {
-      return fail(text.error().code, text.error().detail, text.error().where);
-    }
-    return detail::store_attribute(slot, *text);
+    return store_required(Codec::find(document, name), name, slot);
   }
 
   template <class Attribute>
   [[nodiscard]] static auto read_optional(const value& document, std::string_view name,
                                           std::optional<Attribute>& slot) -> result<void> {
-    const auto text = optional_text(document, name);
-    if (!text) {
-      return fail(text.error().code, text.error().detail, text.error().where);
-    }
-    if (const auto& present = *text; present) {
-      return detail::store_attribute(slot, *present);
-    }
-    return {};
+    return store_optional(Codec::find(document, name), name, slot);
   }
 
   [[nodiscard]] static auto read_time(const value& document, event::options& into)
       -> result<void> {
-    const auto text = optional_text(document, "time");
-    if (!text) {
-      return fail(text.error().code, text.error().detail, text.error().where);
-    }
-    if (const auto& present = *text; present) {
-      auto parsed = parse_timestamp(*present);
-      if (!parsed) {
-        return fail(parsed.error().code, parsed.error().detail, "time");
-      }
-      into.time = *parsed;
-    }
-    return {};
+    return store_time(Codec::find(document, "time"), into);
   }
 
   [[nodiscard]] static auto read_context_attributes(const value& document,
                                                     event::builder& into) -> result<void> {
-    const auto version = required_text(document, "specversion");
-    if (!version) {
-      return fail(version.error().code, version.error().detail, version.error().where);
-    }
-    if (auto supported = spec_version::make(*version); !supported) {
-      return fail(supported.error().code, supported.error().detail, supported.error().where);
-    }
-    if (auto read = read_required(document, "id", into.id); !read) {
-      return read;
-    }
-    if (auto read = read_required(document, "source", into.source); !read) {
-      return read;
-    }
-    if (auto read = read_required(document, "type", into.type); !read) {
-      return read;
-    }
-    if (auto read = read_optional(document, "datacontenttype", into.rest.datacontenttype); !read) {
-      return read;
-    }
-    if (auto read = read_optional(document, "dataschema", into.rest.dataschema); !read) {
-      return read;
-    }
-    if (auto read = read_optional(document, "subject", into.rest.subject); !read) {
-      return read;
-    }
-    return read_time(document, into.rest);
+    return read_context(
+        members{
+            .specversion = Codec::find(document, "specversion"),
+            .id = Codec::find(document, "id"),
+            .source = Codec::find(document, "source"),
+            .type = Codec::find(document, "type"),
+            .datacontenttype = Codec::find(document, "datacontenttype"),
+            .dataschema = Codec::find(document, "dataschema"),
+            .subject = Codec::find(document, "subject"),
+            .time = Codec::find(document, "time"),
+            .data = nullptr,
+            .data_base64 = nullptr,
+        },
+        into);
   }
 
   // spec: SWR-JSON-0022
@@ -189,20 +141,7 @@ struct json_format {
       if (!outcome || reserved_name(name)) {
         return;
       }
-      if (Codec::kind_of(member) == json::kind::null) {
-        return;
-      }
-      auto attribute = extension_name::make(name);
-      if (!attribute) {
-        outcome = fail(attribute.error().code, attribute.error().detail, std::string{name});
-        return;
-      }
-      auto decoded = decode_attribute(member);
-      if (!decoded) {
-        outcome = fail(decoded.error().code, decoded.error().detail, std::string{name});
-        return;
-      }
-      into.extensions.insert_or_assign(std::move(*attribute), std::move(*decoded));
+      outcome = read_extension(name, member, into);
     });
     return outcome;
   }
@@ -214,14 +153,25 @@ struct json_format {
     }
 
     event::builder under_construction{};
-    if (auto read = read_context_attributes(document, under_construction); !read) {
+    members found{};
+    result<void> extensions_read{};
+    Codec::for_each_member(document, [&](std::string_view name, const value& member) {
+      if (claim(found, name, member) || !extensions_read) {
+        return;
+      }
+      extensions_read = read_extension(name, member, under_construction.rest);
+    });
+
+    if (auto read = read_context(found, under_construction); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto stored = decode_data(document, under_construction.rest); !stored) {
+    if (auto stored = decode_data(found.data, found.data_base64, under_construction.rest);
+        !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
-    if (auto read = read_extensions(document, under_construction.rest); !read) {
-      return fail(read.error().code, read.error().detail, read.error().where);
+    if (!extensions_read) {
+      return fail(extensions_read.error().code, extensions_read.error().detail,
+                  extensions_read.error().where);
     }
     return std::move(under_construction).build();
   }
@@ -264,6 +214,168 @@ struct json_format {
   }
 
  private:
+  struct members {
+    const value* specversion{};
+    const value* id{};
+    const value* source{};
+    const value* type{};
+    const value* datacontenttype{};
+    const value* dataschema{};
+    const value* subject{};
+    const value* time{};
+    const value* data{};
+    const value* data_base64{};
+  };
+
+  using member_slot = std::pair<std::string_view, const value* members::*>;
+
+  static constexpr auto member_slots = std::to_array<member_slot>({
+      {"specversion", &members::specversion},
+      {"id", &members::id},
+      {"source", &members::source},
+      {"type", &members::type},
+      {"datacontenttype", &members::datacontenttype},
+      {"dataschema", &members::dataschema},
+      {"subject", &members::subject},
+      {"time", &members::time},
+      {"data", &members::data},
+      {"data_base64", &members::data_base64},
+  });
+
+  static_assert(member_slots.size() == detail::reserved_names.size());
+  static_assert(std::ranges::all_of(detail::reserved_names, [](std::string_view name) {
+    return std::ranges::find(member_slots, name, &member_slot::first) != member_slots.end();
+  }));
+
+  [[nodiscard]] static auto claim(members& found, std::string_view name, const value& member)
+      -> bool {
+    for (const auto& [slot_name, slot] : member_slots) {
+      if (name == slot_name) {
+        if (found.*slot == nullptr) {
+          found.*slot = &member;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  [[nodiscard]] static auto required_text_of(const value* member, std::string_view name)
+      -> result<std::string_view> {
+    if (member == nullptr) {
+      return fail(errc::missing_required_attribute, "required attribute is absent",
+                  std::string{name});
+    }
+    auto text = Codec::as_string(*member);
+    if (!text) {
+      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
+    }
+    return *text;
+  }
+
+  [[nodiscard]] static auto optional_text_of(const value* member, std::string_view name)
+      -> result<std::optional<std::string_view>> {
+    if (member == nullptr || Codec::kind_of(*member) == json::kind::null) {
+      return std::optional<std::string_view>{};
+    }
+    auto text = Codec::as_string(*member);
+    if (!text) {
+      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
+    }
+    return std::optional<std::string_view>{*text};
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto store_required(const value* member, std::string_view name,
+                                           std::optional<Attribute>& slot) -> result<void> {
+    const auto text = required_text_of(member, name);
+    if (!text) {
+      return fail(text.error().code, text.error().detail, text.error().where);
+    }
+    return detail::store_attribute(slot, *text);
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto store_optional(const value* member, std::string_view name,
+                                           std::optional<Attribute>& slot) -> result<void> {
+    const auto text = optional_text_of(member, name);
+    if (!text) {
+      return fail(text.error().code, text.error().detail, text.error().where);
+    }
+    if (const auto& present = *text; present) {
+      return detail::store_attribute(slot, *present);
+    }
+    return {};
+  }
+
+  [[nodiscard]] static auto store_time(const value* member, event::options& into)
+      -> result<void> {
+    const auto text = optional_text_of(member, "time");
+    if (!text) {
+      return fail(text.error().code, text.error().detail, text.error().where);
+    }
+    if (const auto& present = *text; present) {
+      auto parsed = parse_timestamp(*present);
+      if (!parsed) {
+        return fail(parsed.error().code, parsed.error().detail, "time");
+      }
+      into.time = *parsed;
+    }
+    return {};
+  }
+
+  [[nodiscard]] static auto read_context(const members& found, event::builder& into)
+      -> result<void> {
+    const auto version = required_text_of(found.specversion, "specversion");
+    if (!version) {
+      return fail(version.error().code, version.error().detail, version.error().where);
+    }
+    if (auto supported = spec_version::make(*version); !supported) {
+      return fail(supported.error().code, supported.error().detail, supported.error().where);
+    }
+    if (auto read = store_required(found.id, "id", into.id); !read) {
+      return read;
+    }
+    if (auto read = store_required(found.source, "source", into.source); !read) {
+      return read;
+    }
+    if (auto read = store_required(found.type, "type", into.type); !read) {
+      return read;
+    }
+    if (auto read = store_optional(found.datacontenttype, "datacontenttype",
+                                   into.rest.datacontenttype);
+        !read) {
+      return read;
+    }
+    if (auto read = store_optional(found.dataschema, "dataschema", into.rest.dataschema); !read) {
+      return read;
+    }
+    if (auto read = store_optional(found.subject, "subject", into.rest.subject); !read) {
+      return read;
+    }
+    return store_time(found.time, into.rest);
+  }
+
+  // spec: SWR-JSON-0022
+  // spec: SWR-JSON-0023
+  // spec: SWR-JSON-0032
+  [[nodiscard]] static auto read_extension(std::string_view name, const value& member,
+                                           event::options& into) -> result<void> {
+    if (Codec::kind_of(member) == json::kind::null) {
+      return {};
+    }
+    auto attribute = extension_name::make(name);
+    if (!attribute) {
+      return fail(attribute.error().code, attribute.error().detail, std::string{name});
+    }
+    auto decoded = decode_attribute(member);
+    if (!decoded) {
+      return fail(decoded.error().code, decoded.error().detail, std::string{name});
+    }
+    into.extensions.insert_or_assign(std::move(*attribute), std::move(*decoded));
+    return {};
+  }
+
   // spec: SWR-JSON-0011
   // spec: SWR-JSON-0013
   // spec: SWR-JSON-0014
@@ -359,11 +471,8 @@ struct json_format {
   // spec: SWR-JSON-0019
   // spec: SWR-JSON-0020
   // spec: SWR-JSON-0021
-  [[nodiscard]] static auto decode_data(const value& document, event::options& into)
-      -> result<void> {
-    const auto* data = Codec::find(document, "data");
-    const auto* data_base64 = Codec::find(document, "data_base64");
-
+  [[nodiscard]] static auto decode_data(const value* data, const value* data_base64,
+                                        event::options& into) -> result<void> {
     if (data != nullptr && data_base64 != nullptr) {
       return fail(errc::data_conflict, "data and data_base64 are mutually exclusive", "data");
     }

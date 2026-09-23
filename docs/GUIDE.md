@@ -22,6 +22,7 @@ using namespace ce::literals;
 8. [Typed payloads](#8-typed-payloads)
 9. [Interoperability](#9-interoperability)
 10. [How you can still get it wrong](#10-how-you-can-still-get-it-wrong)
+11. [API generations](#11-api-generations)
 
 ## 1. Getting started
 
@@ -697,6 +698,29 @@ The types rule out an invalid event, but they cannot rule out these.
 | `sampled_rate{0}` | `set` stores it; only `validate()` refuses it. | Call `validate()` before `set`. |
 | A leap second or a lowercase `t` | Accepted, but written back differently. | Compare instants, not strings. |
 | `ce::id::make("abc")` | Does not compile: the literal converts to both `make` overloads. | Use `"abc"_id`, or pass a `std::string`. |
+
+## 11. API generations
+
+Everything in this guide is `ce::v2`, the inline namespace, so `ce::event` names it.
+
+`ce::v1` holds what v0.3.0 published: the aggregate `event` with `validate()`, and the format and bindings built on it.
+It stays as it was, and it takes defect fixes but no changes.
+Code written against v0.3.0 keeps compiling if it spells `ce::v1::` and includes the `v1/` headers:
+
+```cpp
+#include <cloudevents/v1/binding/http.hpp>
+#include <cloudevents/v1/core.hpp>
+
+inline auto legacy_request() -> ce::v1::result<ce::v1::message> {
+  const ce::v1::event order{.id = "A1", .source = "/orders", .type = "com.example.order.placed"};
+  return ce::v1::http::to_message<ce::v1::codec::nlohmann_codec>(order,
+                                                                  ce::v1::content_mode::binary_mode);
+}
+```
+
+What did not change between the generations is one type through both spellings: `errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam.
+So a codec written for v0.3.0 works with v2 unchanged.
+The optional C++20 module exports `ce::v2` only.
 
 ## Also available
 

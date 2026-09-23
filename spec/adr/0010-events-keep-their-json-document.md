@@ -37,7 +37,9 @@ A copy shares the holder; the reference count is the only state that changes aft
 
 **Equality goes through the codec.**
 Two documents with the same identity compare with `Codec::equal`.
-Two with different identities compare their compact serialisations, which the holder can produce because it knows its codec.
+Two with different identities are compared by the left-hand codec: it parses the right-hand document's serialisation and applies its own `equal`.
+Each holder can serialise and parse because it knows its codec.
+Comparing compact serialisations instead would report a difference in member order as inequality.
 
 **The v3 codec concept requires `equal` and a copyable `value`.**
 Encoding copies the DOM into the output document, and equality needs the codec's own comparison.
@@ -77,7 +79,7 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 - Three event models are maintained, and CI runs all three generations.
 - A third-party codec must add `equal` to move to v3.
 - An event holding a `json_document` uses more memory than one holding the same text.
-- Comparing documents from different codecs serialises both.
+- Comparing documents from different codecs serialises one and parses it again.
 
 ### Neutral
 - `json_text` stays for payload text a caller supplies, and for documents above the retention limit.

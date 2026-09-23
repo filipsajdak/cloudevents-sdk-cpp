@@ -41,10 +41,11 @@ Two with different identities are compared by the left-hand codec: it parses the
 Each holder can serialise and parse because it knows its codec.
 Comparing compact serialisations instead would report a difference in member order as inequality.
 
-**The v3 codec concept requires `equal` and a copyable `value`.**
+**The v3 codec concept requires `equal` and `copy`.**
 Encoding copies the DOM into the output document, and equality needs the codec's own comparison.
+The codec supplies the copy, because RapidJSON's value cannot be copy-constructed and copies only through its allocator.
 Requiring both keeps a single code path.
-The in-tree codecs gain a static `equal`; adding a member keeps their v1 declarations.
+The in-tree codecs gain a static `equal` and a static `copy`; adding members keeps their v1 declarations.
 
 **Decoding retains the document up to a limit.**
 The JSON format stores `json_document` when the input is at most `retain_document_up_to` bytes (64 KiB by default) and `json_text` above it.
@@ -77,7 +78,7 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 
 ### Negative
 - Three event models are maintained, and CI runs all three generations.
-- A third-party codec must add `equal` to move to v3.
+- A third-party codec must add `equal` and `copy` to move to v3.
 - An event holding a `json_document` uses more memory than one holding the same text.
 - Comparing documents from different codecs serialises one and parses it again.
 

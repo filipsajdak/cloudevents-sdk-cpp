@@ -2,7 +2,8 @@
 uid: SYS-CORE-0001
 title: Event model for CloudEvents v1.0.2, with validity held by the attribute types
 type: system
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   Every format and binding is a projection of one in-memory event model, so the

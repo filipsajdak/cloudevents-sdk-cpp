@@ -2,7 +2,8 @@
 uid: SWR-BIND-0005
 title: A prefixed datacontenttype is refused where the binding has a content-type field
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   Where the media type travels in the binding's own content-type field, a prefixed

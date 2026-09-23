@@ -2,7 +2,8 @@
 uid: SWR-CORE-0027
 title: An invalid attribute literal fails to compile
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   A hardcoded `source` or `type` is known when the program is compiled, so

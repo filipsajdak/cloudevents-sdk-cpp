@@ -2,7 +2,8 @@
 uid: SWR-CORE-0025
 title: Source checked for non-emptiness and encoding only
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   SPEC 5.1 states the leniency principle of being strict on produce and tolerant

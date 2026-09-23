@@ -2,7 +2,8 @@
 uid: SWR-MSG-0002
 title: raw_headers is constructible from a braced list of fields
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: medium
 rationale: >
   A test or a caller describing a message that arrived on the wire states a list

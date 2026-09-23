@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0011
 title: ce::v1 keeps the surface v0.3.0 published
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   SPEC 3 rule 4 and SWR-BUILD-0006 require that a breaking change leave the

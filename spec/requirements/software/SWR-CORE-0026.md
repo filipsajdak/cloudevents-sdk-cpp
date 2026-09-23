@@ -2,7 +2,8 @@
 uid: SWR-CORE-0026
 title: Each context attribute is a type that cannot hold a forbidden value
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   CR-0001 found that validity was a property the caller was trusted to maintain

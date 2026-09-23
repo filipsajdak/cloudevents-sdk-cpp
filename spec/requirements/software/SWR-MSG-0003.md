@@ -2,7 +2,8 @@
 uid: SWR-MSG-0003
 title: What a transport delivers and what the SDK produced are distinct types
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   A transport hands the SDK arbitrary bytes, so the type holding them cannot carry

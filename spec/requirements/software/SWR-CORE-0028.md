@@ -2,7 +2,8 @@
 uid: SWR-CORE-0028
 title: A failure type usable in a constant expression
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   `error` owns two `std::string` members, so it cannot exist in a constant

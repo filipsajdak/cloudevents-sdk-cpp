@@ -2,7 +2,8 @@
 uid: SWR-CORE-0021
 title: lint reports over-long extension names as warnings
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: medium
 rationale: >
   CloudEvents v1.0.2 core specification section 3.1 states that attribute names

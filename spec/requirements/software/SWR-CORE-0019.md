@@ -2,7 +2,8 @@
 uid: SWR-CORE-0019
 title: A present optional string attribute refuses empty text at construction
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   CloudEvents v1.0.2 core specification section 3.1 forbids an empty string for

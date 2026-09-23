@@ -2,7 +2,8 @@
 uid: SWR-CORE-0014
 title: event is constructed from validated attributes or a builder, never as an aggregate
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   CR-0001 found that a public aggregate lets a caller build an event CloudEvents

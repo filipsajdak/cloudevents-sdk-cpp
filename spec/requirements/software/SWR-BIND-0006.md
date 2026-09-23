@@ -2,7 +2,8 @@
 uid: SWR-BIND-0006
 title: The message body is read against a media type the caller passes in
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: medium
 rationale: >
   The body reader used to take the event under construction as an out-parameter

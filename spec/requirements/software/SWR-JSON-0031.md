@@ -2,7 +2,8 @@
 uid: SWR-JSON-0031
 title: A decoded event always re-encodes
 type: software
-status: approved
+status: implemented
+delivered_in: v0.4.0
 priority: high
 rationale: >
   SWR-CORE-0020 makes `extension_name` refuse a name that is not [a-z0-9]+, so a decoder that accepted such a name would return an event the encoder refuses. The same document would then decode and fail to re-encode, which a round-trip fuzzer found within a minute. CR-0001 replaced the validation operation this requirement first named with the attribute types, so the property is stated as the round trip it protects.

@@ -51,3 +51,5 @@ if(CE_CODEC_NLOHMANN)
     LIBS ce::codec_nlohmann CORPUS corpus/typed)
   target_include_directories(fuzz_json_decode PRIVATE ${CMAKE_SOURCE_DIR})
 endif()
+
+add_subdirectory(v1)

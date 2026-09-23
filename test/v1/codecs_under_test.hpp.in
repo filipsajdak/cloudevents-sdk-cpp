@@ -1,0 +1,30 @@
+#pragma once
+
+/// \file
+/// \brief The codecs this build enabled, as one list every suite runs over.
+///
+/// Generated from codecs_under_test.hpp.in by test/CMakeLists.txt. Do not edit
+/// the copy in the build tree.
+///
+/// A generated header rather than a command-line definition because MSVC cannot
+/// define a function-like macro with -D, and the msvc job would be the only
+/// place that broke.
+
+#include <string_view>
+
+#include "mini_codec.hpp"
+@CE_CODEC_INCLUDES@
+
+namespace ce_test {
+
+/// \brief Run `visit.operator()<Codec>(name)` once per codec under test.
+///
+/// mini_codec is always first and is always present. It is the proof that the
+/// format layer is complete over a codec the SDK does not ship (ADR-0004), so it
+/// must be exercised even when CE_CODECS is empty.
+inline constexpr auto for_each_codec = [](auto&& visit) {
+  visit.template operator()<::ce::v1::test::mini_codec>(std::string_view{"mini_codec"});
+@CE_CODEC_VISITS@
+};
+
+}  // namespace ce_test

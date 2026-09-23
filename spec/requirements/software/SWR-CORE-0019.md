@@ -13,7 +13,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: [code:include/cloudevents/core.hpp]
+satisfied_by: [code:include/cloudevents/attributes.hpp]
 verified_by: [test:test/core_test.cpp::core-optional-attributes-refuse-empty]
 owner: filip.sajdak
 version: 2

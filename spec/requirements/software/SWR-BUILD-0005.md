@@ -15,7 +15,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
-satisfied_by: [code:include/cloudevents/core.hpp, code:include/cloudevents/result.hpp]
+satisfied_by: [code:include/cloudevents/core.hpp, code:include/cloudevents/attributes.hpp, code:include/cloudevents/result.hpp]
 verified_by: [test:test/build_test.cpp::config-inline-namespace-v2]
 owner: filip.sajdak
 version: 2

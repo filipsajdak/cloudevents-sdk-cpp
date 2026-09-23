@@ -1,5 +1,6 @@
 module;
 
+#include <cloudevents/attributes.hpp>
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/http.hpp>
 #include <cloudevents/binding/kafka.hpp>

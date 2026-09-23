@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -59,10 +61,42 @@ func must(err error) {
 	}
 }
 
-func write(dir, name string, e event.Event) {
-	data, err := json.Marshal(e)
+// marshal encodes e as the Go SDK does, except that its extensions come last
+// and sorted by name. The SDK walks its extension map in Go's randomised order,
+// so without this a regeneration reorders them and a golden changes for nothing.
+// The SDK writes extensions before data, so an event with both is refused.
+func marshal(e event.Event) []byte {
+	extensions := e.Extensions()
+	if len(extensions) > 0 && e.Data() != nil {
+		panic("marshal: an event with extensions and data would put them in the wrong place")
+	}
+	bare := e.Clone()
+	names := make([]string, 0, len(extensions))
+	for name := range extensions {
+		bare.SetExtension(name, nil)
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	data, err := json.Marshal(bare)
 	must(err)
-	must(os.WriteFile(filepath.Join(dir, name+".json"), data, 0o644))
+	out := bytes.NewBuffer(data[:len(data)-1])
+	for _, name := range names {
+		key, err := json.Marshal(name)
+		must(err)
+		value, err := json.Marshal(extensions[name])
+		must(err)
+		out.WriteByte(',')
+		out.Write(key)
+		out.WriteByte(':')
+		out.Write(value)
+	}
+	out.WriteByte('}')
+	return out.Bytes()
+}
+
+func write(dir, name string, e event.Event) {
+	must(os.WriteFile(filepath.Join(dir, name+".json"), marshal(e), 0o644))
 	writeHTTPWire(dir, name, e)
 }
 
@@ -189,9 +223,8 @@ func main() {
 	write(outDir, "minimal_relative", relative)
 
 	// --- a batch, which nothing had exercised across SDKs -------------------
-	batch := []event.Event{minimal, full, extended}
-	batchBytes, err := json.Marshal(batch)
-	must(err)
+	batch := [][]byte{marshal(minimal), marshal(full), marshal(extended)}
+	batchBytes := append(append([]byte{'['}, bytes.Join(batch, []byte{','})...), ']')
 	must(os.WriteFile(filepath.Join(outDir, "batch.json"), batchBytes, 0o644))
 	fmt.Println("wrote batch.json")
 

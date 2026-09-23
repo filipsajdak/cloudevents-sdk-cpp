@@ -1,1 +1,1 @@
-{"specversion":"1.0","id":"id-types","source":"/interop/go","type":"com.example.types","astring":"text","aninteger":42,"aboolean":true,"negative":-7,"zero":0}
+{"specversion":"1.0","id":"id-types","source":"/interop/go","type":"com.example.types","aboolean":true,"aninteger":42,"astring":"text","negative":-7,"zero":0}

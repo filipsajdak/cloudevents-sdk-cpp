@@ -1,8 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The CloudEvents HTTP protocol binding, over a transport-neutral message.
-
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +17,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+// spec: SYS-HTTP-0001
 namespace ce::inline v1::http {
 
 namespace detail {
@@ -27,13 +25,6 @@ namespace detail {
 inline constexpr std::string_view attribute_prefix = "ce-";
 inline constexpr std::string_view content_type_header = "Content-Type";
 
-// The generic helpers moved to where they belong: the text/byte conversions and
-// the case-insensitive prefix test are core, and percent-encoding belongs to the
-// bindings that escape their field values.
-//
-// Using-declarations, not wrappers. A using-declaration preserves constexpr, and
-// the suites contain static_assert(ce::http::detail::needs_escape(...)); a
-// forwarding function would have to repeat every signature to keep that working.
 using ce::v1::to_bytes;
 using ce::v1::to_text;
 using ce::v1::detail::is_valid_utf8;
@@ -44,23 +35,15 @@ using ce::v1::binding::detail::needs_escape;
 using ce::v1::binding::detail::percent_decode;
 using ce::v1::binding::detail::percent_encode;
 
-/// Control characters, which a literal header value may not carry: a CR or LF
-/// would let a value end the header and begin another. Space is printable and
-/// permitted here, so the bound is U+0020 rather than percent.hpp's U+0021.
 inline constexpr unsigned char first_printable_ascii = 0x20U;
 inline constexpr unsigned char delete_character = 0x7FU;
 
-/// \brief What the shared binding core needs to know about HTTP.
-///
-/// A named namespace, not an anonymous one: an anonymous namespace in a header
-/// gives every translation unit its own type, which is an ODR violation the
-/// linker does not report.
+// spec: SWR-BIND-0004
 template <class Values>
 struct http_traits {
   static constexpr std::string_view attribute_prefix = ce::v1::http::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
       ce::v1::http::detail::content_type_header;
-  /// RFC 9110 section 5.1: field names are case-insensitive.
   static constexpr bool case_sensitive_names = false;
 
   [[nodiscard]] static auto encode_value(std::string_view text) -> result<std::string> {
@@ -74,24 +57,17 @@ struct http_traits {
 
 }  // namespace detail
 
-/// \brief How a binding renders an attribute value into a header field.
 template <class T>
 concept value_policy = requires(std::string_view text) {
   { T::encode(text) } -> std::same_as<result<std::string>>;
   { T::decode(text) } -> std::same_as<result<std::string>>;
 };
 
-/// \brief The specification's rule, and the default.
-///
-/// Binding spec section 3.1.3.2: space, double-quote, percent and anything
-/// outside U+0021-U+007E are percent-encoded.
+// spec: SWR-HTTP-0010
+// spec: SWR-HTTP-0011
+// spec: SWR-HTTP-0012
+// spec: SWR-HTTP-0017
 struct percent_encoded_values {
-  /// Checked on the way out as well as in (SWR-HTTP-0017). Percent-encoding an
-  /// ill-formed sequence produces a field a conformant receiver refuses, so
-  /// without this the fault is reported to the peer that did not commit it, at a
-  /// point where it can neither fix nor attribute it. `decode` has always
-  /// checked; producing what this SDK would itself refuse to read is the
-  /// asymmetry.
   [[nodiscard]] static auto encode(std::string_view text) -> result<std::string> {
     if (!detail::is_valid_utf8(text)) {
       return fail(errc::invalid_utf8, "an attribute value must be well-formed UTF-8");
@@ -104,16 +80,7 @@ struct percent_encoded_values {
   }
 };
 
-/// \brief Header values exactly as the Go and Java SDKs write and read them.
-///
-/// Measured on 2026-09-21 against sdk-go v2.15.2 and sdk-java main: neither
-/// encodes on send nor decodes on receive. So a conformant sender is misread by
-/// both, and this policy exists for callers who must talk to them. Naming it is
-/// a deliberate departure from the binding specification.
-///
-/// It is not simply "do nothing". Percent-encoding was also what kept a control
-/// character out of a header field, and a value carrying CR or LF would let an
-/// attacker end the header and start another. This policy refuses one instead.
+// spec: SWR-HTTP-0016
 struct literal_values {
   [[nodiscard]] static auto encode(std::string_view text) -> result<std::string> {
     for (const char character : text) {
@@ -140,10 +107,7 @@ struct literal_values {
 static_assert(binding::binding_traits<detail::http_traits<percent_encoded_values>>);
 static_assert(binding::binding_traits<detail::http_traits<literal_values>>);
 
-/// \brief Which content mode a received message uses.
-///
-/// Decided by Content-Type prefix. The batch prefix is tested first, because
-/// `application/cloudevents-batch+json` also starts with `application/cloudevents`.
+// spec: SWR-HTTP-0006
 [[nodiscard]] inline auto detect_content_mode(const message& request) -> content_mode {
   const std::string* declared = request.header_fields.find(detail::content_type_header);
   if (declared == nullptr) {
@@ -158,7 +122,10 @@ static_assert(binding::binding_traits<detail::http_traits<literal_values>>);
   return content_mode::binary_mode;
 }
 
-/// \brief Lay an event out as an HTTP message.
+// spec: SWR-HTTP-0003
+// spec: SWR-HTTP-0007
+// spec: SWR-HTTP-0008
+// spec: SWR-HTTP-0009
 template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
   if (mode == content_mode::structured) {
@@ -179,10 +146,7 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
   return out;
 }
 
-/// \brief Lay a batch out as a structured batch message.
-///
-/// Batch is HTTP's alone among the bindings this SDK implements, so it stays here
-/// rather than in the shared core.
+// spec: SWR-HTTP-0005
 template <json::json_codec Codec>
 [[nodiscard]] auto to_batch_message(std::span<const event> events) -> result<message> {
   auto text = json_format<Codec>::encode_batch(events);
@@ -196,11 +160,10 @@ template <json::json_codec Codec>
   return out;
 }
 
-/// \brief Read an event from an HTTP message.
-///
-/// A request with no `ce-specversion` and a content type that is not a
-/// CloudEvents one is `not_a_cloudevent`, which a receiver usually wants to pass
-/// through rather than reject. That is a different outcome from malformed.
+// spec: SWR-HTTP-0004
+// spec: SWR-HTTP-0013
+// spec: SWR-HTTP-0014
+// spec: SWR-HTTP-0015
 template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto from_message(const message& request) -> result<event> {
   const content_mode mode = detect_content_mode(request);
@@ -238,7 +201,6 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
   return std::move(*under_construction).build();
 }
 
-/// \brief Read a batch from an HTTP message.
 template <json::json_codec Codec>
 [[nodiscard]] auto from_batch_message(const message& request) -> result<std::vector<event>> {
   if (detect_content_mode(request) != content_mode::batched) {

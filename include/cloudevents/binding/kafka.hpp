@@ -1,12 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The CloudEvents Kafka protocol binding, over a transport-neutral message.
-///
-/// The binding names no Kafka client type. A `message`'s header fields are the
-/// record headers and its body is the record value; moving that onto a producer
-/// or consumer is the application's.
-
 #include <concepts>
 #include <optional>
 #include <string>
@@ -20,32 +13,24 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+// spec: SYS-KAFKA-0001
 namespace ce::inline v1::kafka {
 
 namespace detail {
 
+// spec: SWR-KAFKA-0001
 inline constexpr std::string_view attribute_prefix = "ce_";
+// spec: SWR-KAFKA-0002
 inline constexpr std::string_view content_type_header = "content-type";
 
-/// \brief What the shared binding core needs to know about Kafka.
-///
-/// Three differences from HTTP, each from the binding specification:
-///
-/// - the prefix is `ce_`, not `ce-`;
-/// - `content-type` carries datacontenttype and takes no prefix;
-/// - header keys and values are UTF-8 strings, with no escaping. A broker passes
-///   header bytes through unexamined, so nothing downstream would reject a value
-///   that is not well-formed UTF-8; this binding refuses it instead.
-///
-/// Record header keys compare byte for byte. The specification does not say so in
-/// as many words, because a Kafka record header key is an opaque byte string and
-/// the question does not arise: there is no case-folding rule to apply.
 struct kafka_traits {
   static constexpr std::string_view attribute_prefix = ce::v1::kafka::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
       ce::v1::kafka::detail::content_type_header;
+  // spec: SWR-KAFKA-0004
   static constexpr bool case_sensitive_names = true;
 
+  // spec: SWR-KAFKA-0003
   [[nodiscard]] static auto encode_value(std::string_view text) -> result<std::string> {
     if (!ce::v1::detail::is_valid_utf8(text)) {
       return fail(errc::invalid_utf8, "a Kafka header value must be a UTF-8 string");
@@ -62,13 +47,6 @@ static_assert(binding::binding_traits<kafka_traits>);
 
 }  // namespace detail
 
-/// \brief Which content mode a received record uses.
-///
-/// The batch content type is tested first and reported as such, although this
-/// binding refuses it: `application/cloudevents-batch+json` also starts with
-/// `application/cloudevents`, so treating it as structured would hand the format
-/// layer an array where it expects an object and report a parse error about the
-/// document rather than about the mode.
 [[nodiscard]] inline auto detect_content_mode(const message& incoming) -> content_mode {
   const std::string* declared = incoming.header_fields.find_exact(detail::content_type_header);
   if (declared == nullptr) {
@@ -83,11 +61,7 @@ static_assert(binding::binding_traits<kafka_traits>);
   return content_mode::binary_mode;
 }
 
-/// \brief Lay an event out as a Kafka record.
-///
-/// `content_mode::batched` is refused. The Kafka binding specification defines no
-/// batch mode, and a record carrying an array under a batch content type would be
-/// something no other SDK's consumer reads.
+// spec: SWR-KAFKA-0005
 template <json::json_codec Codec>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
   if (mode == content_mode::batched) {
@@ -107,12 +81,7 @@ template <json::json_codec Codec>
   return out;
 }
 
-/// \brief Read an event from a Kafka record.
-///
-/// A record with no `ce_specversion` header and a content type that is not a
-/// CloudEvents one is `not_a_cloudevent`: a topic carries whatever its producers
-/// put there, and a consumer usually wants to pass such a record on rather than
-/// treat it as corrupt.
+// spec: SWR-KAFKA-0006
 template <json::json_codec Codec>
 [[nodiscard]] auto from_message(const message& incoming) -> result<event> {
   const content_mode mode = detect_content_mode(incoming);
@@ -150,10 +119,7 @@ template <json::json_codec Codec>
   return std::move(*under_construction).build();
 }
 
-/// \brief A Kafka record: the message, plus the key that decides its partition.
-///
-/// Composition rather than a key member on `message`, which every binding shares
-/// and which SWR-HTTP-0001 pins by static assertion.
+// spec: SWR-KAFKA-0007
 struct record {
   message value;
   std::optional<std::string> key = {};
@@ -161,17 +127,12 @@ struct record {
   friend auto operator==(const record&, const record&) -> bool = default;
 };
 
-/// \brief How a record key is derived from an event.
-///
-/// The event arrives by const reference and the key leaves by value, so a mapper
-/// cannot move an attribute out of the event: the specification requires
-/// `partitionkey` to travel with the event even when it also becomes the key.
+// spec: SWR-KAFKA-0009
 template <class T>
 concept key_mapper = requires(const event& cloud_event) {
   { T::key_of(cloud_event) } -> std::same_as<std::optional<std::string>>;
 };
 
-/// \brief The default: no key, so the broker partitions round-robin.
 struct no_key_mapper {
   [[nodiscard]] static auto key_of([[maybe_unused]] const event& cloud_event)
       -> std::optional<std::string> {
@@ -179,7 +140,6 @@ struct no_key_mapper {
   }
 };
 
-/// \brief The mapper the binding specification asks every implementation to offer.
 struct partitionkey_mapper {
   [[nodiscard]] static auto key_of(const event& cloud_event) -> std::optional<std::string> {
     const attribute_value* stored = cloud_event.extension("partitionkey");
@@ -190,10 +150,7 @@ struct partitionkey_mapper {
   }
 };
 
-/// \brief Lay an event out as a Kafka record.
-///
-/// The key mapper is a defaulted template parameter, so opting in is naming one
-/// and the default costs nothing.
+// spec: SWR-KAFKA-0008
 template <json::json_codec Codec, key_mapper Keys = no_key_mapper>
 [[nodiscard]] auto to_record(const event& cloud_event, content_mode mode) -> result<record> {
   auto laid_out = to_message<Codec>(cloud_event, mode);

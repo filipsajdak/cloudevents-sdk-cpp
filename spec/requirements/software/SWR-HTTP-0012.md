@@ -11,7 +11,7 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-HTTP-0001]
-satisfied_by: []
+satisfied_by: [code:include/cloudevents/binding/http.hpp]
 verified_by: [test:test/http_binding_test.cpp::header-value-invalid-utf8]
 owner: filip.sajdak
 version: 1

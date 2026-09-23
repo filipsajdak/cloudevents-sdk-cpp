@@ -1,11 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The error model: `errc`, `error`, `result<T>` and `fail`.
-///
-/// Nothing throws; every fallible operation returns `result<T>`. ADR-0001 has the
-/// reasoning, ADR-0002 the permitted subset.
-
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -20,44 +14,25 @@
 
 namespace ce::inline v1 {
 
-/// \brief What went wrong, as a closed set. There is no `ok`: an `error` exists
-/// only on the failure path.
+// spec: SWR-CORE-0001
 enum class errc : std::uint8_t {
-  /// A required context attribute is absent or empty (CloudEvents core §3).
   missing_required_attribute = 1,
-  /// An extension attribute name is not `[a-z0-9]+` (core §4.1).
   invalid_attribute_name,
-  /// An attribute name collides with a reserved context attribute (core §4.1).
   reserved_attribute_name,
-  /// An attribute is present but its value is not valid for its type.
   invalid_attribute_value,
-  /// `specversion` names a version this SDK does not implement (SPEC §9, D5).
   unsupported_spec_version,
-  /// A timestamp is not a valid RFC 3339 date-time.
   invalid_timestamp,
-  /// A content type is syntactically invalid (RFC 2046).
   invalid_content_type,
-  /// The input is not well-formed for its format.
   parse_error,
-  /// Wrong CloudEvents type, including a floating-point extension value.
   type_mismatch,
-  /// An integer is outside the range the CloudEvents `Integer` type permits.
   out_of_range,
-  /// Both `data` and `data_base64` are present (JSON format §3.1).
   data_conflict,
-  /// Base64 input is not valid per RFC 4648 §4.
   invalid_base64,
-  /// A byte sequence is not well-formed UTF-8.
   invalid_utf8,
-  /// Not a CloudEvent at all, kept distinct from a malformed one: a receiver
-  /// usually passes these through rather than rejecting them.
   not_a_cloudevent,
-  /// The call names an entry point that cannot serve this input, such as asking
-  /// the single-event encoder for a batch.
   invalid_argument,
 };
 
-/// \brief A human-readable name for an `errc`, for diagnostics and test output.
 [[nodiscard]] constexpr auto to_string_view(errc code) noexcept -> std::string_view {
   switch (code) {
     case errc::missing_required_attribute: return "missing_required_attribute";
@@ -79,15 +54,7 @@ enum class errc : std::uint8_t {
   return "unknown";
 }
 
-/// \brief A failure whose text lives in static storage, so it can be named in a
-/// constant expression.
-///
-/// `error` owns two `std::string`s and therefore cannot. Measured on GCC 16 and
-/// Clang 23, a `std::string` escapes constant evaluation when it is short enough
-/// for the small-string buffer and not otherwise, so a `constexpr fail` would
-/// compile as a function of how long its message happens to be. A rule that
-/// decides validity has to be usable at compile time; this is what it reports
-/// with (SWR-CORE-0028).
+// spec: SWR-CORE-0028
 struct static_error {
   errc code;
   std::string_view detail = {};
@@ -96,19 +63,12 @@ struct static_error {
   friend auto operator==(const static_error&, const static_error&) -> bool = default;
 };
 
-/// \brief A failure. `where` names the attribute or JSON pointer it concerns, so
-/// a decode error is locatable in the offending document.
 struct error {
   errc code;
   std::string detail = {};
   std::string where = {};
 };
 
-/// \brief Widen a constant-expression failure into the owning one.
-///
-/// A free function rather than a converting constructor: `error` is an aggregate
-/// built with a designated initializer throughout this repository, and declaring
-/// any constructor would take that away from every call site.
 [[nodiscard]] inline auto widen(const static_error& diagnosis) -> error {
   return error{
       .code = diagnosis.code,
@@ -117,10 +77,9 @@ struct error {
   };
 }
 
+// spec: SWR-CORE-0002
 #if CE_HAS_EXPECTED
 
-/// \brief The result of a fallible operation. Only the ADR-0002 subset may be
-/// used on it inside the library.
 template <class T>
 using result = std::expected<T, error>;
 
@@ -135,21 +94,16 @@ using failure = detail::poly::unexpected<error>;
 
 #endif
 
-/// \brief Build a failure that converts into any `result<T>`.
+// spec: SWR-CORE-0004
 [[nodiscard]] inline auto fail(errc code, std::string detail = {}, std::string where = {})
     -> failure {
   return failure{error{.code = code, .detail = std::move(detail), .where = std::move(where)}};
 }
 
-/// \brief The same failure, from a rule that decided at compile time.
 [[nodiscard]] inline auto fail(const static_error& diagnosis) -> failure {
   return failure{widen(diagnosis)};
 }
 
-/// \brief A compile-time rule, with the offending value attached.
-///
-/// The static text says which rule broke; only the run-time path can say what
-/// broke it, and `where` is where this library puts that.
 [[nodiscard]] inline auto fail(const static_error& diagnosis, std::string where) -> failure {
   return failure{error{
       .code = diagnosis.code,

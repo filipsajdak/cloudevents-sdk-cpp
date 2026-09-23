@@ -1,8 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The nlohmann/json codec. The only header in the SDK that names nlohmann.
-
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -15,16 +12,13 @@
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
 
+// spec: SWR-JSON-0008
 namespace ce::inline v1::codec {
 
 struct nlohmann_codec {
   using value = nlohmann::json;
 
-  /// \brief Parse without exceptions.
-  ///
-  /// nlohmann's default parse throws, which the SDK's error model forbids, so
-  /// this uses the non-throwing overload and maps a discarded result to a typed
-  /// error.
+  // spec: SWR-JSON-0007
   [[nodiscard]] static auto parse(std::string_view text) -> result<value> {
     auto parsed = value::parse(text, nullptr, false, false);
     if (parsed.is_discarded()) {
@@ -35,8 +29,6 @@ struct nlohmann_codec {
 
   [[nodiscard]] static auto dump(const value& held) -> std::string { return held.dump(); }
 
-  // Parentheses, not braces: `return {x};` on nlohmann::json selects its
-  // initializer_list constructor and builds a one-element array.
   // NOLINTBEGIN(modernize-return-braced-init-list)
   [[nodiscard]] static auto make_null() -> value { return value(nullptr); }
   [[nodiscard]] static auto make_bool(bool boolean) -> value { return value(boolean); }
@@ -50,7 +42,6 @@ struct nlohmann_codec {
   [[nodiscard]] static auto make_object() -> value { return value::object(); }
 
   static void set(value& object, std::string_view key, value member) {
-    // An object's operator[] inserts or replaces a member; there is no index.
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     object[std::string{key}] = std::move(member);
   }
@@ -64,7 +55,6 @@ struct nlohmann_codec {
     if (held.is_boolean()) {
       return json::kind::boolean;
     }
-    // Checked before is_number_float, because an integer is also a number.
     if (held.is_number_integer() || held.is_number_unsigned()) {
       return json::kind::integer;
     }
@@ -97,21 +87,11 @@ struct nlohmann_codec {
     return held.get<bool>();
   }
 
+  // spec: SWR-JSON-0033
   [[nodiscard]] static auto as_int(const value& held) -> result<std::int64_t> {
-    // The unsigned test comes FIRST. is_number_integer() is true for an unsigned
-    // value too, so testing it first would make the range check below dead code.
     if (held.is_number_unsigned()) {
       const auto unsigned_value = held.get<std::uint64_t>();
       if (unsigned_value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-        // get<std::int64_t>() reinterprets rather than refusing: 2^64-1 arrives
-        // as -1, which is inside the CloudEvents Integer range, so the format
-        // layer accepts it and the caller is handed a value that is not the one
-        // on the wire.
-        //
-        // out_of_range, not type_mismatch: it IS a JSON integer, and an integer
-        // the Integer type cannot hold already reports out_of_range when it
-        // merely exceeds int32. Two sizes of the same mistake should not report
-        // two different codes.
         return fail(errc::out_of_range, "JSON integer too large for int64");
       }
       return static_cast<std::int64_t>(unsigned_value);
@@ -129,7 +109,6 @@ struct nlohmann_codec {
     return held.get<double>();
   }
 
-  /// \brief The string, viewing storage owned by `held`.
   [[nodiscard]] static auto as_string(const value& held) -> result<std::string_view> {
     if (!held.is_string()) {
       return fail(errc::type_mismatch, "not a JSON string");

@@ -1,8 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief RFC 3339 date-time, parsed by one CTRE pattern.
-
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -19,53 +16,32 @@
 
 namespace ce::inline v1 {
 
-/// \brief How the zero offset was spelled in the source text.
 enum class offset_form : std::uint8_t {
-  /// `Z` or `z`, the UTC designator.
   utc_designator,
-  /// A numeric `+HH:MM` or `-HH:MM` offset.
   numeric,
 };
 
 namespace detail {
 
-/// The most fractional digits a nanosecond-resolution instant can express, and
-/// the upper bound the RFC 3339 grammar below admits.
 inline constexpr std::size_t max_fractional_digits = 9;
 
 inline constexpr int decimal_radix = 10;
 
-/// The last value each field of an RFC 3339 time-of-day may hold. `leap_second`
-/// is 60 rather than 59 because RFC 3339 section 5.6 admits a leap second on
-/// consume; it folds onto the following second and does not round-trip.
 inline constexpr int last_hour = 23;
 inline constexpr int last_minute = 59;
 inline constexpr int leap_second = 60;
 
-/// Minutes in an hour, for splitting a numeric offset into its two fields.
 inline constexpr int minutes_per_hour = 60;
 
-/// \brief The diagnostic for a literal digit count no instant can express.
-///
-/// Declared and never defined, as in `detail::literal`: reaching it inside a
-/// constant expression is the error, and its name is the message.
 [[noreturn]] void this_digit_count_is_more_than_a_nanosecond_instant_can_express();
 
 }  // namespace detail
 
-/// \brief How many digits followed the decimal point, 0 through 9.
-///
-/// A count, not an integer. `to_string` divided a place value down one decade
-/// per digit, so a tenth digit divided by zero; the count was a public
-/// `std::uint8_t` and every value from 10 to 255 was reachable by hand. The
-/// renderer no longer divides, and this is the other half: the state stops
-/// existing rather than being survivable (SWR-CORE-0030).
+// spec: SWR-CORE-0030
 class fraction_digits {
  public:
   constexpr fraction_digits() noexcept = default;
 
-  /// A literal count is checked when the translation unit is compiled, which
-  /// keeps `.fractional_digits = 3` in a designated initializer working.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   consteval fraction_digits(int count) : count_{static_cast<std::uint8_t>(count)} {
     if (count < 0 || std::cmp_greater(count, detail::max_fractional_digits)) {
@@ -92,15 +68,11 @@ class fraction_digits {
   std::uint8_t count_ = 0;
 };
 
-/// \brief An RFC 3339 instant, plus enough of its spelling to reproduce it.
+// spec: SWR-CORE-0007
 struct timestamp {
-  /// The instant, normalised to UTC.
   std::chrono::sys_time<std::chrono::nanoseconds> utc;
-  /// The offset the source text carried. Zero for a `Z` timestamp.
   std::chrono::minutes offset = {};
-  /// How the offset was written, so `Z` and `+00:00` stay distinguishable.
   offset_form form = offset_form::utc_designator;
-  /// Digits after the decimal point in the source, 0 through 9.
   fraction_digits fractional_digits = {};
 
   friend auto operator==(const timestamp&, const timestamp&) -> bool = default;
@@ -108,12 +80,9 @@ struct timestamp {
 
 namespace detail {
 
-/// The one definition of the grammar. The sign class must escape the dash: CTRE
-/// rejects a bare `-` inside a character class.
 inline constexpr auto rfc3339_pattern = ctll::fixed_string{
     R"(^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:([Zz])|([+\-])(\d{2}):(\d{2}))$)"};
 
-/// The pattern's capture groups, in the order they open.
 namespace rfc3339_group {
 inline constexpr std::size_t year = 1;
 inline constexpr std::size_t month = 2;
@@ -128,11 +97,9 @@ inline constexpr std::size_t offset_hour = 10;
 inline constexpr std::size_t offset_minute = 11;
 }  // namespace rfc3339_group
 
-/// The value of the first fractional digit's place: a tenth of a second.
 inline constexpr std::chrono::nanoseconds first_fraction_place =
     std::chrono::nanoseconds{std::chrono::seconds{1}} / decimal_radix;
 
-/// \brief Parse a run of decimal digits that CTRE has already shape-checked.
 template <class Capture>
 [[nodiscard]] constexpr auto to_int(Capture capture) noexcept -> int {
   int value = 0;
@@ -142,7 +109,6 @@ template <class Capture>
   return value;
 }
 
-/// \brief True when the year/month/day triple is a real calendar date.
 [[nodiscard]] constexpr auto is_valid_date(int year, unsigned month, unsigned day) noexcept -> bool {
   const std::chrono::year_month_day ymd{std::chrono::year{year}, std::chrono::month{month},
                                         std::chrono::day{day}};
@@ -151,12 +117,9 @@ template <class Capture>
 
 }  // namespace detail
 
-/// \brief Parse an RFC 3339 date-time.
-///
-/// Lenient on consume: lowercase `t`/`z` are accepted, and a seconds field of 60
-/// folds onto the following second. Such input does not round-trip; canonical
-/// input does. Returns `out_of_range` outside roughly 1678-2262, the span of a
-/// nanosecond-resolution clock.
+// spec: SWR-CORE-0008
+// spec: SWR-CORE-0010
+// spec: SWR-CORE-0011
 [[nodiscard]] inline auto parse_timestamp(std::string_view text) -> result<timestamp> {
   const auto match = ctre::match<detail::rfc3339_pattern>(text);
   if (!match) {
@@ -185,9 +148,6 @@ template <class Capture>
   std::chrono::nanoseconds subsecond{0};
   if (const auto fraction = match.get<group::fraction>(); fraction) {
     const auto digits = fraction.to_view();
-    // The grammar above admits one to nine digits, so this cannot fail. It is
-    // still asked rather than asserted: the bound belongs to the type, and a
-    // change to the pattern should be reported here rather than truncated.
     auto counted = fraction_digits::make(digits.size());
     if (!counted) {
       return fail(counted.error().code, counted.error().detail, std::string{text});
@@ -226,8 +186,6 @@ template <class Capture>
       std::chrono::duration_cast<std::chrono::seconds>(days.time_since_epoch()) + time_of_day -
       offset;
 
-  // Checked in seconds, before widening: the overflow is silent afterwards.
-  // One second of headroom so the sub-second part cannot tip it over.
   constexpr auto representable =
       std::chrono::duration_cast<std::chrono::seconds>(std::chrono::nanoseconds::max()) -
       std::chrono::seconds{1};
@@ -246,8 +204,7 @@ template <class Capture>
   };
 }
 
-/// \brief Render an RFC 3339 date-time, reproducing canonical input exactly.
-
+// spec: SWR-CORE-0009
 [[nodiscard]] inline auto to_string(const timestamp& value) -> std::string {
   const auto local = value.utc + value.offset;
   const auto days = std::chrono::floor<std::chrono::days>(local);
@@ -263,10 +220,6 @@ template <class Capture>
 
   std::string fraction;
   if (value.fractional_digits.count() > 0) {
-    // Rendered as the full nanosecond field and then truncated, rather than by
-    // dividing down a place value that reaches zero on the tenth digit. The
-    // count can no longer exceed nine, so the truncation below is now belt and
-    // braces rather than the guard it once was.
     std::array<char, detail::max_fractional_digits> rendered{};
     auto remaining = nanos.count();
     for (char& digit : rendered | std::views::reverse) {

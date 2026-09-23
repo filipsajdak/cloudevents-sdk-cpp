@@ -1,10 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief The CloudEvents v1.0.2 event model, its attribute types and validation.
-///
-/// Strict on produce, tolerant on consume.
-
 #include <algorithm>
 #include <charconv>
 #include <cstddef>
@@ -28,25 +23,20 @@
 #include <cloudevents/detail/validated_string.hpp>
 #include <cloudevents/result.hpp>
 
+// spec: SYS-CORE-0001
+// spec: SWR-BUILD-0005
 namespace ce::inline v1 {
 
-/// \brief Raw payload bytes.
+// spec: SWR-CORE-0005
 using binary = std::vector<std::byte>;
 
 namespace detail {
 
-/// \brief A string that carries which CloudEvents attribute type it is.
-///
-/// String, URI and URI-Reference share a wire form, so only the declared type
-/// tells them apart. They must also be distinct types for `attribute_value` to
-/// be a well-formed variant.
 template <class Tag>
 class tagged_string {
  public:
   tagged_string() = default;
 
-  // Implicit on purpose: an exact `std::string` still selects the `std::string`
-  // alternative, because an exact match beats a user-defined conversion.
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
   tagged_string(std::string text) : text_{std::move(text)} {}
   // NOLINTNEXTLINE(google-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-explicit-constructor)
@@ -68,57 +58,47 @@ struct uri_ref_tag {};
 
 }  // namespace detail
 
-/// \brief An absolute URI (CloudEvents `URI` type).
 using uri = detail::tagged_string<detail::uri_tag>;
 
-/// \brief A URI reference, absolute or relative (CloudEvents `URI-Reference`).
 using uri_ref = detail::tagged_string<detail::uri_ref_tag>;
 
-/// \brief The CloudEvents attribute type system. There is no floating-point
-/// alternative; the CloudEvents type system has none.
+// spec: SWR-CORE-0006
 using attribute_value =
     std::variant<bool, std::int32_t, std::string, binary, uri, uri_ref, timestamp>;
 
-/// \brief Already-serialized JSON, carried opaquely. Core never parses it; the
-/// format layer does (ADR-0004).
+// spec: SWR-CORE-0013
 struct json_text {
   std::string raw;
 
   friend auto operator==(const json_text&, const json_text&) -> bool = default;
 };
 
-/// \brief An event payload: absent, text, bytes, or pre-serialized JSON.
+// spec: SWR-CORE-0012
 using data_t = std::variant<std::monostate, std::string, binary, json_text>;
 
 namespace detail {
 
-/// An extension attribute name: lowercase alphanumerics only (core spec §4.1).
 inline constexpr auto attribute_name_pattern = ctll::fixed_string{R"(^[a-z0-9]+$)"};
 
-/// A media type with an optional parameter list, used to decide JSON-ness.
 inline constexpr auto content_type_pattern =
     ctll::fixed_string{R"(^\s*([A-Za-z0-9!#$%&'*+.^_`|~\-]+)/([A-Za-z0-9!#$%&'*+.^_`|~\-]+)\s*(;.*)?$)"};
 
-/// The reserved context attribute names. An extension may not shadow one.
 inline constexpr std::array<std::string_view, 10> reserved_names = {
     "id",      "source",  "specversion", "type",    "datacontenttype",
     "dataschema", "subject", "time",     "data",    "data_base64",
 };
 
-/// \brief Lowercase an ASCII character, without `std::tolower`'s locale.
 [[nodiscard]] constexpr auto ascii_lower(char character) noexcept -> char {
   return (character >= 'A' && character <= 'Z')
              ? static_cast<char>(character - 'A' + 'a')
              : character;
 }
 
-/// \brief Case-insensitive ASCII comparison, for media types and header names.
 [[nodiscard]] constexpr auto iequals(std::string_view left, std::string_view right) noexcept
     -> bool {
   return std::ranges::equal(left, right, {}, ascii_lower, ascii_lower);
 }
 
-/// \brief True when a string ends with a suffix, compared case-insensitively.
 [[nodiscard]] constexpr auto iends_with(std::string_view text, std::string_view suffix) noexcept
     -> bool {
   return text.size() >= suffix.size() &&
@@ -134,28 +114,15 @@ inline constexpr std::array<std::string_view, 10> reserved_names = {
                             prefix, {}, ascii_lower, ascii_lower);
 }
 
-/// The UTF-8 encoding, as the tables in Unicode 15 chapter 3 state it. Each
-/// constant is named for what it tests rather than for its bit pattern, so a
-/// transcription error reads as one.
 namespace utf8 {
 
-/// A byte below this is a one-byte sequence and its own code point.
 inline constexpr unsigned char ascii_limit = 0x80U;
 
-/// A continuation byte matches `10xxxxxx`.
-///
-/// The payload masks are `std::uint32_t`, not `unsigned char`, because they are
-/// combined with the accumulating code point. Two `unsigned char` operands both
-/// promote to `int`, which would make the assembly below signed arithmetic on
-/// values that are not signed - the bare `0x3FU` this replaced was `unsigned
-/// int` by suffix and did not.
 inline constexpr unsigned char continuation_mask = 0xC0U;
 inline constexpr unsigned char continuation_marker = 0x80U;
 inline constexpr std::uint32_t continuation_payload = 0x3FU;
 inline constexpr unsigned int continuation_bits = 6U;
 
-/// A lead byte announces its length in its high bits, and carries the rest of
-/// the code point in the low bits the matching payload mask keeps.
 inline constexpr unsigned char two_byte_mask = 0xE0U;
 inline constexpr unsigned char two_byte_marker = 0xC0U;
 inline constexpr std::uint32_t two_byte_payload = 0x1FU;
@@ -168,30 +135,17 @@ inline constexpr unsigned char four_byte_mask = 0xF8U;
 inline constexpr unsigned char four_byte_marker = 0xF0U;
 inline constexpr std::uint32_t four_byte_payload = 0x07U;
 
-/// The smallest code point each length is allowed to encode. A sequence below
-/// its own floor is an overlong encoding: a second spelling of a character that
-/// a shorter sequence already spells.
 inline constexpr std::uint32_t two_byte_floor = 0x80U;
 inline constexpr std::uint32_t three_byte_floor = 0x800U;
 inline constexpr std::uint32_t four_byte_floor = 0x10000U;
 
-/// UTF-16 surrogates are not characters, and UTF-8 does not encode them.
 inline constexpr std::uint32_t first_surrogate = 0xD800U;
 inline constexpr std::uint32_t last_surrogate = 0xDFFFU;
 
-/// The last code point Unicode defines.
 inline constexpr std::uint32_t last_code_point = 0x10FFFFU;
 
 }  // namespace utf8
 
-/// \brief True when the bytes are well-formed UTF-8.
-///
-/// Rejects overlong encodings, surrogates and values above U+10FFFF, because each
-/// of those is a way to smuggle a second spelling of the same text past a
-/// consumer that compares strings.
-/// What a lead byte announces: how many bytes the sequence has, and the bits of
-/// the code point the lead itself carries. A length of zero is a byte that
-/// cannot start a sequence.
 struct utf8_lead {
   std::size_t length;
   std::uint32_t payload;
@@ -213,8 +167,6 @@ struct utf8_lead {
   return {.length = 0, .payload = 0};
 }
 
-/// The smallest code point a sequence of `length` bytes may encode. Below it
-/// the sequence is overlong: a second spelling of what a shorter one spells.
 [[nodiscard]] constexpr auto utf8_floor(std::size_t length) noexcept -> std::uint32_t {
   switch (length) {
     case 2:
@@ -226,7 +178,6 @@ struct utf8_lead {
   }
 }
 
-/// True when a decoded multi-byte sequence names a code point UTF-8 may carry.
 [[nodiscard]] constexpr auto utf8_code_point_allowed(std::size_t length, std::uint32_t code) noexcept
     -> bool {
   return code >= utf8_floor(length) && code <= utf8::last_code_point &&
@@ -259,23 +210,17 @@ struct utf8_lead {
 
 }  // namespace detail
 
-/// \brief True when `name` matches `[a-z0-9]+`. Length is a SHOULD, so it
-/// surfaces through `lint()` rather than here.
+// spec: SWR-CORE-0022
 [[nodiscard]] constexpr auto valid_attribute_name(std::string_view name) noexcept -> bool {
   return ctre::match<detail::attribute_name_pattern>(name);
 }
 
-/// \brief True when `name` is a reserved context attribute that an extension may
-/// not redefine.
+// spec: SWR-CORE-0023
 [[nodiscard]] constexpr auto reserved_name(std::string_view name) noexcept -> bool {
   return std::ranges::find(detail::reserved_names, name) != detail::reserved_names.end();
 }
 
-/// \brief True when a media type denotes JSON: any type whose subtype is `json`
-/// or ends in `+json`, case-insensitively, with parameters allowed.
-///
-/// The subtype is spelled out rather than shown as a wildcard pattern, because
-/// the pattern contains the two characters that end a C comment.
+// spec: SWR-CORE-0024
 [[nodiscard]] constexpr auto is_json_content_type(std::string_view content_type) noexcept -> bool {
   const auto match = ctre::match<detail::content_type_pattern>(content_type);
   if (!match) {
@@ -287,16 +232,7 @@ struct utf8_lead {
 
 namespace detail {
 
-/// \brief The rules the context attributes are built from.
-///
-/// One `check` per attribute, `constexpr` so the same function serves the
-/// compile-time literal path and the run-time factory. It returns a diagnosis
-/// rather than a result: the compile-time path has no value to carry, because its
-/// failure mode is a compile error (SWR-CORE-0026).
-
-/// Non-empty and encodable. Nothing beyond that: `datacontenttype` and
-/// `dataschema` have their own rules, and `source` is deliberately exempt from
-/// RFC 3986 (SWR-CORE-0025).
+// spec: SWR-CORE-0025
 template <errc Empty>
 [[nodiscard]] constexpr auto check_text(std::string_view text, std::string_view attribute,
                                         std::string_view empty_detail) noexcept
@@ -314,6 +250,7 @@ template <errc Empty>
   return {};
 }
 
+// spec: SWR-CORE-0017
 struct id_policy {
   static constexpr std::string_view attribute = "id";
   [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
@@ -339,6 +276,7 @@ struct type_policy {
   }
 };
 
+// spec: SWR-CORE-0019
 struct subject_policy {
   static constexpr std::string_view attribute = "subject";
   [[nodiscard]] static constexpr auto check(std::string_view text) noexcept
@@ -378,6 +316,7 @@ struct datacontenttype_policy {
   }
 };
 
+// spec: SWR-CORE-0020
 struct extension_name_policy {
   static constexpr std::string_view attribute = "extension";
   static constexpr bool names_offending_text = true;
@@ -403,8 +342,7 @@ struct extension_name_policy {
 
 }  // namespace detail
 
-/// \brief The context attributes, each unable to hold a value the specification
-/// forbids (SWR-CORE-0026).
+// spec: SWR-CORE-0026
 using id = detail::validated_string<detail::id_policy>;
 using source = detail::validated_string<detail::source_policy>;
 using type = detail::validated_string<detail::type_policy>;
@@ -413,11 +351,7 @@ using dataschema = detail::validated_string<detail::dataschema_policy>;
 using datacontenttype = detail::validated_string<detail::datacontenttype_policy>;
 using extension_name = detail::validated_string<detail::extension_name_policy>;
 
-/// \brief `specversion`, as the one value this SDK implements.
-///
-/// A type with a single inhabitant rather than a string: the produce side then
-/// cannot express a version that does not exist, and the only rule left concerns
-/// text arriving from a peer (SWR-CORE-0018).
+// spec: SWR-CORE-0018
 class spec_version {
  public:
   constexpr spec_version() noexcept = default;
@@ -435,11 +369,7 @@ class spec_version {
   [[nodiscard]] friend auto operator==(spec_version, spec_version) noexcept -> bool = default;
 };
 
-/// \brief Attribute literals, checked when the translation unit is compiled.
-///
-/// A literal is the only ergonomic compile-time form: `f("abc")` where `f` takes
-/// `ce::id` needs two user-defined conversions and does not compile, and no
-/// arrangement removes that (SWR-CORE-0027).
+// spec: SWR-CORE-0027
 namespace literals {
 
 consteval auto operator""_id(const char* text, std::size_t size) {
@@ -468,11 +398,6 @@ consteval auto operator""_ext(const char* text, std::size_t size) {
 
 namespace detail {
 
-/// \brief The field types an extension struct may declare.
-///
-/// Exactly the CloudEvents attribute type system, less Binary: recovering a
-/// Binary attribute from its wire form needs base64, which belongs to the format
-/// layer, and none of the documented extensions declares one.
 template <class F>
 struct extension_field_type : std::false_type {};
 
@@ -511,11 +436,7 @@ inline constexpr bool is_optional_field = false;
 template <class U>
 inline constexpr bool is_optional_field<std::optional<U>> = true;
 
-/// \brief Recover a declared field type from the string a lossy wire form left.
-///
-/// The JSON format and the HTTP binary binding both carry an extension as text,
-/// so this is where a declared Integer, Boolean, URI or Timestamp becomes one
-/// again (SWR-EXT-0003).
+// spec: SWR-EXT-0003
 template <extension_field F>
 [[nodiscard]] auto from_attribute_text(std::string_view text, std::string_view where)
     -> result<extension_value_t<F>> {
@@ -528,7 +449,6 @@ template <extension_field F>
   } else if constexpr (std::is_same_v<value_type, uri_ref>) {
     return uri_ref{std::string{text}};
   } else if constexpr (std::is_same_v<value_type, bool>) {
-    // The two spellings the JSON format produces for a Boolean attribute.
     if (text == "true") {
       return true;
     }
@@ -554,8 +474,6 @@ template <extension_field F>
   }
 }
 
-/// \brief Read one attribute into a declared field type.
-/// \brief True when every described field of `Ext` maps to an attribute type.
 template <described Ext>
 [[nodiscard]] consteval auto extension_fields_supported() -> bool {
   bool supported = true;
@@ -571,7 +489,6 @@ template <extension_field F>
     -> result<extension_value_t<F>> {
   using value_type = extension_value_t<F>;
 
-  // The type survived, so no conversion is needed or wanted.
   if (const auto* exact = std::get_if<value_type>(&stored)) {
     return *exact;
   }
@@ -584,11 +501,6 @@ template <extension_field F>
 
 }  // namespace detail
 
-/// \brief The bytes of some text, as the core binary type.
-///
-/// Public because a binding's caller needs it: a payload arrives as bytes and is
-/// often held as text. It lived in ce::http::detail until examples and suites
-/// started reaching in for it, which made it public in all but name.
 [[nodiscard]] inline auto to_bytes(std::string_view text) -> binary {
   binary out;
   out.reserve(text.size());
@@ -598,7 +510,6 @@ template <extension_field F>
   return out;
 }
 
-/// \brief The text of some bytes.
 [[nodiscard]] inline auto to_text(const binary& bytes) -> std::string {
   std::string out;
   out.reserve(bytes.size());
@@ -608,7 +519,6 @@ template <extension_field F>
   return out;
 }
 
-/// \brief A SHOULD-level observation about an event: not an error.
 struct lint_warning {
   std::string attribute;
   std::string message;
@@ -616,19 +526,12 @@ struct lint_warning {
   friend auto operator==(const lint_warning&, const lint_warning&) -> bool = default;
 };
 
-/// \brief A CloudEvent.
-///
-/// Every attribute is a type that cannot hold a value the specification forbids,
-/// so an invalid event has no representation and there is nothing left to check
-/// after construction (SWR-CORE-0014).
+// spec: SWR-CORE-0014
 class event {
  public:
-  /// Keyed by the validated name, so no map entry can name an attribute the
-  /// specification refuses. Transparent comparator, so a lookup still takes a
-  /// `string_view` without building a key to look up with.
   using extension_map = std::map<extension_name, attribute_value, std::less<>>;
 
-  /// \brief Everything the specification leaves optional.
+  // spec: SWR-CORE-0015
   struct options {
     std::optional<ce::datacontenttype> datacontenttype = {};
     std::optional<ce::dataschema> dataschema = {};
@@ -649,13 +552,7 @@ class event {
   explicit event(ce::id identifier, ce::source origin, ce::type kind)
       : event{std::move(identifier), std::move(origin), std::move(kind), options{}} {}
 
-  /// \brief An event under construction, for a reader that learns the attributes
-  /// one field at a time.
-  ///
-  /// A decoder cannot name all three required attributes in one expression
-  /// because it does not have them until the message is exhausted. `build()` is
-  /// where their absence is reported, and absence is its only failure: the
-  /// attribute types refuse every other way of being wrong (SWR-CORE-0029).
+  // spec: SWR-CORE-0029
   struct builder {
     std::optional<ce::id> id = {};
     std::optional<ce::source> source = {};
@@ -694,11 +591,6 @@ class event {
   [[nodiscard]] auto extensions() const noexcept -> const extension_map& { return rest_.extensions; }
   [[nodiscard]] auto data() const noexcept -> const data_t& { return rest_.data; }
 
-  /// \brief Replace the payload, and say what it is.
-  ///
-  /// One call rather than two, because a payload and the media type describing it
-  /// are one fact: setting them separately leaves a window where the event says
-  /// its bytes are something they are not.
   void set_data(data_t payload, std::optional<ce::datacontenttype> media_type) {
     rest_.data = std::move(payload);
     rest_.datacontenttype = std::move(media_type);
@@ -706,16 +598,11 @@ class event {
 
   friend auto operator==(const event&, const event&) -> bool = default;
 
-  /// \brief Set an extension attribute.
-  ///
-  /// Infallible: `extension_name` cannot hold a name that is invalid or that
-  /// redefines a context attribute, so the refusal happened where the name was
-  /// made.
+  // spec: SWR-CORE-0016
   void set_extension(extension_name name, attribute_value value) {
     rest_.extensions.insert_or_assign(std::move(name), std::move(value));
   }
 
-  /// \brief Remove an extension attribute, reporting whether one was there.
   auto remove_extension(std::string_view name) -> bool {
     const auto found = rest_.extensions.find(name);
     if (found == rest_.extensions.end()) {
@@ -725,24 +612,18 @@ class event {
     return true;
   }
 
-  /// \brief Look up an extension attribute, or nullptr when absent.
   [[nodiscard]] auto extension(std::string_view name) const noexcept -> const attribute_value* {
     const auto found = rest_.extensions.find(name);
     return found == rest_.extensions.end() ? nullptr : &found->second;
   }
 
-  /// \brief Read a described extension struct out of the extension attributes.
-  ///
-  /// An absent optional field yields `nullopt`; an absent required field is an
-  /// error naming the attribute (SWR-EXT-0002).
+  // spec: SWR-EXT-0002
   template <described Ext>
   [[nodiscard]] auto get() const -> result<Ext> {
     static_assert(detail::extension_fields_supported<Ext>(),
                   "an extension struct may only declare bool, int32_t, std::string, uri, "
                   "uri_ref or timestamp fields, optionally wrapped in std::optional");
 
-    // Filled field by field because the fields are reached generically; a
-    // designated initializer cannot name what only the describe seam knows.
     Ext out{};
     result<void> mapping_error{};
 
@@ -773,11 +654,6 @@ class event {
     return out;
   }
 
-  /// \brief Write a described extension struct into the extension attributes.
-  ///
-  /// Each field is stored under its declared type, which is what makes a value
-  /// survive the next encode with its type intact. A `nullopt` optional removes
-  /// the attribute, so the event matches the struct exactly afterwards.
   template <described Ext>
   [[nodiscard]] auto set(const Ext& value) -> result<void> {
     static_assert(detail::extension_fields_supported<Ext>(),
@@ -811,8 +687,7 @@ class event {
     return mapping_error;
   }
 
-  /// \brief SHOULD-level observations. They never reject an event, because the
-  /// specification permits every one of them.
+  // spec: SWR-CORE-0021
   [[nodiscard]] auto lint() const -> std::vector<lint_warning> {
     std::vector<lint_warning> warnings;
     constexpr std::size_t recommended_name_length = 20;
@@ -836,10 +711,6 @@ class event {
 
 namespace detail {
 
-/// \brief Make an attribute from the text a decoder read and put it in its slot.
-///
-/// The attribute's own factory is the only thing that can refuse the text, so a
-/// decoder never checks a rule itself (SWR-CORE-0026).
 template <class Attribute, class Text>
 [[nodiscard]] auto store_attribute(std::optional<Attribute>& slot, Text&& text) -> result<void> {
   auto made = Attribute::make(std::forward<Text>(text));

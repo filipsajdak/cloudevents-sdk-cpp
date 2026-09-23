@@ -1,8 +1,5 @@
 #pragma once
 
-/// \file
-/// \brief RFC 4648 section 4 base64, usable in a constant expression.
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -20,18 +17,13 @@ namespace detail {
 inline constexpr std::string_view base64_alphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-/// Where each run of the alphabet begins, so the arithmetic below reads as a
-/// position in the table rather than as a number.
 inline constexpr std::uint8_t lowercase_offset = 26;
 inline constexpr std::uint8_t digit_offset = 52;
 inline constexpr std::uint8_t plus_value = 62;
 inline constexpr std::uint8_t slash_value = 63;
 
-/// Not a sextet. Every value the alphabet yields is below 64, so this cannot
-/// collide with one.
 inline constexpr std::uint8_t not_in_alphabet = 0xFF;
 
-/// \brief Sextet for a base64 character, or `not_in_alphabet`.
 [[nodiscard]] constexpr auto base64_value(char character) noexcept -> std::uint8_t {
   if (character >= 'A' && character <= 'Z') {
     return static_cast<std::uint8_t>(character - 'A');
@@ -51,35 +43,25 @@ inline constexpr std::uint8_t not_in_alphabet = 0xFF;
   return not_in_alphabet;
 }
 
-/// Characters in one base64 quantum: four sextets carrying three octets.
 inline constexpr std::size_t quantum_characters = 4;
 inline constexpr std::size_t quantum_octets = 3;
 
-/// RFC 4648 section 4 pads a final quantum out to four characters, so a
-/// well-formed encoding carries at most two padding characters.
 inline constexpr std::size_t max_padding_characters = 2;
 
-/// One base64 character carries six bits; one octet carries eight.
 inline constexpr unsigned sextet_bits = 6;
 inline constexpr unsigned octet_bits = 8;
 inline constexpr std::uint32_t sextet_mask = 0x3FU;
 inline constexpr std::uint32_t octet_mask = 0xFFU;
 
-/// Where each sextet of a whole three-octet group sits once the group is packed
-/// into one integer.
 inline constexpr unsigned first_sextet_shift = 18;
 inline constexpr unsigned second_sextet_shift = 12;
 inline constexpr unsigned third_sextet_shift = 6;
 inline constexpr unsigned fourth_sextet_shift = 0;
 
-/// A partial group is left-padded up to a whole number of sextets: one octet
-/// needs four bits of padding, two octets need two.
 inline constexpr unsigned one_octet_padding = 4;
 inline constexpr unsigned two_octet_padding = 2;
 
-/// The alphabet character for the low six bits of `value`.
 [[nodiscard]] constexpr auto base64_character(std::uint32_t value) noexcept -> char {
-  // The mask is what bounds the index; this keeps the alphabet as long as it.
   static_assert(base64_alphabet.size() == sextet_mask + 1);
   // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
   return base64_alphabet[value & sextet_mask];
@@ -87,20 +69,15 @@ inline constexpr unsigned two_octet_padding = 2;
 
 }  // namespace detail
 
-/// \brief Encode bytes as base64, with padding.
-///
-/// Not std::format: this packs bit fields and uses each as a table index, which is
-/// not a formatting operation and has no format specifier.
+// spec: SWR-JSON-0027
 [[nodiscard]] constexpr auto base64_encode(const binary& bytes) -> std::string {
   std::string out;
   out.reserve(((bytes.size() + detail::quantum_octets - 1) / detail::quantum_octets) *
               detail::quantum_characters);
 
-  // Emit the 6-bit field at `offset` of a packed group.
   const auto emit = [&out](std::uint32_t packed, unsigned offset) {
     out.push_back(detail::base64_character(packed >> offset));
   };
-  // Pack up to one quantum of octets into one integer, first octet highest.
   const auto pack = [](std::span<const std::byte> octets) {
     std::uint32_t group = 0;
     for (const std::byte octet : octets) {
@@ -118,8 +95,6 @@ inline constexpr unsigned two_octet_padding = 2;
     emit(group, detail::fourth_sextet_shift);
   }
 
-  // A partial group is padded to a whole number of sextets, then to four
-  // characters, so the encoded length always determines the byte count.
   if (rest.size() == 1) {
     const std::uint32_t group = pack(rest) << detail::one_octet_padding;
     emit(group, detail::third_sextet_shift);
@@ -136,14 +111,9 @@ inline constexpr unsigned two_octet_padding = 2;
   return out;
 }
 
-/// \brief Decode base64.
-///
-/// Padding may be omitted entirely, because the encoded length already
-/// determines the byte count. Where it is present it must be exactly what the
-/// final quantum needs: at most two characters, completing the input to a
-/// multiple of four. Anything outside the alphabet is rejected, including
-/// whitespace and the URL-safe alphabet, which RFC 4648 section 4 does not
-/// admit.
+// spec: SWR-JSON-0028
+// spec: SWR-JSON-0029
+// spec: SWR-JSON-0038
 [[nodiscard]] constexpr auto base64_decode(std::string_view text) -> result<binary> {
   std::string_view body = text;
   std::size_t padding = 0;
@@ -152,9 +122,6 @@ inline constexpr unsigned two_octet_padding = 2;
     ++padding;
   }
 
-  // Padding is optional, but a spelling that carries it must carry exactly the
-  // amount the final quantum needs. Accepting any run of '=' made "QQ======" and
-  // "====" decode, and made several spellings of the same octets valid.
   if (padding > detail::max_padding_characters) {
     return fail(errc::invalid_base64, "more than two padding characters",
                 std::string{text});
@@ -164,8 +131,6 @@ inline constexpr unsigned two_octet_padding = 2;
                 std::string{text});
   }
 
-  // Every character after the padding was stripped must be in the alphabet, and
-  // a leftover of exactly one sextet cannot have come from any byte sequence.
   if (body.size() % detail::quantum_characters == 1) {
     return fail(errc::invalid_base64, "encoded length leaves a stray sextet", std::string{text});
   }
@@ -190,8 +155,6 @@ inline constexpr unsigned two_octet_padding = 2;
     }
   }
 
-  // Bits left over must be zero: a decoder that ignored them would accept several
-  // encodings of the same bytes, and two peers would disagree about equality.
   if (bits > 0 && (accumulator & ((1U << bits) - 1)) != 0) {
     return fail(errc::invalid_base64, "unused trailing bits are not zero", std::string{text});
   }

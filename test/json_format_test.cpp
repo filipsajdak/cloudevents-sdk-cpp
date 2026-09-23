@@ -944,6 +944,40 @@ const boost::ut::suite<"json-format-entry-points"> format_entry_points = [] {
     expect(!decoded.has_value() && decoded.error().code == ce::errc::unsupported_spec_version);
   };
 
+  // The decoder reads the document in one pass, so it meets a bad extension
+  // placed first before anything else. The report must not depend on where the
+  // member sits: context attributes, then the payload, then the extensions.
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec} + ": a context attribute is reported before the rest") = [codec] {
+      const auto decoded = ce::json_format<C>::decode(
+          R"({"Bad":1,"data":1,"data_base64":"AA==","specversion":"1.0","source":"/s","type":"t"})"sv);
+      expect(!decoded.has_value()) << codec;
+      if (!decoded) {
+        expect(decoded.error().code == ce::errc::missing_required_attribute) << codec;
+        expect(decoded.error().where == "id"sv) << codec;
+      }
+    };
+    test(std::string{codec} + ": the payload is reported before the extensions") = [codec] {
+      const auto decoded = ce::json_format<C>::decode(
+          R"({"Bad":1,"specversion":"1.0","id":"1","source":"/s","type":"t","data":1,"data_base64":"AA=="})"sv);
+      expect(!decoded.has_value()) << codec;
+      if (!decoded) {
+        expect(decoded.error().code == ce::errc::data_conflict) << codec;
+      }
+    };
+  });
+
+  // mini_codec keeps a repeated member where nlohmann keeps one, and its find
+  // returns the first. The single pass must read the same occurrence find does.
+  "a repeated context attribute is read from its first occurrence"_test = [] {
+    const auto decoded = ce::json_format<mini_codec>::decode(
+        R"({"specversion":"1.0","id":"first","id":"second","source":"/s","type":"t"})"sv);
+    expect(decoded.has_value());
+    if (decoded) {
+      expect(decoded->id().view() == "first"sv);
+    }
+  };
+
   "the spec's example event, single and batched, with nlohmann_codec"_test = [] {
     check_spec_examples<nlohmann_codec>("nlohmann_codec");
   };

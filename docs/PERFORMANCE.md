@@ -12,7 +12,7 @@ They are the operations `bench/codec_bench.cpp` times, over the documents in `be
 
 | measure | how | on the pull request |
 |---|---|---|
-| `instructions` | Callgrind, collecting only inside the measured loop, divided by its iterations | fails above +2% over main (`SWR-PERF-0001`) |
+| `instructions` | Callgrind, collecting only inside the measured loop, divided by its iterations, in `bench/perf/perf_probe_instr`: the same operations with no allocation accounting linked in | fails above +2% over main (`SWR-PERF-0001`) |
 | `allocations`, `allocated_bytes` | a counting global `operator new` in `bench/perf/perf_probe`, one operation after warm-up | fails on any increase (`SWR-PERF-0002`) |
 | `retained_bytes` | live heap bytes while a decoded event is held, minus before the decode | fails above +1% (`SWR-PERF-0003`) |
 | any of the above | against `bench/budgets.json` | fails above the budget (`SWR-PERF-0004`) |

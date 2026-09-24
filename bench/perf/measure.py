@@ -3,8 +3,8 @@
 
     measure.py --build-dir build/perf --out results.json
 
-The build directory must hold `bench/perf/perf_probe` and the four
-`bench/perf/perf_consumer_<codec>` binaries (configure with
+The build directory must hold `bench/perf/perf_probe`, `perf_probe_instr` and
+the four `bench/perf/perf_consumer_<codec>` binaries (configure with
 -DCE_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release). `bench/codec_bench` is
 optional: its wall and CPU times are recorded when it exists, and never gate.
 
@@ -147,6 +147,13 @@ def measure(build_dir: Path, source_dir: Path, instructions: bool, wall: bool) -
     if not probe.is_file():
         sys.exit(f"measure: {probe} not found; build the perf_probe target first")
 
+    # Instructions come from a probe with no allocation accounting, so they
+    # measure the SDK and the codec alone. A build from before that probe
+    # existed has only perf_probe, which is then used for both.
+    instr_probe = perf_dir / "perf_probe_instr"
+    if not instr_probe.is_file():
+        instr_probe = probe
+
     listing = probe_json(probe, "list")
     measurements: dict[str, dict[str, float | int]] = {}
 
@@ -162,7 +169,8 @@ def measure(build_dir: Path, source_dir: Path, instructions: bool, wall: bool) -
             if instructions:
                 op = op_id.split("/", 1)[0]
                 iterations = INSTR_ITERATIONS.get(op, DEFAULT_ITERATIONS)
-                entry["instructions"] = callgrind_instructions(probe, op_id, iterations, scratch)
+                entry["instructions"] = callgrind_instructions(instr_probe, op_id, iterations,
+                                                             scratch)
             print(f"measured {op_id}", file=sys.stderr)
 
         for codec in CODECS:

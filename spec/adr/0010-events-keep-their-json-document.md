@@ -50,15 +50,18 @@ Two with different identities are compared by the left-hand codec: it parses the
 Each holder can serialise and parse because it knows its codec.
 Comparing compact serialisations instead would report a difference in member order as inequality.
 
-**The v3 codec concept requires `equal`, `copy`, `extract` and `identity`.**
+**The v3 codec concept requires `equal`, `copy`, `extract`, `for_each_mutable_element` and `identity`.**
 Encoding copies the DOM into the output document, equality needs the codec's own comparison, and the fast path needs the identity.
 The codec supplies the copy, because RapidJSON's value cannot be copy-constructed and copies only through its allocator.
 Decoding moves the `data` member out of the document it parsed with `extract(value& object, std::string_view key) -> value`, because the decoder owns that document and `find` only reaches a member through a pointer to const.
 A deep copy was measured instead, on 2026-09-24: it took up to 187 percent longer than dumping the member to text (Boost.JSON) and raised allocations from 13 to 4015 (nlohmann, a 52889-byte event), while a move allocates nothing.
 A caller extracts only a member `find` has returned; a codec given an absent key returns a null value and leaves the object unchanged, so a broken precondition is a wrong payload, never undefined behaviour.
+Batch decoding owns its parsed array in the same way, so it walks the elements with `for_each_mutable_element(value& array, F visit)`, which hands each element to `visit` as `value&`, and moves each element's `data` out with `extract`.
+Copying them instead cost `decode_batch_100/boost.json` 5.48 percent more instructions than main in the CI perf job on 2026-09-24, and the other codecs 1.3 to 1.5 percent.
+The traversal has its own name because the const `for_each_element` accepts any visitor: an overload on `value&` would let a codec without one satisfy the concept and fail only inside the decoder.
 `from_value` still copies, since it reads a document the caller keeps.
-Requiring all four keeps a single code path.
-The in-tree codecs gain a static `equal`, `copy`, `extract` and `identity`; adding members keeps their v1 declarations.
+Requiring all five keeps a single code path.
+The in-tree codecs gain a static `equal`, `copy`, `extract`, `for_each_mutable_element` and `identity`; adding members keeps their v1 declarations.
 
 **Decoding retains the document up to a limit.**
 The JSON format stores `json_document` when the input is at most `retain_document_up_to` bytes (64 KiB by default) and `json_text` above it.
@@ -91,7 +94,7 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 
 ### Negative
 - Three event models are maintained, and CI runs all three generations.
-- A third-party codec must add `equal`, `copy`, `extract` and an `identity` to move to v3.
+- A third-party codec must add `equal`, `copy`, `extract`, `for_each_mutable_element` and an `identity` to move to v3.
 - An event holding a `json_document` uses more memory than one holding the same text.
 - Comparing documents from different codecs serialises one and parses it again.
 

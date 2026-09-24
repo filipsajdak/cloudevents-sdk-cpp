@@ -30,6 +30,11 @@ Test identity is the boost-ext/ut SUITE name, the string literal in
 also indexed, so a requirement may name either, but a spec marker sits above a
 suite declaration and resolves to the suite.
 
+The performance tooling is Python, and its suites are `unittest` classes under
+`bench/perf/`. There the identity is the TestCase class name (a `test_` method name
+also resolves), and a `# spec: <UID>` marker sits above the class. Both directions
+are checked exactly as for ut suites.
+
 Exit code 0 when there are no errors, 1 otherwise. Pure stdlib plus reqlib.
 """
 
@@ -48,6 +53,12 @@ TEST_DIRS = [REPO_ROOT / "test", REPO_ROOT / "fuzz", REPO_ROOT / "examples"]
 SKIP_DIR_PARTS = {"_build", "build", ".venv", "venv", "_deps", "node_modules", ".git"}
 
 CPP_SUFFIXES = {".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".h", ".inl"}
+
+# Python unittest suites, which verify the performance job's tooling.
+PY_TEST_DIRS = [REPO_ROOT / "bench" / "perf"]
+PY_SUFFIXES = {".py"}
+PY_CLASS_RE = re.compile(r"^class\s+(\w+)\s*\([^)]*TestCase[^)]*\)\s*:", re.MULTILINE)
+PY_METHOD_RE = re.compile(r"^\s+def\s+(test_\w+)\s*\(", re.MULTILINE)
 
 # The public headers, whose markers name the requirement an entity implements.
 IMPLEMENTATION_DIR = REPO_ROOT / "include"
@@ -88,8 +99,14 @@ def _walk(root, suffixes):
         yield path
 
 
+def _py_names_in(text: str) -> set[str]:
+    """Every unittest class and test method a `verified_by` entry may name."""
+    return set(PY_CLASS_RE.findall(text)) | set(PY_METHOD_RE.findall(text))
+
+
 def index_ut_tests() -> dict[str, set[str]]:
-    """Map repo-relative file path -> set of ut suite names declared in it."""
+    """Map repo-relative file path -> set of suite names declared in it: ut suites
+    in the C++ test trees, unittest classes in the Python ones."""
     index: dict[str, set[str]] = {}
     for directory in TEST_DIRS:
         for path in _walk(directory, CPP_SUFFIXES):
@@ -97,7 +114,25 @@ def index_ut_tests() -> dict[str, set[str]]:
             names = _ut_names_in(text)
             if names:
                 index[str(path.relative_to(REPO_ROOT))] = names
+    for directory in PY_TEST_DIRS:
+        for path in _walk(directory, PY_SUFFIXES):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            names = _py_names_in(text)
+            if names:
+                index[str(path.relative_to(REPO_ROOT))] = names
     return index
+
+
+def _py_test_for_marker(lines: list[str], marker_line: int) -> str | None:
+    """The unittest class a `# spec:` marker sits above."""
+    for offset in range(0, 4):
+        idx = marker_line + offset
+        if idx >= len(lines):
+            break
+        found = PY_CLASS_RE.search(lines[idx])
+        if found:
+            return found.group(1)
+    return None
 
 
 def _ut_test_for_marker(lines: list[str], marker_line: int) -> str | None:
@@ -182,30 +217,38 @@ def check_reverse(reqs, ut_index) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
-    for directory in TEST_DIRS:
-        for path in _walk(directory, CPP_SUFFIXES):
-            rel = str(path.relative_to(REPO_ROOT))
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            for line_no, line in enumerate(lines):
-                found = MARKER_RE.search(line)
-                if not found:
-                    continue
-                uid = found.group(1)
-                if uid not in known_uids:
-                    errors.append(f"{rel}:{line_no + 1}: marker cites unknown requirement '{uid}'")
-                    continue
-                suite = _ut_test_for_marker(lines, line_no)
-                if suite is None:
-                    warnings.append(
-                        f"{rel}:{line_no + 1}: spec marker for '{uid}' is not attached to a ut suite"
-                    )
-                    continue
-                qualified = f"{rel}::{suite}"
-                if qualified not in verified_names[uid]:
-                    errors.append(
-                        f"{rel}:{line_no + 1}: test '{suite}' cites {uid}, but "
-                        f"{uid} does not list 'test:{qualified}' in verified_by"
-                    )
+    marked_files = [
+        (path, _ut_test_for_marker, "ut suite")
+        for directory in TEST_DIRS
+        for path in _walk(directory, CPP_SUFFIXES)
+    ] + [
+        (path, _py_test_for_marker, "unittest class")
+        for directory in PY_TEST_DIRS
+        for path in _walk(directory, PY_SUFFIXES)
+    ]
+    for path, suite_for_marker, kind in marked_files:
+        rel = str(path.relative_to(REPO_ROOT))
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for line_no, line in enumerate(lines):
+            found = MARKER_RE.search(line)
+            if not found:
+                continue
+            uid = found.group(1)
+            if uid not in known_uids:
+                errors.append(f"{rel}:{line_no + 1}: marker cites unknown requirement '{uid}'")
+                continue
+            suite = suite_for_marker(lines, line_no)
+            if suite is None:
+                warnings.append(
+                    f"{rel}:{line_no + 1}: spec marker for '{uid}' is not attached to a {kind}"
+                )
+                continue
+            qualified = f"{rel}::{suite}"
+            if qualified not in verified_names[uid]:
+                errors.append(
+                    f"{rel}:{line_no + 1}: test '{suite}' cites {uid}, but "
+                    f"{uid} does not list 'test:{qualified}' in verified_by"
+                )
 
     return errors, warnings
 

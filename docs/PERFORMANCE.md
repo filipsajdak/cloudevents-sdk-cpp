@@ -25,6 +25,8 @@ Wall time on a shared runner moves by 10 to 20 percent, which is why it never ga
 
 On Linux the probe also counts direct `malloc` calls from the code it compiles, which is how RapidJSON's `CrtAllocator` allocates.
 Elsewhere it counts `operator new` only, and its output says so in `counts_malloc`.
+Every count is of the bytes a caller asked for, never the size the allocator rounded a block up to: that size depends on where in the heap the block landed, so it differs between identical runs.
+`test/malloc_accounting_test.cpp` checks the `malloc` counting on Linux, `realloc` in every form included.
 
 ## Reading the pull request table
 

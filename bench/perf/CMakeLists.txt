@@ -9,22 +9,11 @@
 
 set(ce_bench_dir "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
-# On Linux the linker wraps malloc for this binary, so RapidJSON's direct
-# malloc calls are counted with everything that goes through operator new.
-# Other linkers have no --wrap, and there the probe says it counts operator new
-# alone.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  set(ce_perf_raw_layer raw_malloc_wrapped.cpp)
-else()
-  set(ce_perf_raw_layer raw_malloc_plain.cpp)
-endif()
-
-ce_add_bench(perf_probe SOURCES perf_probe.cpp counting_allocator.cpp ${ce_perf_raw_layer})
+include("${CMAKE_CURRENT_SOURCE_DIR}/malloc_wrap.cmake")
+ce_add_bench(perf_probe
+  SOURCES perf_probe.cpp counting_allocator.cpp heap_counters.cpp ${CE_PERF_RAW_LAYER})
 target_include_directories(perf_probe PRIVATE ${ce_bench_dir})
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_options(perf_probe PRIVATE
-    "LINKER:--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free")
-endif()
+ce_perf_wrap_malloc(perf_probe)
 
 set(ce_perf_consumers
   "nlohmann|<cloudevents/codec/nlohmann.hpp>|ce::codec::nlohmann_codec"

@@ -3,8 +3,7 @@
 ///
 /// Each block carries a small header holding the offset back to the raw
 /// allocation and the requested size, so the unsized and unaligned `delete`
-/// overloads can still release the right number of bytes. The probe is single
-/// threaded, so the counters are plain integers.
+/// overloads can still release the right number of bytes.
 
 #include "counting_allocator.hpp"
 #include <algorithm>
@@ -14,10 +13,6 @@
 
 namespace ce::perf {
 namespace {
-
-std::uint64_t allocation_count = 0;
-std::uint64_t allocated_bytes = 0;
-std::int64_t live = 0;
 
 constexpr std::size_t header_size = 2 * sizeof(std::size_t);
 
@@ -32,7 +27,7 @@ auto allocate(std::size_t size, std::size_t alignment) noexcept -> void* {
   auto* slot = reinterpret_cast<std::size_t*>(user) - 2;
   slot[0] = static_cast<std::size_t>(user - base);
   slot[1] = size;
-  record_allocation(size, size);
+  record_allocation(size);
   return reinterpret_cast<void*>(user);
 }
 
@@ -56,21 +51,6 @@ auto allocate_or_throw(std::size_t size, std::size_t alignment) -> void* {
 constexpr std::size_t default_alignment = __STDCPP_DEFAULT_NEW_ALIGNMENT__;
 
 }  // namespace
-
-auto counters() noexcept -> heap_counters {
-  return heap_counters{
-      .allocations = allocation_count, .bytes = allocated_bytes, .live_bytes = live};
-}
-
-void record_allocation(std::size_t requested, std::size_t held) noexcept {
-  ++allocation_count;
-  allocated_bytes += requested;
-  live += static_cast<std::int64_t>(held);
-}
-
-void record_release(std::size_t held) noexcept {
-  live -= static_cast<std::int64_t>(held);
-}
 
 }  // namespace ce::perf
 

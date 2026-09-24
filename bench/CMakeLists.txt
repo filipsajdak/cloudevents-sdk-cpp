@@ -68,6 +68,10 @@ if(CE_BUILD_TESTING)
   set_tests_properties(codec_check PROPERTIES LABELS "bench")
 endif()
 
+# The performance job's probe needs the codecs and nothing else, so it is added
+# before the checks for Google Benchmark and the ceiling libraries.
+add_subdirectory(perf)
+
 if(NOT benchmark_FOUND)
   message(STATUS "ce: Google Benchmark not found; building codec_check only")
   return()
@@ -81,3 +85,4 @@ ce_add_bench(codec_bench
   SOURCES codec_bench.cpp
   LIBS benchmark::benchmark simdjson::simdjson ${CE_YYJSON_LIB})
 target_include_directories(codec_bench SYSTEM PRIVATE ${CE_YYJSON_INCLUDE})
+add_dependencies(perf_measure codec_bench)

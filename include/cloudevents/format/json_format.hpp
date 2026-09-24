@@ -485,6 +485,11 @@ struct json_format {
             Codec::set(root, "data", Codec::make_string(held));
             return {};
           } else if constexpr (std::is_same_v<held_type, json_document>) {
+            // spec: SWR-JSON-0041
+            if (const auto* own = held.template get<Codec>(); own != nullptr) {
+              Codec::set(root, "data", Codec::copy(*own));
+              return {};
+            }
             // spec: SWR-JSON-0042
             auto converted = Codec::parse(held.dump());
             if (!converted) {

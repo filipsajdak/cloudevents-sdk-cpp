@@ -1276,6 +1276,63 @@ void check_document_converts(std::string_view label) {
   expect(bool{*decoded == subject}) << label << ": documents from two codecs compare by value";
 }
 
+/// mini_codec that counts every parse and dump the format layer asks of it.
+struct counting_codec : mini_codec {
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.counting";
+  static inline std::size_t parses = 0;
+  static inline std::size_t dumps = 0;
+
+  [[nodiscard]] static auto parse(std::string_view text) -> ce::result<value> {
+    ++parses;
+    return mini_codec::parse(text);
+  }
+  [[nodiscard]] static auto dump(const value& held) -> std::string {
+    ++dumps;
+    return mini_codec::dump(held);
+  }
+};
+static_assert(ce::json::json_codec<counting_codec>);
+
+void check_same_codec_document_is_copied() {
+  using namespace boost::ut;
+  using format = ce::json_format<counting_codec>;
+
+  const auto payload = mini_codec::parse(R"({"k":[1,2],"n":null})");
+  expect(payload.has_value());
+  if (!payload) {
+    return;
+  }
+  const ce::event subject =
+      base_event({.datacontenttype = "application/json"_mediatype,
+                  .data = ce::json_document::make<counting_codec>(mini_codec::copy(*payload))});
+
+  counting_codec::parses = 0;
+  counting_codec::dumps = 0;
+  const auto root = format::to_value(subject);
+  expect(root.has_value());
+  expect(counting_codec::parses == 0U) << "the payload was parsed";
+  expect(counting_codec::dumps == 0U) << "the payload was serialised";
+  const auto* data = root ? counting_codec::find(*root, "data") : nullptr;
+  expect(data != nullptr && counting_codec::equal(*data, *payload)) << "the payload is spliced";
+
+  // encode serialises the finished document once, and nothing else.
+  const auto text = format::encode(subject);
+  expect(text.has_value());
+  expect(counting_codec::parses == 0U);
+  expect(counting_codec::dumps == 1U) << "only the output document is serialised";
+
+  // The event still owns its document: encoding copied it rather than moving it.
+  const auto* kept = std::get<ce::json_document>(subject.data()).get<counting_codec>();
+  expect(kept != nullptr && counting_codec::equal(*kept, *payload));
+
+  // A document from another codec takes the conversion path instead.
+  const ce::event foreign =
+      base_event({.data = ce::json_document::make<mini_codec>(mini_codec::copy(*payload))});
+  counting_codec::parses = 0;
+  expect(format::to_value(foreign).has_value());
+  expect(counting_codec::parses == 1U) << "a foreign document is converted through text";
+}
+
 template <class C>
 void check_extension_name_grammar(std::string_view label) {
   using namespace boost::ut;
@@ -1320,6 +1377,15 @@ void check_extension_name_grammar(std::string_view label) {
     }
   }
 }
+
+// spec: SWR-JSON-0041
+const boost::ut::suite<"encode-copies-same-codec-document"> same_codec_document = [] {
+  using namespace boost::ut;
+
+  "a document from the encoding codec is neither parsed nor serialised"_test = [] {
+    check_same_codec_document_is_copied();
+  };
+};
 
 // spec: SWR-JSON-0042
 const boost::ut::suite<"document-from-another-codec-converts"> document_converts = [] {

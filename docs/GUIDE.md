@@ -173,7 +173,7 @@ Optional attributes come back as `const std::optional<T>&`.
 
 ### The payload
 
-`data()` returns a `ce::data_t`, a variant of four alternatives:
+`data()` returns a `ce::data_t`, a variant of five alternatives:
 
 | alternative | meaning |
 |---|---|
@@ -181,6 +181,10 @@ Optional attributes come back as `const std::optional<T>&`.
 | `std::string` | text |
 | `ce::binary` | bytes (`std::vector<std::byte>`) |
 | `ce::json_text` | JSON the SDK carries without parsing |
+| `ce::json_document` | JSON a codec has already parsed; what a structured decode gives you |
+
+Code that visits `data_t` must handle all five.
+A `json_text` payload never equals a `json_document` payload, even when both hold the same JSON value.
 
 `set_data` replaces the payload and its media type together, so the event never says its bytes are something they are not:
 
@@ -371,13 +375,33 @@ The media types are `json_format<Codec>::content_type` and `batch_content_type`.
 | `std::string` | `"data": "<the text>"` |
 | `ce::binary` | `"data_base64": "<base64>"` |
 | `ce::json_text` | `"data": <the JSON itself>`, parsed and spliced in |
+| `ce::json_document` | `"data": <the JSON itself>`, copied in when the encoding codec built it, converted through text otherwise |
 
 ### How the payload is read
 
 - `data_base64` becomes `ce::binary`.
 - `data` holding a JSON string, under a `datacontenttype` that is not JSON, becomes `std::string`.
-- Any other `data` becomes `ce::json_text`.
+- Any other `data` becomes a `ce::json_document` built by the decoding codec.
   That includes a string when `datacontenttype` is absent, because the format says an absent content type means JSON.
+  `decode` and `decode_batch` move the member out of the document they parsed, so the payload is neither serialised nor copied.
+- Input longer than the retention limit keeps that payload as `ce::json_text` instead.
+
+A parsed document can take several times the memory of its text, and a retained one lives as long as the event.
+The retention limit bounds that: 64 KiB of input by default, set per call with `ce::json::decode_options`, and 0 always keeps text.
+For `decode_batch` the limit applies to the whole batch text:
+
+```cpp body
+constexpr std::string_view wire =
+    R"({"specversion":"1.0","id":"9","source":"/s","type":"t","data":{"rows":3}})";
+auto kept = ce::json_format<codec>::decode(wire);
+auto as_text = ce::json_format<codec>::decode(wire, {.retain_document_up_to = 0});
+std::printf("document: %d, text: %d\n",
+            static_cast<int>(kept && std::holds_alternative<ce::json_document>(kept->data())),
+            static_cast<int>(as_text && std::holds_alternative<ce::json_text>(as_text->data())));
+```
+
+`from_value` always keeps a document, copying the member out of the DOM you passed, which it leaves as it was.
+A binding's binary-mode body is not a JSON event, so a JSON body there still arrives as `ce::json_text`.
 
 ### What decoding loses
 
@@ -457,7 +481,8 @@ using format = ce::json_format<my_codec>;
 ```
 
 A codec supplies `parse`, `dump`, the `make_*` constructors, `set`, `push`, `kind_of`, `find`, `size_of`, the `as_*` readers, `for_each_member` and `for_each_element`.
-A v3 codec also supplies `equal(left, right)`, JSON value equality with object members compared regardless of order, `copy(value)`, a deep copy, and `identity`, a non-empty `static constexpr std::string_view` naming the codec.
+A v3 codec also supplies `equal(left, right)`, JSON value equality with object members compared regardless of order, `copy(value)`, a deep copy, `extract(object, key)`, which moves one member out of an object and leaves the object valid, `for_each_mutable_element(array, visit)`, which hands each element to `visit` as a mutable reference, and `identity`, a non-empty `static constexpr std::string_view` naming the codec.
+The decoder calls `extract` only for a member `find` has returned; for any other key it must return a null value and leave the object unchanged.
 Choose the identity as a reverse-DNS name under a domain you control, such as `com.example.json.my_codec`, and never give two codecs the same one: a document hands its DOM to any codec declaring the identity of the codec that built it.
 The SDK's own codecs use names under `io.cloudevents.cpp.`.
 A codec written for v1 or v2 without them still serves `ce::v1` and `ce::v2`, and `ce::v1::json::json_codec` accepts it.

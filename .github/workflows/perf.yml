@@ -1,0 +1,228 @@
+name: perf
+
+# The performance job (ADR-0011, docs/PERFORMANCE.md). A pull request is
+# measured beside its merge base on one runner, and gated on what does not
+# depend on the machine: instructions under Callgrind, heap allocations and
+# the bytes a decoded event retains. bench/budgets.json caps each of them.
+# Wall time and binary size are reported and never fail the job.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Upload a bench/budgets.json seeded from this run's measurements
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  pull-request:
+    name: performance against main
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: perf-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The same script builds bench/perf/Dockerfile, so a local reproduction
+      # measures with these packages.
+      - name: Install the measuring toolchain
+        run: bench/perf/install_toolchain.sh
+
+      - name: Measure the pull request
+        run: bench/perf/build_and_measure.sh . "$RUNNER_TEMP/build-head" "$RUNNER_TEMP/head.json"
+
+      # Main and the pull request on one runner, so runner differences cancel
+      # out. Main's library is measured with this pull request's bench/, so
+      # both sides run the same probe; when main does not build with it, main's
+      # own probe is the fallback, and with neither only the budgets gate.
+      - name: Measure main
+        id: base
+        run: |
+          base_sha="$(git merge-base "origin/$BASE_REF" HEAD)"
+          base="$RUNNER_TEMP/base"
+          git worktree add --detach "$base" "$base_sha"
+          # Main's budgets, so a budget this pull request raises accepts its cost.
+          git show "$base_sha:bench/budgets.json" > "$RUNNER_TEMP/base-budgets.json" 2> /dev/null ||
+            rm -f "$RUNNER_TEMP/base-budgets.json"
+          harness="none"
+          rm -rf "$base/bench"
+          cp -R bench "$base/bench"
+          if bench/perf/build_and_measure.sh "$base" "$RUNNER_TEMP/build-base" "$RUNNER_TEMP/base.json"; then
+            harness="head"
+          else
+            echo "::warning::Main does not build with this pull request's probe; trying main's own."
+            rm -rf "$base/bench" "$RUNNER_TEMP/build-base"
+            git -C "$base" checkout -- bench
+            if [ -f "$base/bench/perf/build_and_measure.sh" ] &&
+               "$base/bench/perf/build_and_measure.sh" "$base" "$RUNNER_TEMP/build-base" "$RUNNER_TEMP/base.json"; then
+              harness="main"
+            else
+              rm -f "$RUNNER_TEMP/base.json"
+            fi
+          fi
+          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "harness=$harness" >> "$GITHUB_OUTPUT"
+
+      # SWR-PERF-0001 instructions +2%, SWR-PERF-0002 any new allocation or
+      # byte, SWR-PERF-0003 retained bytes +1%, SWR-PERF-0004 budgets,
+      # SWR-PERF-0006 binary size +5% warns. A growth over main is accepted
+      # where this pull request raised the budget for it. The step records the verdict and
+      # a later step fails the job, so the comment is posted either way.
+      - name: Compare with main and the budgets
+        id: compare
+        env:
+          HARNESS: ${{ steps.base.outputs.harness }}
+        run: |
+          case "$HARNESS" in
+            head) note="Main was measured with this pull request's probe, so both sides ran the same harness." ;;
+            main) note="Main did not build with this pull request's probe and was measured with its own, so a change to the probe itself shows as a difference." ;;
+            *)    note="Main could not be built for measurement." ;;
+          esac
+          set +e
+          python3 bench/perf/compare.py \
+            --base "$RUNNER_TEMP/base.json" --head "$RUNNER_TEMP/head.json" \
+            --budgets bench/budgets.json --base-budgets "$RUNNER_TEMP/base-budgets.json" \
+            --summary "$RUNNER_TEMP/summary.md" \
+            --note "$note" > /dev/null
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # SWR-PERF-0005. One comment per pull request, found again by the hidden
+      # marker compare.py writes on its first line and updated in place.
+      - name: Comment the table on the pull request
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          id="$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+                  --jq '.[] | select(.body | startswith("<!-- ce-perf-report -->")) | .id' | head -n 1)"
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$id" \
+              -F body=@"$RUNNER_TEMP/summary.md" > /dev/null
+          else
+            gh api --method POST "repos/$REPO/issues/$PR/comments" \
+              -F body=@"$RUNNER_TEMP/summary.md" > /dev/null
+          fi
+
+      # A fork's token is read-only, so it cannot comment. Commenting for forks
+      # needs a separate privileged workflow (ADR-0011); until then the job
+      # summary is the report.
+      - name: Say where a fork's report is
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> This pull request comes from a fork, whose token cannot comment; this summary is the report." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-results
+          path: |
+            ${{ runner.temp }}/head.json
+            ${{ runner.temp }}/base.json
+            ${{ runner.temp }}/summary.md
+          if-no-files-found: ignore
+
+      - name: Fail on a breached gate
+        if: steps.compare.outputs.status != '0'
+        run: |
+          echo "::error::A performance gate failed. The job summary and the pull request comment list each measurement and why."
+          exit 1
+
+  main:
+    name: record main in the benchmark history
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    # Two merges in quick succession must not race on bench-data. GitHub keeps
+    # only the newest pending run in a group, so a burst of merges records the
+    # last of them.
+    concurrency:
+      group: perf-bench-data
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the measuring toolchain
+        run: bench/perf/install_toolchain.sh
+
+      - name: Measure main
+        run: bench/perf/build_and_measure.sh . "$RUNNER_TEMP/build" "$RUNNER_TEMP/results.json"
+
+      # SWR-PERF-0007. The history lives on an orphan branch, so it needs no
+      # external service and outlives artifact retention.
+      - name: Append to the bench-data branch
+        run: |
+          data="$RUNNER_TEMP/bench-data"
+          if git ls-remote --exit-code --heads origin bench-data > /dev/null; then
+            git fetch --depth 1 origin bench-data
+            git worktree add -B bench-data "$data" FETCH_HEAD
+          else
+            git worktree add --detach "$data" HEAD
+            git -C "$data" checkout --orphan bench-data
+            git -C "$data" rm -rf --quiet .
+          fi
+          python3 bench/perf/history.py --results "$RUNNER_TEMP/results.json" --data-dir "$data"
+          git -C "$data" add history.jsonl README.md
+          git -C "$data" \
+            -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "bench: record ${GITHUB_SHA::12}"
+          git -C "$data" push origin bench-data
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: ${{ runner.temp }}/results.json
+
+  seed:
+    name: measure, and propose budgets when asked
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the measuring toolchain
+        run: bench/perf/install_toolchain.sh
+
+      - name: Measure
+        run: bench/perf/build_and_measure.sh . "$RUNNER_TEMP/build" "$RUNNER_TEMP/results.json"
+
+      # SWR-PERF-0004. Budgets are seeded from this toolchain, never from a
+      # developer machine: download the artifact, commit its budgets.json.
+      - name: Seed budgets from this run
+        if: inputs.seed
+        run: |
+          python3 bench/perf/seed_budgets.py --results "$RUNNER_TEMP/results.json" \
+            --headroom 0.10 --out "$RUNNER_TEMP/budgets.json"
+          python3 bench/perf/compare.py --head "$RUNNER_TEMP/results.json" \
+            --budgets "$RUNNER_TEMP/budgets.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.seed && 'proposed-budgets' || 'perf-results' }}
+          path: |
+            ${{ runner.temp }}/results.json
+            ${{ runner.temp }}/budgets.json
+          if-no-files-found: ignore

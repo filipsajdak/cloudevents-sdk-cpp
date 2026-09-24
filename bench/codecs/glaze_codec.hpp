@@ -158,6 +158,16 @@ struct glaze_codec {
     return glz::equal(left, right);
   }
   static auto copy(const value& v) -> value { return v; }
+  /// A moved-from variant keeps its alternative in an unspecified state, so the
+  /// member is exchanged for null rather than moved from.
+  static auto extract(value& object, std::string_view key) -> value {
+    if (!object.is_object()) {
+      return make_null();
+    }
+    auto& map = object.get_object();
+    auto found = map.find(key);
+    return found == map.end() ? make_null() : std::exchange(found->second, make_null());
+  }
 };
 
 }  // namespace ce::bench

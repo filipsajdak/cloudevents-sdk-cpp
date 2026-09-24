@@ -131,13 +131,24 @@ struct codec {
   static auto dump(const value& v) -> std::string;
   static auto parse(std::string_view text) -> ce::result<value>;
 
-  /// v3 asks three more things of a codec: JSON value equality, with object
-  /// members compared regardless of order, a deep copy of a value, and an
-  /// identity. The identity is a reverse-DNS name under a domain you control;
-  /// two codecs must never share one.
+  /// v3 asks four more things of a codec: JSON value equality, with object
+  /// members compared regardless of order, a deep copy of a value, a move of
+  /// one member out of an object, and an identity. The identity is a
+  /// reverse-DNS name under a domain you control; two codecs must never share
+  /// one.
   static constexpr std::string_view identity = "io.cloudevents.cpp.example.custom";
   static auto equal(const value& left, const value& right) -> bool;
   static auto copy(const value& v) -> value { return v; }
+  /// The decoder calls this only for a member `find` returned. Any other key
+  /// returns null and leaves the object as it was.
+  static auto extract(value& object, std::string_view key) -> value {
+    for (auto& [existing, stored] : object.members) {
+      if (existing == key) {
+        return std::exchange(stored, value{});
+      }
+    }
+    return value{};
+  }
 };
 
 using value = codec::value;

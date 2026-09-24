@@ -35,6 +35,13 @@ struct nlohmann_codec {
     return left == right;
   }
   [[nodiscard]] static auto copy(const value& held) -> value { return held; }
+  [[nodiscard]] static auto extract(value& object, std::string_view key) -> value {
+    if (!object.is_object()) {
+      return make_null();
+    }
+    const auto found = object.find(std::string{key});
+    return found == object.end() ? make_null() : std::move(*found);
+  }
 
   // NOLINTBEGIN(modernize-return-braced-init-list)
   [[nodiscard]] static auto make_null() -> value { return value(nullptr); }

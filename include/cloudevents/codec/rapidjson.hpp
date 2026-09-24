@@ -163,6 +163,14 @@ struct rapidjson_codec {
     return left == right;
   }
   [[nodiscard]] static auto copy(const value& held) -> value { return value{held, allocator()}; }
+  [[nodiscard]] static auto extract(value& object, std::string_view key) -> value {
+    if (!object.IsObject()) {
+      return make_null();
+    }
+    const value probe{chars_of(key), static_cast<rapidjson::SizeType>(key.size())};
+    auto found = object.FindMember(probe);
+    return found == object.MemberEnd() ? make_null() : value{std::move(found->value)};
+  }
 };
 
 static_assert(json::json_codec<rapidjson_codec>);

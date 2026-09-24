@@ -143,6 +143,13 @@ struct boost_json_codec {
     return left == right;
   }
   [[nodiscard]] static auto copy(const value& held) -> value { return held; }
+  [[nodiscard]] static auto extract(value& object, std::string_view key) -> value {
+    if (!object.is_object()) {
+      return make_null();
+    }
+    auto* found = object.get_object().if_contains(key);
+    return found == nullptr ? make_null() : value(std::move(*found));
+  }
 };
 
 static_assert(json::json_codec<boost_json_codec>);

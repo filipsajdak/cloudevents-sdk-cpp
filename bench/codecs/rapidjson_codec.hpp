@@ -157,6 +157,14 @@ struct rapidjson_codec {
   static constexpr std::string_view identity = "io.cloudevents.cpp.bench.rapidjson";
   static auto equal(const value& left, const value& right) -> bool { return left == right; }
   static auto copy(const value& v) -> value { return value{v, allocator()}; }
+  static auto extract(value& object, std::string_view key) -> value {
+    if (!object.IsObject()) {
+      return make_null();
+    }
+    const value probe{key.data(), static_cast<rapidjson::SizeType>(key.size())};
+    auto found = object.FindMember(probe);
+    return found == object.MemberEnd() ? make_null() : value{std::move(found->value)};
+  }
 };
 
 }  // namespace ce::bench

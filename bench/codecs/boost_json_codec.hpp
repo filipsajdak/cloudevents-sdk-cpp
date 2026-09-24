@@ -133,6 +133,13 @@ struct boost_json_codec {
   static constexpr std::string_view identity = "io.cloudevents.cpp.bench.boost_json";
   static auto equal(const value& left, const value& right) -> bool { return left == right; }
   static auto copy(const value& v) -> value { return v; }
+  static auto extract(value& object, std::string_view key) -> value {
+    if (!object.is_object()) {
+      return make_null();
+    }
+    auto* found = object.get_object().if_contains(key);
+    return found == nullptr ? make_null() : value(std::move(*found));
+  }
 };
 
 }  // namespace ce::bench

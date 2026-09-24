@@ -151,6 +151,16 @@ struct mini_codec {
   static constexpr std::string_view identity = "io.cloudevents.cpp.test.mini";
   [[nodiscard]] static auto equal(const value& left, const value& right) -> bool;
   [[nodiscard]] static auto copy(const value& held) -> value { return held; }
+  /// Moves the first member named `key` out, leaving null in its place, as
+  /// `find` sees the first occurrence. Any other key returns null.
+  [[nodiscard]] static auto extract(value& object, std::string_view key) -> value {
+    for (auto& [existing_key, existing] : object.members) {
+      if (existing_key == key) {
+        return std::exchange(existing, value{});
+      }
+    }
+    return value{};
+  }
 };
 
 namespace mini_detail {

@@ -51,15 +51,30 @@ DEFAULT_ITERATIONS = 200
 CODECS = ("nlohmann", "rapidjson", "boost.json", "glaze")
 
 
+class MeasureFailure(Exception):
+    """One measurement that could not be taken: the operation id, the mode it
+    was measured in, and what the failing tool said."""
+
+    def __init__(self, op_id: str, mode: str, message: str) -> None:
+        super().__init__(f"measure: {mode} {op_id} failed:\n{message}")
+        self.op_id = op_id
+        self.mode = mode
+        self.message = message
+
+    def as_json(self) -> dict[str, str]:
+        return {"id": self.op_id, "mode": self.mode, "message": self.message}
+
+
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, capture_output=True, text=True, **kwargs)
 
 
-def probe_json(probe: Path, *args: str) -> dict:
+def probe_json(probe: Path, mode: str, op_id: str = "") -> dict:
+    args = [mode, op_id] if op_id else [mode]
     try:
         out = run([str(probe), *args]).stdout
     except subprocess.CalledProcessError as exc:
-        sys.exit(f"measure: perf_probe {' '.join(args)} failed:\n{exc.stderr}")
+        raise MeasureFailure(op_id, f"perf_probe {mode}", exc.stderr.strip()) from exc
     return json.loads(out)
 
 
@@ -104,12 +119,12 @@ def callgrind_instructions(probe: Path, op_id: str, iterations: int, scratch: Pa
     try:
         run(cmd)
     except subprocess.CalledProcessError as exc:
-        sys.exit(f"measure: callgrind failed for {op_id}:\n{exc.stderr}")
+        raise MeasureFailure(op_id, "callgrind", exc.stderr.strip()) from exc
     text = out_file.read_text()
     found = re.search(r"^(?:summary|totals):\s+(\d+)", text, re.MULTILINE)
     if not found or int(found.group(1)) == 0:
-        sys.exit(f"measure: callgrind counted nothing for {op_id}; "
-                 "the toggle did not match ce_perf_measured_loop")
+        raise MeasureFailure(op_id, "callgrind",
+                             "counted nothing; the toggle did not match ce_perf_measured_loop")
     total = int(found.group(1))
     return round(total / iterations)
 
@@ -212,10 +227,19 @@ def main() -> int:
                         help="skip the Callgrind counts (no Valgrind on this machine)")
     parser.add_argument("--no-wall-time", action="store_true",
                         help="skip Google Benchmark")
+    parser.add_argument("--failure", type=Path,
+                        help="when a measurement fails, write its id, mode and message here "
+                             "as JSON, for compare.py --measure-failure to report")
     args = parser.parse_args()
 
-    results = measure(args.build_dir.resolve(), args.source_dir.resolve(),
-                      instructions=not args.no_instructions, wall=not args.no_wall_time)
+    try:
+        results = measure(args.build_dir.resolve(), args.source_dir.resolve(),
+                          instructions=not args.no_instructions, wall=not args.no_wall_time)
+    except MeasureFailure as failure:
+        if args.failure is not None:
+            args.failure.write_text(json.dumps(failure.as_json(), indent=2) + "\n")
+        print(failure, file=sys.stderr)
+        return 1
     args.out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     print(f"measure: {len(results['measurements'])} ids written to {args.out}", file=sys.stderr)
     return 0

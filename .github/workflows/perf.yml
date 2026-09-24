@@ -44,8 +44,20 @@ jobs:
       - name: Install the measuring toolchain
         run: bench/perf/install_toolchain.sh
 
+      # A failed measurement must still reach the summary and the comment, so
+      # this step records the outcome and the compare step reports it. measure.py
+      # writes the failing id, mode and message to head-failure.json; a build
+      # that stops earlier leaves no file, and the report says to read this log.
       - name: Measure the pull request
-        run: bench/perf/build_and_measure.sh . "$RUNNER_TEMP/build-head" "$RUNNER_TEMP/head.json"
+        id: head
+        run: |
+          if bench/perf/build_and_measure.sh . "$RUNNER_TEMP/build-head" "$RUNNER_TEMP/head.json" \
+               --failure "$RUNNER_TEMP/head-failure.json"; then
+            echo "measured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "measured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::The pull request could not be measured; the job summary says which measurement failed."
+          fi
 
       # Main and the pull request on one runner, so runner differences cancel
       # out. Main's library is measured with this pull request's bench/, so
@@ -53,6 +65,7 @@ jobs:
       # own probe is the fallback, and with neither only the budgets gate.
       - name: Measure main
         id: base
+        if: steps.head.outputs.measured == 'true'
         run: |
           base_sha="$(git merge-base "origin/$BASE_REF" HEAD)"
           base="$RUNNER_TEMP/base"
@@ -79,6 +92,9 @@ jobs:
           echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
           echo "harness=$harness" >> "$GITHUB_OUTPUT"
 
+      # When the pull request could not be measured there is nothing to
+      # compare, and the summary reports the failure instead of the table.
+      #
       # SWR-PERF-0001 instructions +2%, SWR-PERF-0002 any new allocation or
       # byte, SWR-PERF-0003 retained bytes +1%, SWR-PERF-0004 budgets,
       # SWR-PERF-0006 binary size +5% warns. A growth over main is accepted
@@ -88,13 +104,22 @@ jobs:
         id: compare
         env:
           HARNESS: ${{ steps.base.outputs.harness }}
+          MEASURED: ${{ steps.head.outputs.measured }}
         run: |
+          set +e
+          if [ "$MEASURED" != "true" ]; then
+            python3 bench/perf/compare.py \
+              --measure-failure "$RUNNER_TEMP/head-failure.json" \
+              --summary "$RUNNER_TEMP/summary.md" > /dev/null
+            echo "status=$?" >> "$GITHUB_OUTPUT"
+            cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           case "$HARNESS" in
             head) note="Main was measured with this pull request's probe, so both sides ran the same harness." ;;
             main) note="Main did not build with this pull request's probe and was measured with its own, so a change to the probe itself shows as a difference." ;;
             *)    note="Main could not be built for measurement." ;;
           esac
-          set +e
           python3 bench/perf/compare.py \
             --base "$RUNNER_TEMP/base.json" --head "$RUNNER_TEMP/head.json" \
             --budgets bench/budgets.json --base-budgets "$RUNNER_TEMP/base-budgets.json" \
@@ -137,6 +162,7 @@ jobs:
           name: perf-results
           path: |
             ${{ runner.temp }}/head.json
+            ${{ runner.temp }}/head-failure.json
             ${{ runner.temp }}/base.json
             ${{ runner.temp }}/summary.md
           if-no-files-found: ignore
@@ -144,7 +170,7 @@ jobs:
       - name: Fail on a breached gate
         if: steps.compare.outputs.status != '0'
         run: |
-          echo "::error::A performance gate failed. The job summary and the pull request comment list each measurement and why."
+          echo "::error::A performance gate failed, or the pull request could not be measured. The job summary and the pull request comment say which and why."
           exit 1
 
   main:

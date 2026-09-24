@@ -34,6 +34,7 @@ The job writes one table to its summary and to a single comment on the pull requ
 Failures come first, each with the requirement it breaks, then any warnings, then the table.
 Each row is one id and measure: main, the pull request, the change, the budget and the verdict.
 The measurements within their limits are folded away below.
+When the pull request cannot be measured at all, the comment has no table: it names the id and mode that failed and quotes what the probe said, and the job fails.
 
 An id is `<operation>/<codec>`, such as `decode_full/rapidjson`; `consumer/<codec>` carries the binary size.
 

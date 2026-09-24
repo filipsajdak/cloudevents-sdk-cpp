@@ -21,6 +21,10 @@ A pull request that raises a budget accepts that cost: when `--base-budgets`
 that id and measure is reported as accepted instead of failing. The budget
 itself still gates.
 
+When the pull request itself could not be measured, `--measure-failure`
+names the file measure.py wrote: the summary then reports which id and mode
+failed and what the probe said, with no table, and the exit is 1.
+
 A missing or unreadable base (the first run, or a base that does not build)
 leaves the budgets as the only gate, and the summary says so. A gated measure
 with no budget fails: every operation the job measures needs a limit someone
@@ -32,6 +36,7 @@ Standard library only.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import sys
 from dataclasses import dataclass, field
@@ -299,6 +304,38 @@ def render(report: Report, base: dict | None, head: dict, extra_notes: list[str]
     return "\n".join(lines)
 
 
+def render_failure(failure: dict | None) -> str:
+    """The summary for a pull request that could not be measured. `failure` is
+    what measure.py --failure wrote; None means the build stopped before any
+    measurement, and the step's log is the only record."""
+    lines = [
+        MARKER,
+        "## Performance",
+        "",
+        "**The pull request could not be measured**, so nothing was compared with main "
+        "or the budgets.",
+        "",
+        "### Failures",
+        "",
+    ]
+    if failure is None:
+        lines += [
+            "- The probe did not build or did not run. "
+            "The log of the step *Measure the pull request* says why.",
+            "",
+        ]
+    else:
+        where = f"`{failure['id']}`" if failure.get("id") else "The probe"
+        lines += [
+            f"- {where} failed in `{failure.get('mode', '?')}`:",
+            "",
+            f"<pre>{html.escape(str(failure.get('message', '')))}</pre>",
+            "",
+        ]
+    lines += ["See `docs/PERFORMANCE.md`.", ""]
+    return "\n".join(lines)
+
+
 def load(path: Path | None) -> dict | None:
     if path is None or not str(path) or not path.is_file():
         return None
@@ -311,15 +348,32 @@ def load(path: Path | None) -> dict | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--base", type=Path, help="main's results; absent or empty means none")
-    parser.add_argument("--head", type=Path, required=True)
-    parser.add_argument("--budgets", type=Path, required=True)
+    parser.add_argument("--head", type=Path,
+                        help="the pull request's results; required unless --measure-failure")
+    parser.add_argument("--budgets", type=Path,
+                        help="bench/budgets.json; required unless --measure-failure")
     parser.add_argument("--base-budgets", type=Path,
                         help="main's budgets.json; a budget this pull request raised accepts "
                              "the growth over main in that measure")
     parser.add_argument("--summary", type=Path, help="write the Markdown here as well as stdout")
     parser.add_argument("--note", action="append", default=[],
                         help="a line to show above the table, such as how main was built")
+    parser.add_argument("--measure-failure", type=Path,
+                        help="the pull request could not be measured: report what "
+                             "measure.py --failure wrote here (absent: the build failed) "
+                             "and exit 1")
     args = parser.parse_args(argv)
+
+    if args.measure_failure is not None:
+        markdown = render_failure(load(args.measure_failure))
+        if args.summary:
+            args.summary.write_text(markdown)
+        print(markdown)
+        return 1
+    if args.head is None:
+        parser.error("--head is required unless --measure-failure is given")
+    if args.budgets is None:
+        parser.error("--budgets is required unless --measure-failure is given")
 
     head = load(args.head)
     if head is None:

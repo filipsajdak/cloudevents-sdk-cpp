@@ -68,6 +68,7 @@ auto probe() -> report {
         .encoded = {},
         .typed_payload_round_tripped = false,
         .typed_extension_round_tripped = false,
+        .json_document_round_tripped = false,
     };
   }
 
@@ -94,12 +95,26 @@ auto probe() -> report {
   const bool extension_round_tripped =
       wrote_extension && tracing.has_value() && tracing->traceparent == "00-a-b-01";
 
+  // A json_document over the same codec, which core.hpp has never heard of.
+  auto parsed = ce::test::mini_codec::parse(R"({"k":[1,2]})");
+  bool document_round_tripped = false;
+  if (parsed) {
+    const auto document = ce::json_document::make<ce::test::mini_codec>(std::move(*parsed));
+    const auto copy = document;
+    const auto reordered = ce::test::mini_codec::parse(R"( { "k" : [1, 2] } )");
+    document_round_tripped =
+        reordered.has_value() && document.get<ce::test::mini_codec>() != nullptr &&
+        document.dump() == R"({"k":[1,2]})" && copy == document &&
+        copy == ce::json_document::make<ce::test::mini_codec>(*reordered);
+  }
+
   return report{
       .nlohmann_macro_defined = nlohmann_seen_here,
       .format_round_tripped = round_tripped,
       .encoded = std::move(*encoded),
       .typed_payload_round_tripped = payload_round_tripped,
       .typed_extension_round_tripped = extension_round_tripped,
+      .json_document_round_tripped = document_round_tripped,
   };
 }
 

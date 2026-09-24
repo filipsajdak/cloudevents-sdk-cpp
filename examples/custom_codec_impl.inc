@@ -1,6 +1,7 @@
 // Ordinary JSON serialisation for the example codec. Kept out of the example's
 // main narrative because none of it is about the SDK.
 
+#include <algorithm>
 #include <cctype>
 
 namespace demo {
@@ -283,6 +284,26 @@ auto codec::dump(const value& v) -> std::string {
   std::string out;
   dump_into(v, out);
   return out;
+}
+
+auto codec::equal(const value& left, const value& right) -> bool {
+  if (left.tag != right.tag) { return false; }
+  switch (left.tag) {
+    case ce::json::kind::null: return true;
+    case ce::json::kind::boolean: return left.boolean == right.boolean;
+    case ce::json::kind::integer: return left.integer == right.integer;
+    case ce::json::kind::floating: return left.number == right.number;
+    case ce::json::kind::string: return left.text == right.text;
+    case ce::json::kind::array:
+      return std::ranges::equal(left.elements, right.elements, &codec::equal);
+    case ce::json::kind::object:
+      return left.members.size() == right.members.size() &&
+             std::ranges::all_of(left.members, [&right](const entry& member) {
+               const value* other = find(right, member.key);
+               return other != nullptr && equal(member.item, *other);
+             });
+  }
+  return false;
 }
 
 auto codec::parse(std::string_view text) -> ce::result<value> {

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include <cloudevents/result.hpp>
 
@@ -83,6 +84,15 @@ namespace json = ce::v1::json;
 namespace ce::inline v3::json {
 using ce::v1::json::batch_content_type;
 using ce::v1::json::content_type;
-using ce::v1::json::json_codec;
 using ce::v1::json::kind;
+
+// spec: SWR-JSON-0039
+template <class C>
+concept json_codec = ce::v1::json::json_codec<C> && requires(const C::value& value) {
+  { C::equal(value, value) } -> std::same_as<bool>;
+  { C::copy(value) } -> std::same_as<typename C::value>;
+  { C::identity } -> std::convertible_to<std::string_view>;
+  typename std::integral_constant<std::size_t, std::string_view{C::identity}.size()>;
+  requires(!std::string_view{C::identity}.empty());
+};
 }  // namespace ce::inline v3::json

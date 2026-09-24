@@ -127,6 +127,10 @@ struct boost_json_codec {
   }
 
   static auto dump(const value& v) -> std::string { return boost::json::serialize(v); }
+
+  static constexpr std::string_view identity = "io.cloudevents.cpp.bench.boost_json";
+  static auto equal(const value& left, const value& right) -> bool { return left == right; }
+  static auto copy(const value& v) -> value { return v; }
 };
 
 }  // namespace ce::bench

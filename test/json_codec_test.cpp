@@ -61,6 +61,94 @@ struct no_make_object_codec : mini_codec {
   [[nodiscard]] static auto make_object() -> int;
 };
 
+template <bool with_identity>
+struct identity_base {};
+template <>
+struct identity_base<true> {
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.partial";
+};
+
+/// mini_codec with `equal`, `copy` or `identity` switched off. Deriving cannot
+/// remove a member, so this forwards every operation instead and constrains the
+/// three the v3 concept adds.
+template <bool with_equal, bool with_copy, bool with_identity = true>
+struct partial_codec : identity_base<with_identity> {
+  using value = mini_codec::value;
+
+  [[nodiscard]] static auto parse(std::string_view text) -> ce::result<value> {
+    return mini_codec::parse(text);
+  }
+  [[nodiscard]] static auto dump(const value& held) -> std::string {
+    return mini_codec::dump(held);
+  }
+  [[nodiscard]] static auto make_null() -> value { return mini_codec::make_null(); }
+  [[nodiscard]] static auto make_bool(bool held) -> value { return mini_codec::make_bool(held); }
+  [[nodiscard]] static auto make_int(std::int64_t held) -> value {
+    return mini_codec::make_int(held);
+  }
+  [[nodiscard]] static auto make_double(double held) -> value {
+    return mini_codec::make_double(held);
+  }
+  [[nodiscard]] static auto make_string(std::string_view held) -> value {
+    return mini_codec::make_string(held);
+  }
+  [[nodiscard]] static auto make_array() -> value { return mini_codec::make_array(); }
+  [[nodiscard]] static auto make_object() -> value { return mini_codec::make_object(); }
+  static void set(value& object, std::string_view key, value member) {
+    mini_codec::set(object, key, std::move(member));
+  }
+  static void push(value& array, value element) { mini_codec::push(array, std::move(element)); }
+  [[nodiscard]] static auto find(const value& object, std::string_view key) -> const value* {
+    return mini_codec::find(object, key);
+  }
+  [[nodiscard]] static auto size_of(const value& held) -> std::size_t {
+    return mini_codec::size_of(held);
+  }
+  [[nodiscard]] static auto kind_of(const value& held) -> ce::json::kind {
+    return mini_codec::kind_of(held);
+  }
+  [[nodiscard]] static auto as_bool(const value& held) -> ce::result<bool> {
+    return mini_codec::as_bool(held);
+  }
+  [[nodiscard]] static auto as_int(const value& held) -> ce::result<std::int64_t> {
+    return mini_codec::as_int(held);
+  }
+  [[nodiscard]] static auto as_double(const value& held) -> ce::result<double> {
+    return mini_codec::as_double(held);
+  }
+  [[nodiscard]] static auto as_string(const value& held) -> ce::result<std::string_view> {
+    return mini_codec::as_string(held);
+  }
+  template <class F>
+  static void for_each_member(const value& object, F visit) {
+    mini_codec::for_each_member(object, std::move(visit));
+  }
+  template <class F>
+  static void for_each_element(const value& array, F visit) {
+    mini_codec::for_each_element(array, std::move(visit));
+  }
+
+  [[nodiscard]] static auto equal(const value& left, const value& right) -> bool
+    requires with_equal
+  {
+    return mini_codec::equal(left, right);
+  }
+  [[nodiscard]] static auto copy(const value& held) -> value
+    requires with_copy
+  {
+    return mini_codec::copy(held);
+  }
+};
+
+/// An identity only known at run time cannot select a fast path in a constant
+/// expression, and an empty one names nothing.
+struct runtime_identity_codec : mini_codec {
+  static inline const std::string identity{"io.cloudevents.cpp.test.runtime"};
+};
+struct empty_identity_codec : mini_codec {
+  static constexpr std::string_view identity{};
+};
+
 // --- nlohmann-shape detectors ----------------------------------------------
 //
 // Templates on purpose: a requires-expression naming a member of a CONCRETE type
@@ -541,6 +629,97 @@ const boost::ut::suite<"mini-codec-satisfies-json-codec-concept"> mini_codec_sat
   "mini_codec parses and dumps a real document"_test = [] {
     check_parse_dump_roundtrip<mini_codec>("mini_codec");
   };
+};
+
+template <class C>
+void check_equal_and_copy(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto document = C::parse(R"({"a":1,"b":[1,2],"c":{"x":"y","z":null}})"sv);
+  const auto reordered =
+      C::parse(R"( { "c" : { "z" : null, "x" : "y" }, "b" : [1, 2], "a" : 1 } )"sv);
+  const auto other_value = C::parse(R"({"a":2,"b":[1,2],"c":{"x":"y","z":null}})"sv);
+  const auto other_order = C::parse(R"({"a":1,"b":[2,1],"c":{"x":"y","z":null}})"sv);
+  const auto extra_member = C::parse(R"({"a":1,"b":[1,2],"c":{"x":"y","z":null},"d":0})"sv);
+  expect(document.has_value() && reordered.has_value() && other_value.has_value() &&
+         other_order.has_value() && extra_member.has_value())
+      << label << ": parse";
+  if (!document || !reordered || !other_value || !other_order || !extra_member) {
+    return;
+  }
+
+  expect(C::equal(*document, *document)) << label << ": a value equals itself";
+  expect(C::equal(*document, *reordered)) << label << ": member order and whitespace do not count";
+  expect(C::equal(*reordered, *document)) << label << ": equality is symmetric";
+  expect(!C::equal(*document, *other_value)) << label << ": a different member value counts";
+  expect(!C::equal(*document, *other_order)) << label << ": element order counts";
+  expect(!C::equal(*document, *extra_member)) << label << ": an extra member counts";
+  expect(!C::equal(*extra_member, *document)) << label << ": a missing member counts";
+  expect(!C::equal(C::make_string("1"), C::make_int(1))) << label << ": kinds differ";
+
+  auto duplicate = C::copy(*document);
+  expect(C::equal(duplicate, *document)) << label << ": a copy equals its source";
+  C::set(duplicate, "a", C::make_int(3));
+  expect(!C::equal(duplicate, *document)) << label << ": the copy is deep";
+  const auto* source_member = C::find(*document, "a");
+  expect(source_member != nullptr) << label;
+  if (source_member != nullptr) {
+    const auto held = C::as_int(*source_member);
+    expect(held.has_value() && *held == 1) << label << ": changing a copy leaves the source";
+  }
+}
+
+// spec: SWR-JSON-0039
+const boost::ut::suite<"json-codec-requires-equal-copy-and-identity"> v3_codec_surface = [] {
+  using namespace boost::ut;
+
+  "every codec under test satisfies the v3 concept"_test = [] {
+    static_assert(ce::v3::json::json_codec<nlohmann_codec>);
+    static_assert(ce::v3::json::json_codec<mini_codec>);
+    ce_test::for_each_codec([]<class C>(std::string_view) {
+      static_assert(ce::v3::json::json_codec<C>);
+    });
+    expect(true);
+  };
+
+  "a codec without equal or copy satisfies only the v1 concept"_test = [] {
+    static_assert(ce::v3::json::json_codec<partial_codec<true, true>>);
+    static_assert(ce::v1::json::json_codec<partial_codec<false, true>>);
+    static_assert(!ce::v3::json::json_codec<partial_codec<false, true>>);
+    static_assert(ce::v1::json::json_codec<partial_codec<true, false>>);
+    static_assert(!ce::v3::json::json_codec<partial_codec<true, false>>);
+    static_assert(!ce::v3::json::json_codec<partial_codec<false, false>>);
+    expect(true);
+  };
+
+  "a codec without a constant, non-empty identity satisfies only the v1 concept"_test = [] {
+    static_assert(ce::v1::json::json_codec<partial_codec<true, true, false>>);
+    static_assert(!ce::v3::json::json_codec<partial_codec<true, true, false>>);
+    static_assert(ce::v1::json::json_codec<runtime_identity_codec>);
+    static_assert(!ce::v3::json::json_codec<runtime_identity_codec>);
+    static_assert(ce::v1::json::json_codec<empty_identity_codec>);
+    static_assert(!ce::v3::json::json_codec<empty_identity_codec>);
+    expect(true);
+  };
+
+  "the codecs under test declare pairwise distinct identities"_test = [] {
+    static_assert(nlohmann_codec::identity != mini_codec::identity);
+    std::vector<std::string_view> identities;
+    ce_test::for_each_codec([&identities]<class C>(std::string_view) {
+      identities.push_back(C::identity);
+    });
+    for (std::size_t first = 0; first < identities.size(); ++first) {
+      for (std::size_t second = first + 1; second < identities.size(); ++second) {
+        expect(identities.at(first) != identities.at(second))
+            << identities.at(first) << " is declared twice";
+      }
+    }
+    expect(identities.size() >= 2U);
+  };
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_equal_and_copy<C>(codec); };
+  });
 };
 
 // spec: SWR-JSON-0030

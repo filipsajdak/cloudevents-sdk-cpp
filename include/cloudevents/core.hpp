@@ -12,6 +12,7 @@
 #include <string_view>
 #include <system_error>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -20,11 +21,105 @@
 #include <cloudevents/describe.hpp>
 #include <cloudevents/detail/config.hpp>
 #include <cloudevents/detail/timestamp.hpp>
+#include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
 
 // spec: SYS-CORE-0001
 // spec: SWR-BUILD-0005
 namespace ce::inline v3 {
+
+namespace detail {
+
+class json_document_model {
+ public:
+  json_document_model() = default;
+  json_document_model(const json_document_model&) = delete;
+  json_document_model(json_document_model&&) = delete;
+  auto operator=(const json_document_model&) -> json_document_model& = delete;
+  auto operator=(json_document_model&&) -> json_document_model& = delete;
+  virtual ~json_document_model() = default;
+
+  [[nodiscard]] virtual auto identity() const noexcept -> std::string_view = 0;
+  [[nodiscard]] virtual auto dump() const -> std::string = 0;
+  [[nodiscard]] virtual auto equal_value(const json_document_model& other) const -> bool = 0;
+  [[nodiscard]] virtual auto equal_text(std::string_view text) const -> bool = 0;
+};
+
+template <class Codec>
+class json_document_holder final : public json_document_model {
+ public:
+  explicit json_document_holder(Codec::value document) : value_(std::move(document)) {}
+
+  [[nodiscard]] auto identity() const noexcept -> std::string_view override {
+    return Codec::identity;
+  }
+  [[nodiscard]] auto dump() const -> std::string override { return Codec::dump(value_); }
+  [[nodiscard]] auto equal_value(const json_document_model& other) const -> bool override {
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-static-cast-downcast)
+    return Codec::equal(value_, static_cast<const json_document_holder&>(other).value_);
+  }
+  [[nodiscard]] auto equal_text(std::string_view text) const -> bool override {
+    const auto parsed = Codec::parse(text);
+    return parsed.has_value() && Codec::equal(value_, *parsed);
+  }
+  [[nodiscard]] auto value() const noexcept -> const Codec::value& { return value_; }
+
+ private:
+  const Codec::value value_;
+};
+
+}  // namespace detail
+
+// spec: SWR-CORE-0031
+// spec: SWR-CORE-0032
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class json_document {
+ public:
+  template <json::json_codec Codec>
+  [[nodiscard]] static auto make(Codec::value document) -> json_document {
+    return json_document{
+        std::make_shared<const detail::json_document_holder<Codec>>(std::move(document)),
+    };
+  }
+
+  json_document(const json_document&) = default;
+  auto operator=(const json_document&) -> json_document& = default;
+  ~json_document() = default;
+
+  // spec: SWR-CORE-0034
+  template <json::json_codec Codec>
+  [[nodiscard]] auto get() const noexcept -> const Codec::value* {
+    if (!built_by<Codec>()) {
+      return nullptr;
+    }
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-static-cast-downcast)
+    return &static_cast<const detail::json_document_holder<Codec>&>(*model_).value();
+  }
+
+  template <json::json_codec Codec>
+  [[nodiscard]] auto built_by() const noexcept -> bool {
+    return model_->identity() == std::string_view{Codec::identity};
+  }
+
+  [[nodiscard]] auto dump() const -> std::string { return model_->dump(); }
+
+  // spec: SWR-CORE-0033
+  friend auto operator==(const json_document& left, const json_document& right) -> bool {
+    if (left.model_ == right.model_) {
+      return true;
+    }
+    if (left.model_->identity() == right.model_->identity()) {
+      return left.model_->equal_value(*right.model_);
+    }
+    return left.model_->equal_text(right.model_->dump());
+  }
+
+ private:
+  explicit json_document(std::shared_ptr<const detail::json_document_model> model)
+      : model_{std::move(model)} {}
+
+  std::shared_ptr<const detail::json_document_model> model_;
+};
 
 // spec: SWR-CORE-0012
 using data_t = std::variant<std::monostate, std::string, binary, json_text>;

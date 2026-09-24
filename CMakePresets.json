@@ -121,6 +121,18 @@
       }
     },
     {
+      "name": "tsan",
+      "inherits": "base",
+      "displayName": "Thread sanitizer",
+      "description": "SWR-CORE-0032: copies of one json_document are shared across threads, so the suites run under ThreadSanitizer. Set TSAN_OPTIONS=halt_on_error=1 so a race fails the run.",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer"
+      }
+    },
+    {
       "name": "fuzz",
       "inherits": "base",
       "displayName": "libFuzzer targets",
@@ -194,6 +206,10 @@
     {
       "name": "asan",
       "configurePreset": "asan"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan"
     },
     {
       "name": "fuzz",
@@ -270,6 +286,16 @@
       "configurePreset": "asan",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1"
       }
     },
     {

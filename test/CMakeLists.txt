@@ -92,6 +92,12 @@ if(CE_CODEC_NLOHMANN)
   ce_add_test(typed_payload_test
     SOURCES typed_payload_test.cpp no_nlohmann_probe.cpp
     LIBS ce::codec_nlohmann)
+  # The thread-sharing suite starts std::threads, and the probe shows the core
+  # header builds a document over a codec it has never seen.
+  find_package(Threads REQUIRED)
+  ce_add_test(json_document_test
+    SOURCES json_document_test.cpp no_nlohmann_probe.cpp
+    LIBS ce::codec_nlohmann Threads::Threads)
   ce_add_test(roundtrip_test
     SOURCES roundtrip_test.cpp
     LIBS ce::codec_nlohmann)

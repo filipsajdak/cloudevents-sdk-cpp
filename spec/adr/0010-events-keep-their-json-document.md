@@ -31,18 +31,30 @@ Adding an alternative breaks every exhaustive visitor, so rule 4 puts it in a ne
 
 **`json_document` is an immutable, shared, type-erased DOM.**
 It holds a `std::shared_ptr` to a const, codec-specific holder that is never modified after construction.
-The holder carries a codec identity: the address of a per-codec `inline constexpr` tag.
-`json_document::get<Codec>()` returns `const Codec::value*` when the identity matches and `nullptr` otherwise.
 A copy shares the holder; the reference count is the only state that changes after construction.
+The holder carries the identity of the codec that built it: `Codec::identity`, a `static constexpr std::string_view` the codec declares, holding a reverse-DNS name such as `io.cloudevents.cpp.codec.nlohmann`.
+`json_document::get<Codec>()` returns `const Codec::value*` when the two identities compare equal by value and `nullptr` otherwise.
+Uniqueness is the codec author's contract, as the one-definition rule is; the in-tree codecs live under `io.cloudevents.cpp.`.
+Protobuf's `Any` type URLs, LLVM's explicit kind discriminators and COM's interface IDs are the same shape: an identity the type declares rather than one the toolchain derives.
+
+The identity is declared rather than derived because each derived form was worse:
+- The address of a per-codec `inline constexpr` tag can collide.
+  MSVC's default `/OPT:ICF` folds identical read-only data, and a collision would turn the downcast after the check into undefined behaviour.
+- A non-const tag cannot be folded, but was declined: it is mutable global state carried only for its address.
+- RTTI was declined as a design smell and an extra dependency; a `-fno-rtti` build would lose the fast path.
+- A hash of the name from `__PRETTY_FUNCTION__` gives false matches, because codecs of the same name in two anonymous namespaces spell the same.
 
 **Equality goes through the codec.**
 Two documents with the same identity compare with `Codec::equal`.
-Two with different identities compare their compact serialisations, which the holder can produce because it knows its codec.
+Two with different identities are compared by the left-hand codec: it parses the right-hand document's serialisation and applies its own `equal`.
+Each holder can serialise and parse because it knows its codec.
+Comparing compact serialisations instead would report a difference in member order as inequality.
 
-**The v3 codec concept requires `equal` and a copyable `value`.**
-Encoding copies the DOM into the output document, and equality needs the codec's own comparison.
-Requiring both keeps a single code path.
-The in-tree codecs gain a static `equal`; adding a member keeps their v1 declarations.
+**The v3 codec concept requires `equal`, `copy` and `identity`.**
+Encoding copies the DOM into the output document, equality needs the codec's own comparison, and the fast path needs the identity.
+The codec supplies the copy, because RapidJSON's value cannot be copy-constructed and copies only through its allocator.
+Requiring all three keeps a single code path.
+The in-tree codecs gain a static `equal`, a static `copy` and a static `identity`; adding members keeps their v1 declarations.
 
 **Decoding retains the document up to a limit.**
 The JSON format stores `json_document` when the input is at most `retain_document_up_to` bytes (64 KiB by default) and `json_text` above it.
@@ -75,9 +87,9 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 
 ### Negative
 - Three event models are maintained, and CI runs all three generations.
-- A third-party codec must add `equal` to move to v3.
+- A third-party codec must add `equal`, `copy` and an `identity` to move to v3.
 - An event holding a `json_document` uses more memory than one holding the same text.
-- Comparing documents from different codecs serialises both.
+- Comparing documents from different codecs serialises one and parses it again.
 
 ### Neutral
 - `json_text` stays for payload text a caller supplies, and for documents above the retention limit.

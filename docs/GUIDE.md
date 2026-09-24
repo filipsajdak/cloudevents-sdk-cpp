@@ -418,6 +418,34 @@ Two things matter if you call a codec directly rather than through `json_format`
 
 Any codec may be used from several threads at once on separate documents, but never on one shared value.
 
+### A parsed document: `json_document`
+
+`ce::json_document` holds a DOM one codec built, behind a type that names no codec, so `core.hpp` needs no JSON library.
+Build one with `make<Codec>`, which takes the DOM by value:
+
+```cpp body
+auto parsed = codec::parse(R"({"rows":3,"unit":"m"})");
+if (parsed) {
+  const auto document = ce::json_document::make<codec>(std::move(*parsed));
+  if (const auto* dom = document.get<codec>()) {
+    std::printf("%zu members, %s\n", codec::size_of(*dom), document.dump().c_str());
+  }
+  const auto copy = document;
+  std::printf("equal: %d\n", static_cast<int>(copy == document));
+}
+```
+
+- **It is never empty.**
+  There is no default constructor, and moving a document copies it, so every `json_document` holds a DOM.
+- **`get<Codec>()` returns the DOM only to the codec that built it.**
+  It compares `Codec::identity` with the builder's identity, by value; any other codec gets `nullptr`, and `built_by<Codec>()` asks the same question as a `bool`.
+- **Two documents compare as JSON values.**
+  Built by one codec, they compare with that codec's `equal`, so member order and whitespace do not count.
+  Built by different codecs, the left-hand codec parses the right-hand document's `dump()` and compares with its own `equal`, which costs a serialisation and a parse.
+- **Copies share one immutable DOM.**
+  A copy costs a reference-count increment, and any number of threads may copy, compare and read one document at once.
+  That holds only if the codec's `const` operations (`dump`, `equal`, `parse` and the readers) are free of data races on a shared value, which the three in-tree codecs are.
+
 ### Writing your own
 
 `examples/custom_codec.cpp` is a complete codec over a DOM the SDK has never seen.
@@ -429,6 +457,10 @@ using format = ce::json_format<my_codec>;
 ```
 
 A codec supplies `parse`, `dump`, the `make_*` constructors, `set`, `push`, `kind_of`, `find`, `size_of`, the `as_*` readers, `for_each_member` and `for_each_element`.
+A v3 codec also supplies `equal(left, right)`, JSON value equality with object members compared regardless of order, `copy(value)`, a deep copy, and `identity`, a non-empty `static constexpr std::string_view` naming the codec.
+Choose the identity as a reverse-DNS name under a domain you control, such as `com.example.json.my_codec`, and never give two codecs the same one: a document hands its DOM to any codec declaring the identity of the codec that built it.
+The SDK's own codecs use names under `io.cloudevents.cpp.`.
+A codec written for v1 or v2 without them still serves `ce::v1` and `ce::v2`, and `ce::v1::json::json_codec` accepts it.
 Three rules keep codecs in agreement:
 
 - `kind_of` reports `kind::integer` for a number written with no fraction and no exponent, whatever its size.

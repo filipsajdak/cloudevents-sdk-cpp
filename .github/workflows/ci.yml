@@ -333,6 +333,40 @@ jobs:
       - name: asan-ubsan-suite
         run: cmake --build build --target asan-ubsan-suite
 
+  thread-sanitizer:
+    name: tsan
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-17 libc++-17-dev libc++abi-17-dev ninja-build \
+            nlohmann-json3-dev
+      # The runner's kernel randomises mmap with more bits than clang 17's TSan
+      # can map around, and it aborts at startup with "unexpected memory
+      # mapping" before any test runs.
+      - name: Narrow mmap randomisation for TSan
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      # SWR-CORE-0032. Copies of one json_document are read and compared from
+      # several threads. halt_on_error=1 makes the first race abort the suite,
+      # so a report fails the job instead of scrolling past in the log.
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++-17
+          -DCMAKE_CXX_STANDARD=20
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCE_WERROR=ON
+          "-DCMAKE_CXX_FLAGS=-fsanitize=thread -fno-omit-frame-pointer"
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build --output-on-failure
+
   coverage:
     name: coverage floor
     needs: gate

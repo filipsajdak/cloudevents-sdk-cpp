@@ -167,6 +167,15 @@ int main() {
 
   using format = ce::json_format<demo::codec>;
 
+  // A payload held as the codec's own document. Decoding gives one back, so the
+  // round trip compares equal; a json_text payload would come back as a
+  // document and compare unequal to its text.
+  auto payload = demo::codec::parse(R"({"total":42})");
+  if (!payload) {
+    std::fprintf(stderr, "parse: %s\n", payload.error().detail.c_str());
+    return 1;
+  }
+
   using namespace ce::literals;
   const ce::event subject{
       "A234-1234-1234"_id,
@@ -174,7 +183,7 @@ int main() {
       "com.example.order.placed"_type,
       {
           .datacontenttype = "application/json"_mediatype,
-          .data = ce::json_text{.raw = R"({"total":42})"},
+          .data = ce::json_document::make<demo::codec>(std::move(*payload)),
       },
   };
 

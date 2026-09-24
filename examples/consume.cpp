@@ -23,8 +23,9 @@ void describe(const ce::event& subject) {
     std::printf("  time=%s\n", ce::to_string(*subject.time()).c_str());
   }
 
-  // The payload is one of four things, and the variant says which rather than
-  // leaving the caller to guess from datacontenttype.
+  // The payload is one of five things, and the variant says which rather than
+  // leaving the caller to guess from datacontenttype. A structured decode keeps
+  // JSON as the document it parsed; a binary-mode body arrives as JSON text.
   std::visit(
       [](const auto& payload) {
         using T = std::decay_t<decltype(payload)>;
@@ -34,8 +35,10 @@ void describe(const ce::event& subject) {
           std::printf("  data: text, %zu bytes\n", payload.size());
         } else if constexpr (std::is_same_v<T, ce::binary>) {
           std::printf("  data: %zu bytes of binary\n", payload.size());
+        } else if constexpr (std::is_same_v<T, ce::json_document>) {
+          std::printf("  data: parsed JSON %s\n", payload.dump().c_str());
         } else {
-          std::printf("  data: JSON %s\n", payload.raw.c_str());
+          std::printf("  data: JSON text %s\n", payload.raw.c_str());
         }
       },
       subject.data());

@@ -61,7 +61,11 @@ void run(std::string_view name) {
     check(ce::to_string(*full->time()) == "2026-09-20T12:34:56.123456789+02:00", name,
           "timestamp did not round-trip byte for byte");
   }
-  check(std::holds_alternative<ce::json_text>(full->data()), name, "payload is not json_text");
+  check(std::holds_alternative<ce::json_document>(full->data()), name,
+        "payload is not a json_document");
+  if (const auto* document = std::get_if<ce::json_document>(&full->data())) {
+    check(document->template get<C>() != nullptr, name, "payload document not built by this codec");
+  }
 
   // --- the Integer / floating distinction ---------------------------------
   //

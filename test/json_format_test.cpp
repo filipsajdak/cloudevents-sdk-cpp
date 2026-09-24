@@ -23,6 +23,7 @@
 #include "equality.hpp"
 #include "json_format_checks.hpp"
 #include "mini_codec.hpp"
+#include "payload.hpp"
 
 // json_format owns every CloudEvents JSON rule, over whatever codec it is given.
 // So every assertion below is written once, as a function template over the
@@ -502,37 +503,73 @@ void check_decode_data_base64(std::string_view label) {
   expect(!wrong_kind.has_value()) << label;
 }
 
+/// A codec other than `C`, for asserting that a document yields only to its own.
 template <class C>
-void check_decode_data_as_json_text(std::string_view label) {
+using other_codec_t =
+    std::conditional_t<std::is_same_v<C, mini_codec>, nlohmann_codec, mini_codec>;
+
+template <class C>
+void check_decode_data_as_json_document(std::string_view label) {
   using namespace boost::ut;
   using format = ce::json_format<C>;
 
-  // No datacontenttype at all: json_text is the default.
+  // No datacontenttype at all: a document built by the decoding codec is the
+  // default.
   auto decoded = format::decode(
       R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1}})");
   expect(decoded.has_value()) << label;
   if (decoded) {
-    expect(std::holds_alternative<ce::json_text>(decoded->data())) << label;
-    if (std::holds_alternative<ce::json_text>(decoded->data())) {
-      // The raw text must itself be well-formed JSON carrying the same value.
-      const auto& raw = std::get<ce::json_text>(decoded->data()).raw;
-      auto reparsed = C::parse(raw);
-      expect(reparsed.has_value()) << label << ": " << raw;
-      if (reparsed) {
-        const auto* inner = C::find(*reparsed, "k");
-        expect(inner != nullptr) << label;
-        if (inner != nullptr) {
-          const auto held = C::as_int(*inner);
-          expect(held.has_value()) << label;
-          if (held) {
-            expect(*held == 1) << label;
-          }
-        }
+    const auto* document = std::get_if<ce::json_document>(&decoded->data());
+    expect(document != nullptr) << label;
+    if (document != nullptr) {
+      expect(document->template get<other_codec_t<C>>() == nullptr)
+          << label << ": the document yields only to the codec that built it";
+      const auto* held = document->template get<C>();
+      expect(held != nullptr) << label << ": built by the decoding codec";
+      const auto* inner = held == nullptr ? nullptr : C::find(*held, "k");
+      expect(inner != nullptr) << label;
+      if (inner != nullptr) {
+        const auto number = C::as_int(*inner);
+        expect(number.has_value() && *number == 1) << label;
       }
     }
   }
 
-  // A JSON content type keeps a JSON string payload as json_text rather than
+  // from_value leaves the caller's document as it was and still retains the
+  // payload as a document.
+  auto caller_owned =
+      C::parse(R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":[1,2]})");
+  expect(caller_owned.has_value()) << label;
+  if (caller_owned) {
+    const auto before = C::copy(*caller_owned);
+    auto from_value = format::from_value(*caller_owned);
+    expect(from_value.has_value() &&
+           std::holds_alternative<ce::json_document>(from_value->data()))
+        << label << ": from_value retains";
+    expect(C::equal(*caller_owned, before)) << label << ": from_value leaves its input";
+  }
+
+  // Moving the payload out does not disturb what is read around it: attributes
+  // and extensions on either side of data survive, and so does the payload.
+  auto surrounded = format::decode(
+      R"({"specversion":"1.0","id":"1","alpha":"a","data":{"k":[1,2]},)"
+      R"("source":"/s","omega":7,"type":"t","subject":"s"})");
+  expect(surrounded.has_value()) << label;
+  if (surrounded) {
+    expect(surrounded->extensions().size() == 2U) << label;
+    expect(bool{surrounded->subject() == std::optional{"s"_subject}}) << label;
+    expect(ce_test::same_json_payload<C>(surrounded->data(), R"({"k":[1,2]})"sv)) << label;
+  }
+
+  // An error found after the payload is taken is still the error reported.
+  auto late_error = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1},"Bad-Name":1})");
+  expect(!late_error.has_value()) << label;
+  if (!late_error) {
+    expect(late_error.error().code == ce::errc::invalid_attribute_name) << label;
+  }
+
+  // A JSON content type keeps a JSON string payload as JSON rather than
   // unwrapping it, because the producer said the payload is JSON.
   const std::pair<std::string_view, std::string_view> json_typed[] = {
       {R"("application/json")"sv, R"([1,2])"sv},
@@ -546,18 +583,63 @@ void check_decode_data_as_json_text(std::string_view label) {
     auto typed = format::decode(document);
     expect(typed.has_value()) << label << ": " << document;
     if (typed) {
-      expect(std::holds_alternative<ce::json_text>(typed->data())) << label << ": " << document;
+      expect(std::holds_alternative<ce::json_document>(typed->data()))
+          << label << ": " << document;
     }
   }
 
-  // A non-string payload under a non-JSON content type is still json_text: the
+  // A non-string payload under a non-JSON content type is still JSON: the
   // string rule is about a JSON string, not about the content type alone.
   auto numeric = format::decode(
       R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":"text/plain","data":5})");
   expect(numeric.has_value()) << label;
   if (numeric) {
-    expect(std::holds_alternative<ce::json_text>(numeric->data())) << label;
+    expect(std::holds_alternative<ce::json_document>(numeric->data())) << label;
   }
+}
+
+template <class C>
+void check_retention_limit(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::json_format<C>;
+
+  constexpr auto text =
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1}})"sv;
+  const auto holds_document = [](const ce::result<ce::event>& decoded) {
+    return decoded.has_value() && std::holds_alternative<ce::json_document>(decoded->data());
+  };
+  const auto holds_text = [](const ce::result<ce::event>& decoded) {
+    return decoded.has_value() && std::holds_alternative<ce::json_text>(decoded->data());
+  };
+
+  expect(holds_document(format::decode(text, {.retain_document_up_to = text.size()})))
+      << label << ": at the limit";
+  expect(holds_text(format::decode(text, {.retain_document_up_to = text.size() - 1})))
+      << label << ": one byte over the limit";
+  expect(holds_text(format::decode(text, {.retain_document_up_to = 0}))) << label << ": 0";
+  expect(holds_document(format::decode(text))) << label << ": the default";
+
+  const auto over = format::decode(text, {.retain_document_up_to = text.size() - 1});
+  expect(over && ce_test::same_json_payload<C>(over->data(), R"({"k":1})"sv))
+      << label << ": the text carries the same value";
+
+  // The default is 64 KiB, measured on the whole input.
+  const std::string padding(std::size_t{64} * 1024, ' ');
+  expect(holds_text(format::decode(std::string{text} + padding))) << label << ": 64 KiB + text";
+
+  // A batch is measured as a whole, not per element.
+  const std::string batch = "[" + std::string{text} + "," + std::string{text} + "]";
+  const auto batch_of = [&](std::size_t limit) {
+    return format::decode_batch(batch, {.retain_document_up_to = limit});
+  };
+  const auto whole = batch_of(batch.size());
+  const auto split = batch_of(batch.size() - 1);
+  expect(whole && whole->size() == 2U &&
+         std::holds_alternative<ce::json_document>(whole->back().data()))
+      << label << ": a batch at the limit";
+  expect(split && split->size() == 2U &&
+         std::holds_alternative<ce::json_text>(split->front().data()))
+      << label << ": a batch over the limit, though each element is under it";
 }
 
 template <class C>
@@ -1060,11 +1142,20 @@ const boost::ut::suite<"decode-data-base64-yields-binary"> decode_data_base64 = 
 };
 
 // spec: SWR-JSON-0019
-const boost::ut::suite<"decode-data-yields-json-text"> decode_data_json_text = [] {
+const boost::ut::suite<"decode-data-yields-json-document"> decode_data_json_document = [] {
   using namespace boost::ut;
 
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
-    test(std::string{codec}) = [codec] { check_decode_data_as_json_text<C>(codec); };
+    test(std::string{codec}) = [codec] { check_decode_data_as_json_document<C>(codec); };
+  });
+};
+
+// spec: SWR-JSON-0040
+const boost::ut::suite<"decode-retains-document-up-to-limit"> retention_limit = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_retention_limit<C>(codec); };
   });
 };
 
@@ -1118,6 +1209,7 @@ void check_document_converts(std::string_view label) {
   }
   const auto back = payload_of<To>(*decoded);
   expect(back.has_value() && To::equal(*back, *expected)) << label << ": round trip";
+  expect(bool{*decoded == subject}) << label << ": documents from two codecs compare by value";
 }
 
 template <class C>

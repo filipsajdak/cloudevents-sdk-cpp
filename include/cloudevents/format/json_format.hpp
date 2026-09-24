@@ -20,6 +20,14 @@
 
 namespace ce::inline v3 {
 
+namespace json {
+// spec: SWR-JSON-0040
+struct decode_options {
+  static constexpr std::size_t default_retain_document_up_to = std::size_t{64} * 1024;
+  std::size_t retain_document_up_to = default_retain_document_up_to;
+};
+}  // namespace json
+
 // spec: SYS-JSON-0001
 // spec: SWR-JSON-0010
 template <json::json_codec Codec>
@@ -148,6 +156,63 @@ struct json_format {
 
   // spec: SWR-JSON-0031
   [[nodiscard]] static auto from_value(const value& document) -> result<event> {
+    return read_event(document, nullptr, payload_mode::copy);
+  }
+
+  // spec: SWR-JSON-0040
+  [[nodiscard]] static auto decode(std::string_view text, json::decode_options options = {})
+      -> result<event> {
+    auto document = Codec::parse(text);
+    if (!document) {
+      return fail(document.error().code, document.error().detail);
+    }
+    return read_event(*document, &*document,
+                      retains(text, options) ? payload_mode::move : payload_mode::text);
+  }
+
+  // spec: SWR-JSON-0040
+  [[nodiscard]] static auto decode_batch(std::string_view text, json::decode_options options = {})
+      -> result<std::vector<event>> {
+    auto document = Codec::parse(text);
+    if (!document) {
+      return fail(document.error().code, document.error().detail);
+    }
+    if (Codec::kind_of(*document) != json::kind::array) {
+      return fail(errc::parse_error, "a batch must be a JSON array");
+    }
+
+    const auto mode = retains(text, options) ? payload_mode::copy : payload_mode::text;
+    std::vector<event> events;
+    result<void> element_error{};
+    Codec::for_each_element(*document, [&](const value& element) {
+      if (!element_error) {
+        return;
+      }
+      auto cloud_event = read_event(element, nullptr, mode);
+      if (!cloud_event) {
+        element_error =
+            fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
+        return;
+      }
+      events.push_back(std::move(*cloud_event));
+    });
+    if (!element_error) {
+      return fail(element_error.error().code, element_error.error().detail,
+                  element_error.error().where);
+    }
+    return events;
+  }
+
+ private:
+  enum class payload_mode : std::uint8_t { text, copy, move };
+
+  [[nodiscard]] static auto retains(std::string_view text, const json::decode_options& options)
+      -> bool {
+    return options.retain_document_up_to != 0 && text.size() <= options.retain_document_up_to;
+  }
+
+  [[nodiscard]] static auto read_event(const value& document, value* owned, payload_mode mode)
+      -> result<event> {
     if (Codec::kind_of(document) != json::kind::object) {
       return fail(errc::parse_error, "a CloudEvent must be a JSON object");
     }
@@ -165,8 +230,7 @@ struct json_format {
     if (auto read = read_context(found, under_construction); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto stored = decode_data(found.data, found.data_base64, under_construction.rest);
-        !stored) {
+    if (auto stored = decode_data(found, owned, mode, under_construction.rest); !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
     if (!extensions_read) {
@@ -176,44 +240,6 @@ struct json_format {
     return std::move(under_construction).build();
   }
 
-  [[nodiscard]] static auto decode(std::string_view text) -> result<event> {
-    auto document = Codec::parse(text);
-    if (!document) {
-      return fail(document.error().code, document.error().detail);
-    }
-    return from_value(*document);
-  }
-
-  [[nodiscard]] static auto decode_batch(std::string_view text) -> result<std::vector<event>> {
-    auto document = Codec::parse(text);
-    if (!document) {
-      return fail(document.error().code, document.error().detail);
-    }
-    if (Codec::kind_of(*document) != json::kind::array) {
-      return fail(errc::parse_error, "a batch must be a JSON array");
-    }
-
-    std::vector<event> events;
-    result<void> element_error{};
-    Codec::for_each_element(*document, [&](const value& element) {
-      if (!element_error) {
-        return;
-      }
-      auto cloud_event = from_value(element);
-      if (!cloud_event) {
-        element_error = fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
-        return;
-      }
-      events.push_back(std::move(*cloud_event));
-    });
-    if (!element_error) {
-      return fail(element_error.error().code, element_error.error().detail,
-                  element_error.error().where);
-    }
-    return events;
-  }
-
- private:
   struct members {
     const value* specversion{};
     const value* id{};
@@ -479,8 +505,10 @@ struct json_format {
   // spec: SWR-JSON-0019
   // spec: SWR-JSON-0020
   // spec: SWR-JSON-0021
-  [[nodiscard]] static auto decode_data(const value* data, const value* data_base64,
+  [[nodiscard]] static auto decode_data(const members& found, value* owned, payload_mode mode,
                                         event::options& into) -> result<void> {
+    const value* data = found.data;
+    const value* data_base64 = found.data_base64;
     if (data != nullptr && data_base64 != nullptr) {
       return fail(errc::data_conflict, "data and data_base64 are mutually exclusive", "data");
     }
@@ -514,8 +542,23 @@ struct json_format {
       return {};
     }
 
-    into.data = json_text{.raw = Codec::dump(*data)};
+    into.data = json_payload(*data, owned, mode);
     return {};
+  }
+
+  // spec: SWR-JSON-0019
+  // spec: SWR-JSON-0040
+  [[nodiscard]] static auto json_payload(const value& data, value* owned, payload_mode mode)
+      -> data_t {
+    switch (mode) {
+      case payload_mode::text: return json_text{.raw = Codec::dump(data)};
+      case payload_mode::copy: return json_document::make<Codec>(Codec::copy(data));
+      case payload_mode::move: break;
+    }
+    if (owned == nullptr || Codec::find(*owned, "data") != &data) {
+      return json_document::make<Codec>(Codec::copy(data));
+    }
+    return json_document::make<Codec>(Codec::extract(*owned, "data"));
   }
 };
 

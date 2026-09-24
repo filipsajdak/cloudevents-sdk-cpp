@@ -949,7 +949,7 @@ void check_spec_examples(std::string_view label) {
     // example carries in addition.
     ce::event aligned = *from_binary;
     expect(aligned.remove_extension("exampleextension2")) << label;
-    expect(bool{*from_structured == aligned})
+    expect(bool{*from_structured == ce_test::as_decoded(aligned)})
         << label << ": the two content modes disagree about the same event";
   }
 

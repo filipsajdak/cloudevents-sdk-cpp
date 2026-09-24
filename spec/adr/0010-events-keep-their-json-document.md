@@ -64,8 +64,13 @@ Requiring all five keeps a single code path.
 The in-tree codecs gain a static `equal`, `copy`, `extract`, `for_each_mutable_element` and `identity`; adding members keeps their v1 declarations.
 
 **Decoding retains the document up to a limit.**
-The JSON format stores `json_document` when the input is at most `retain_document_up_to` bytes (64 KiB by default) and `json_text` above it.
+The JSON format stores `json_document` when the input is at most `retain_document_up_to` bytes (16 KiB by default) and `json_text` above it.
 A parsed DOM can occupy many times its text, so the limit bounds what one event can pin in memory.
+In the CI perf job for PR #58 a retained document cost 1.4 to 2.3 times the retained bytes of the same payload kept as text for a full event of about 400 bytes, and 1.9 to 3.3 times for a 52,889-byte event (nlohmann: 76,865 to 253,448 bytes).
+The default is 16 KiB so that typical events keep the document and its fast path, while a large payload stays text unless the caller raises the limit.
+A batch is measured per event by average size: it keeps documents when its text is at most the limit times its number of events, and otherwise every event in it keeps text.
+Measuring the whole batch text against the limit sent a batch of 100 typical events to text, which cost `decode_batch_100` up to 42 percent more allocated bytes than main in the CI perf job for PR #59.
+Retained memory stays proportional to the input, with a worst case around 3 times its text when one large event among tiny ones is retained because the average is small; the absolute per-event bound applies to single-event decode.
 
 **Typed payloads read and write the DOM.**
 `decode_as`, `decode_batch_as`, `from_value_as` and `encode_as` sit in `format/typed_payload.hpp`, returning `decoded<T>{.event, .payload}` where they return a payload.

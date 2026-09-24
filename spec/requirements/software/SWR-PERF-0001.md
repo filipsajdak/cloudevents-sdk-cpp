@@ -2,7 +2,7 @@
 uid: SWR-PERF-0001
 title: A pull request that adds more than 2 percent instructions fails
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The instruction count of an operation under Valgrind varies by well under 1 percent between runs on the same binary, so a 2 percent threshold is signal rather than noise.
@@ -10,8 +10,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:bench/perf/compare.py, code:bench/perf/perf_probe.cpp, code:bench/perf/measure.py, code:.github/workflows/perf.yml]
+verified_by: [test:bench/perf/test_perf_tools.py::InstructionGate]
 owner: filip.sajdak
 version: 1
 ---

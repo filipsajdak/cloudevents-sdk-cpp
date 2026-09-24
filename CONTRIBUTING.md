@@ -24,6 +24,9 @@ A snippet in the guide is fenced `cpp` for declarations, `cpp body` for statemen
 `cmake --build <dir> --target tidy` runs clang-tidy over the headers, and `.clang-format` sets the formatting.
 `./interop/run.sh` checks the SDK against the Go and Java SDKs, and needs Docker.
 
+The `perf` workflow measures every pull request against main and against `bench/budgets.json`, and fails when an operation gets costlier.
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md) explains its table, how to reproduce it with Docker, and how to raise a budget for a deliberate cost.
+
 ## Spec first
 
 Every behaviour of the SDK traces to a requirement in [spec/requirements/](spec/requirements/).

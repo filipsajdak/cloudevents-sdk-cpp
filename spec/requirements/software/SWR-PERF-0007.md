@@ -2,7 +2,7 @@
 uid: SWR-PERF-0007
 title: Every change to main is recorded in the benchmark history
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A comparison against main shows one step; a trend shows where a budget is heading and when a change began to cost.
@@ -10,8 +10,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:bench/perf/history.py, code:.github/workflows/perf.yml]
+verified_by: [test:bench/perf/test_perf_tools.py::History]
 owner: filip.sajdak
 version: 1
 ---

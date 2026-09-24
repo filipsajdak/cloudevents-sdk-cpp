@@ -2,7 +2,7 @@
 uid: SWR-PERF-0003
 title: A pull request that makes a decoded event retain more than 1 percent more memory fails
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   An event kept in a queue or a cache holds its memory for as long as it lives.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:bench/perf/compare.py, code:bench/perf/perf_probe.cpp, code:.github/workflows/perf.yml]
+verified_by: [test:bench/perf/test_perf_tools.py::RetainedGate]
 owner: filip.sajdak
 version: 1
 ---

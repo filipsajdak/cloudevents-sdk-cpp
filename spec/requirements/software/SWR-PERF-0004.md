@@ -2,7 +2,7 @@
 uid: SWR-PERF-0004
 title: A measurement above its committed budget fails
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   A threshold against main catches a large step but not a drift of many small ones.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:bench/perf/compare.py, code:bench/perf/seed_budgets.py, code:bench/budgets.json, code:.github/workflows/perf.yml]
+verified_by: [test:bench/perf/test_perf_tools.py::BudgetGate, test:bench/perf/test_perf_tools.py::AcceptedCost, test:bench/perf/test_perf_tools.py::SeedBudgets]
 owner: filip.sajdak
 version: 1
 ---

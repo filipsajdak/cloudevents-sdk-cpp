@@ -2,7 +2,7 @@
 uid: SWR-PERF-0005
 title: Every pull request shows its measurements beside main and the budgets
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A failed gate with no numbers sends the author off to reproduce the measurement.
@@ -10,8 +10,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:bench/perf/compare.py, code:.github/workflows/perf.yml]
+verified_by: [test:bench/perf/test_perf_tools.py::SummaryTable]
 owner: filip.sajdak
 version: 1
 ---

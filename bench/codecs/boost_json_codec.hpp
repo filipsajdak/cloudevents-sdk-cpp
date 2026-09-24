@@ -23,15 +23,17 @@ namespace ce::bench {
 struct boost_json_codec {
   using value = boost::json::value;
 
-  static auto make_null() -> value { return value{nullptr}; }
-  static auto make_bool(bool v) -> value { return value{v}; }
-  static auto make_int(std::int64_t v) -> value { return value{v}; }
-  static auto make_double(double v) -> value { return value{v}; }
-  static auto make_string(std::string_view v) -> value {
-    return value{boost::json::string{v}};
-  }
-  static auto make_array() -> value { return value{boost::json::array{}}; }
-  static auto make_object() -> value { return value{boost::json::object{}}; }
+  /// Parentheses, not braces. `value{x}` selects the initializer-list
+  /// constructor, and before Boost 1.84 that makes a one-element ARRAY holding
+  /// x: `make_object()` returned `[{}]` and the first `set` threw "value is not
+  /// an object". Newer Boost special-cases a single element, which hides it.
+  static auto make_null() -> value { return value(nullptr); }
+  static auto make_bool(bool v) -> value { return value(v); }
+  static auto make_int(std::int64_t v) -> value { return value(v); }
+  static auto make_double(double v) -> value { return value(v); }
+  static auto make_string(std::string_view v) -> value { return value(boost::json::string(v)); }
+  static auto make_array() -> value { return value(boost::json::array()); }
+  static auto make_object() -> value { return value(boost::json::object()); }
 
   static void set(value& object, std::string_view key, value member) {
     object.as_object().insert_or_assign(key, std::move(member));

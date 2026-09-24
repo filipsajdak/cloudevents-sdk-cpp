@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed 2026-09-24, for `STK-PERF-0001`.
+Accepted 2026-09-24, for `STK-PERF-0001`.
 
 ## Context
 

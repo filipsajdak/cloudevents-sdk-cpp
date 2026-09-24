@@ -122,6 +122,17 @@ endif()
 add_subdirectory(v1)
 add_subdirectory(v2)
 
+# The performance job's comparison, budget and history tools (SWR-PERF-0001 to
+# 0007). Standard-library Python, so they run in every build that has an
+# interpreter, without the benchmark's dependencies.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME perf_tools
+    COMMAND Python3::Interpreter -m unittest discover
+            -s "${PROJECT_SOURCE_DIR}/bench/perf" -p "test_*.py")
+  set_tests_properties(perf_tools PROPERTIES LABELS "perf")
+endif()
+
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
 # not to ours. That is easy to get wrong later -- someone marks our own include
 # directory SYSTEM to silence something -- and the failure is invisible: the build

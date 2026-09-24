@@ -2,7 +2,7 @@
 uid: SYS-PERF-0001
 title: Every pull request is measured against main and against budgets
 type: system
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Shared CI runners vary by 10 to 20 percent in wall time between runs, so a gate on time alone would fail for noise.
@@ -12,8 +12,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [STK-PERF-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:.github/workflows/perf.yml, code:bench/perf/build_and_measure.sh, doc:docs/PERFORMANCE.md]
+verified_by: [test:bench/perf/test_perf_tools.py::InstructionGate, test:bench/perf/test_perf_tools.py::AllocationGate, test:bench/perf/test_perf_tools.py::RetainedGate, test:bench/perf/test_perf_tools.py::BudgetGate, test:bench/perf/test_perf_tools.py::SummaryTable, test:bench/perf/test_perf_tools.py::BinarySizeWarning]
 owner: filip.sajdak
 version: 1
 ---

@@ -1,8 +1,8 @@
 {
   "budgets": {
     "decode_batch_100/boost.json": {
-      "allocated_bytes": 203795,
-      "allocations": 1880,
+      "allocated_bytes": 209075,
+      "allocations": 1990,
       "instructions": 2617908
     },
     "decode_batch_100/glaze": {
@@ -24,49 +24,49 @@
       "allocated_bytes": 2177,
       "allocations": 44,
       "instructions": 45076,
-      "retained_bytes": 697
+      "retained_bytes": 1150
     },
     "decode_full/glaze": {
       "allocated_bytes": 5163,
       "allocations": 31,
       "instructions": 58575,
-      "retained_bytes": 1149
+      "retained_bytes": 1693
     },
     "decode_full/nlohmann": {
       "allocated_bytes": 4677,
       "allocations": 81,
       "instructions": 108467,
-      "retained_bytes": 718
+      "retained_bytes": 1658
     },
     "decode_full/rapidjson": {
       "allocated_bytes": 3955,
       "allocations": 33,
       "instructions": 50343,
-      "retained_bytes": 697
+      "retained_bytes": 945
     },
     "decode_large/boost.json": {
       "allocated_bytes": 339841,
       "allocations": 3326,
       "instructions": 3444751,
-      "retained_bytes": 72162
+      "retained_bytes": 156950
     },
     "decode_large/glaze": {
       "allocated_bytes": 415486,
       "allocations": 1132,
       "instructions": 3562866,
-      "retained_bytes": 87898
+      "retained_bytes": 217677
     },
     "decode_large/nlohmann": {
       "allocated_bytes": 485333,
       "allocations": 4473,
       "instructions": 11053009,
-      "retained_bytes": 84552
+      "retained_bytes": 278793
     },
     "decode_large/rapidjson": {
       "allocated_bytes": 458763,
       "allocations": 1144,
       "instructions": 3658422,
-      "retained_bytes": 58079
+      "retained_bytes": 111250
     },
     "decode_minimal/boost.json": {
       "allocated_bytes": 291,

@@ -12,7 +12,7 @@ verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
 satisfied_by: []
-verified_by: []
+verified_by: [test:bench/perf/test_perf_tools.py::BudgetGate, test:bench/perf/test_perf_tools.py::AcceptedCost, test:bench/perf/test_perf_tools.py::SeedBudgets]
 owner: filip.sajdak
 version: 1
 ---

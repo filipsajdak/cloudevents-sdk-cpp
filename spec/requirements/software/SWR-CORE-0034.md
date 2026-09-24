@@ -2,7 +2,7 @@
 uid: SWR-CORE-0034
 title: A json_document yields its DOM only to the codec that built it
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Reading a type-erased document as the wrong codec's value would be undefined behaviour.
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/core.hpp]
+verified_by: [test:test/json_document_test.cpp::json-document-yields-only-to-its-codec]
 owner: filip.sajdak
 version: 1
 ---

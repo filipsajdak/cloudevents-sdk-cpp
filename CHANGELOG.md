@@ -21,6 +21,12 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
   The three in-tree codecs gain all three, and keep their v1 declarations; their identities are `io.cloudevents.cpp.codec.nlohmann`, `io.cloudevents.cpp.codec.boost_json` and `io.cloudevents.cpp.codec.rapidjson`.
   A third-party codec must add them to serve `ce::v3`, with an identity that is a reverse-DNS name under a domain its author controls and that no other codec uses.
   It keeps serving `ce::v1` and `ce::v2` unchanged, since their concept is the v1 one.
+- **`ce::json_document` holds a parsed JSON document** in `core.hpp`, which still names no codec type.
+  `json_document::make<Codec>(dom)` builds one, `get<Codec>()` returns the DOM to a codec declaring the identity of the one that built it and `nullptr` to any other, and `dump()` serialises it.
+  Documents compare as JSON values, across codecs too.
+  Copies share one immutable DOM, so a document can be copied, compared and read from several threads at once.
+  A document is never empty: it has no default constructor, and moving one copies it.
+  `data_t` does not hold one yet.
 - The optional module exports `ce::v3` only.
 
 CR-0003 and ADR-0010 record why: the v0.5.0 event model adds an alternative to `data_t`, and SPEC section 3 rule 4 sends a breaking change to a new generation.

@@ -418,6 +418,34 @@ Two things matter if you call a codec directly rather than through `json_format`
 
 Any codec may be used from several threads at once on separate documents, but never on one shared value.
 
+### A parsed document: `json_document`
+
+`ce::json_document` holds a DOM one codec built, behind a type that names no codec, so `core.hpp` needs no JSON library.
+Build one with `make<Codec>`, which takes the DOM by value:
+
+```cpp body
+auto parsed = codec::parse(R"({"rows":3,"unit":"m"})");
+if (parsed) {
+  const auto document = ce::json_document::make<codec>(std::move(*parsed));
+  if (const auto* dom = document.get<codec>()) {
+    std::printf("%zu members, %s\n", codec::size_of(*dom), document.dump().c_str());
+  }
+  const auto copy = document;
+  std::printf("equal: %d\n", static_cast<int>(copy == document));
+}
+```
+
+- **It is never empty.**
+  There is no default constructor, and moving a document copies it, so every `json_document` holds a DOM.
+- **`get<Codec>()` returns the DOM only to the codec that built it.**
+  It compares `Codec::identity` with the builder's identity, by value; any other codec gets `nullptr`, and `built_by<Codec>()` asks the same question as a `bool`.
+- **Two documents compare as JSON values.**
+  Built by one codec, they compare with that codec's `equal`, so member order and whitespace do not count.
+  Built by different codecs, the left-hand codec parses the right-hand document's `dump()` and compares with its own `equal`, which costs a serialisation and a parse.
+- **Copies share one immutable DOM.**
+  A copy costs a reference-count increment, and any number of threads may copy, compare and read one document at once.
+  That holds only if the codec's `const` operations (`dump`, `equal`, `parse` and the readers) are free of data races on a shared value, which the three in-tree codecs are.
+
 ### Writing your own
 
 `examples/custom_codec.cpp` is a complete codec over a DOM the SDK has never seen.

@@ -29,6 +29,10 @@ struct report {
   /// True when a typed extension struct read back what it wrote there, which
   /// shows the typed extension layer is core and pulls in no codec.
   bool typed_extension_round_tripped;
+  /// True when a json_document built over the user-supplied codec handed back
+  /// its DOM, dumped, and compared equal to its copy and to a re-spelling there,
+  /// which shows the core header names no codec type (SWR-CORE-0031).
+  bool json_document_round_tripped;
 };
 
 /// \brief Run the probe. Its value is what its translation unit proves, not what

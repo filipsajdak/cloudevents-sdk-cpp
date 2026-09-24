@@ -2,7 +2,7 @@
 uid: SWR-CORE-0033
 title: Two json_documents compare as JSON values
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Event equality must not depend on how the payload was spelled on the wire, or on which codec parsed it.
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/core.hpp]
+verified_by: [test:test/json_document_test.cpp::json-document-compares-as-json]
 owner: filip.sajdak
 version: 1
 ---

@@ -2,7 +2,7 @@
 uid: SWR-CORE-0031
 title: json_document holds a codec's DOM behind a codec-free type
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   CR-0003 lets an event keep the JSON document its decoder built.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/core.hpp]
+verified_by: [test:test/json_document_test.cpp::json-document-holds-any-codec]
 owner: filip.sajdak
 version: 1
 ---

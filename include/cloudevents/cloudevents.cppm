@@ -55,6 +55,7 @@ using ce::v3::data_t;
 using ce::v3::event;
 using ce::v3::raw_headers;
 using ce::v3::is_json_content_type;
+using ce::v3::json_document;
 using ce::v3::json_text;
 using ce::v3::lint_warning;
 using ce::v3::message;

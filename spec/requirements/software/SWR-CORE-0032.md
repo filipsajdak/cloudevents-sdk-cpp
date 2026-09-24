@@ -2,7 +2,7 @@
 uid: SWR-CORE-0032
 title: json_document can be shared across threads without a data race
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Callers copy events into queues and hand them to other threads.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/core.hpp]
+verified_by: [test:test/json_document_test.cpp::json-document-shared-across-threads]
 owner: filip.sajdak
 version: 1
 ---

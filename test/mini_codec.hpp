@@ -8,6 +8,7 @@
 /// nothing like nlohmann's, objects held in insertion order as a vector of pairs,
 /// and integers kept strictly apart from doubles.
 
+#include <algorithm>
 #include <cstddef>
 #include <cerrno>
 #include <charconv>
@@ -145,6 +146,11 @@ struct mini_codec {
   // --- text <-> DOM --------------------------------------------------------
   [[nodiscard]] static auto parse(std::string_view text) -> ce::result<value>;
   [[nodiscard]] static auto dump(const value& subject) -> std::string;
+
+  // --- value semantics -----------------------------------------------------
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.mini";
+  [[nodiscard]] static auto equal(const value& left, const value& right) -> bool;
+  [[nodiscard]] static auto copy(const value& held) -> value { return held; }
 };
 
 namespace mini_detail {
@@ -520,6 +526,35 @@ inline auto mini_codec::dump(const value& subject) -> std::string {
   std::string out;
   mini_detail::dump_value(out, subject);
   return out;
+}
+
+/// Objects compare as unordered: same size, and every member of `left` finds an
+/// equal value under its key in `right` (the first occurrence, as `find` does).
+inline auto mini_codec::equal(const value& left, const value& right) -> bool {
+  if (left.tag != right.tag) {
+    return false;
+  }
+  switch (left.tag) {
+    case ce::json::kind::null: return true;
+    case ce::json::kind::boolean: return left.boolean == right.boolean;
+    case ce::json::kind::integer: return left.integer == right.integer;
+    case ce::json::kind::floating: return left.number == right.number;
+    case ce::json::kind::string: return left.text == right.text;
+    case ce::json::kind::array: return std::ranges::equal(left.elements, right.elements, &equal);
+    case ce::json::kind::object: {
+      if (left.members.size() != right.members.size()) {
+        return false;
+      }
+      for (const auto& [key, member] : left.members) {
+        const value* other = find(right, key);
+        if (other == nullptr || !equal(member, *other)) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+  return false;
 }
 
 static_assert(ce::json::json_codec<mini_codec>);

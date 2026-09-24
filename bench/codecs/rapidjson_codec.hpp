@@ -153,6 +153,10 @@ struct rapidjson_codec {
     v.Accept(writer);
     return std::string{buffer.GetString(), buffer.GetSize()};
   }
+
+  static constexpr std::string_view identity = "io.cloudevents.cpp.bench.rapidjson";
+  static auto equal(const value& left, const value& right) -> bool { return left == right; }
+  static auto copy(const value& v) -> value { return value{v, allocator()}; }
 };
 
 }  // namespace ce::bench

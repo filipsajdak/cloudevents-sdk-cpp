@@ -429,6 +429,10 @@ using format = ce::json_format<my_codec>;
 ```
 
 A codec supplies `parse`, `dump`, the `make_*` constructors, `set`, `push`, `kind_of`, `find`, `size_of`, the `as_*` readers, `for_each_member` and `for_each_element`.
+A v3 codec also supplies `equal(left, right)`, JSON value equality with object members compared regardless of order, `copy(value)`, a deep copy, and `identity`, a non-empty `static constexpr std::string_view` naming the codec.
+Choose the identity as a reverse-DNS name under a domain you control, such as `com.example.json.my_codec`, and never give two codecs the same one: a document hands its DOM to any codec declaring the identity of the codec that built it.
+The SDK's own codecs use names under `io.cloudevents.cpp.`.
+A codec written for v1 or v2 without them still serves `ce::v1` and `ce::v2`, and `ce::v1::json::json_codec` accepts it.
 Three rules keep codecs in agreement:
 
 - `kind_of` reports `kind::integer` for a number written with no fraction and no exponent, whatever its size.

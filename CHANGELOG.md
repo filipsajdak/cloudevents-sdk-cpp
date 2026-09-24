@@ -5,7 +5,7 @@ Notable changes per release. Dates are the tag date.
 ## Unreleased
 
 A third API generation, `ce::v3`, is the inline namespace.
-For now it behaves exactly as `ce::v2` does; the changes CR-0003 asks for land in it next.
+It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in later stages.
 `ce::v2` keeps what v0.4.0 published, so v0.4.0 code has a way to keep compiling.
 
 ### Three generations
@@ -15,7 +15,12 @@ For now it behaves exactly as `ce::v2` does; the changes CR-0003 asks for land i
   The headers that mention `event` or `data_t` are copied under `include/cloudevents/v2/`: `core.hpp`, `format/json_format.hpp`, `format/typed_payload.hpp` and the four binding headers.
   A v2 declaration does not change; v2 takes defect fixes only.
 - **The attribute types are shared by v2 and v3**: `id`, `source`, `timestamp`, `message`, the literals, the typed extensions and the rest of `attributes.hpp` are declared once, in `ce::v2`, and are one type through `ce::`, `ce::v2::` and `ce::v3::`.
-- **What v0.3.0 already shared stays shared**: `errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam are one type through all three generations.
+- **What v0.3.0 already shared stays shared**: `errc`, `error`, `result`, the three codecs, base64 and the describe seam are one type through all three generations.
+- **v3 codecs provide `equal`, `copy` and `identity`.**
+  `ce::v3::json::json_codec` adds three members to the v1 concept: `C::equal(const value&, const value&) -> bool`, JSON value equality with object members in any order; `C::copy(const value&) -> value`, a deep copy; and `C::identity`, a non-empty `static constexpr std::string_view` naming the codec.
+  The three in-tree codecs gain all three, and keep their v1 declarations; their identities are `io.cloudevents.cpp.codec.nlohmann`, `io.cloudevents.cpp.codec.boost_json` and `io.cloudevents.cpp.codec.rapidjson`.
+  A third-party codec must add them to serve `ce::v3`, with an identity that is a reverse-DNS name under a domain its author controls and that no other codec uses.
+  It keeps serving `ce::v1` and `ce::v2` unchanged, since their concept is the v1 one.
 - The optional module exports `ce::v3` only.
 
 CR-0003 and ADR-0010 record why: the v0.5.0 event model adds an alternative to `data_t`, and SPEC section 3 rule 4 sends a breaking change to a new generation.

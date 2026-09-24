@@ -15,6 +15,7 @@
 
 #include <glaze/glaze.hpp>
 #include <glaze/json/generic.hpp>
+#include <glaze/json/patch.hpp>
 
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
@@ -151,6 +152,12 @@ struct glaze_codec {
     }
     return out;
   }
+
+  static constexpr std::string_view identity = "io.cloudevents.cpp.bench.glaze";
+  static auto equal(const value& left, const value& right) -> bool {
+    return glz::equal(left, right);
+  }
+  static auto copy(const value& v) -> value { return v; }
 };
 
 }  // namespace ce::bench

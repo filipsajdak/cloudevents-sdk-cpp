@@ -29,6 +29,13 @@ struct nlohmann_codec {
 
   [[nodiscard]] static auto dump(const value& held) -> std::string { return held.dump(); }
 
+  // spec: SWR-JSON-0039
+  static constexpr std::string_view identity = "io.cloudevents.cpp.codec.nlohmann";
+  [[nodiscard]] static auto equal(const value& left, const value& right) -> bool {
+    return left == right;
+  }
+  [[nodiscard]] static auto copy(const value& held) -> value { return held; }
+
   // NOLINTBEGIN(modernize-return-braced-init-list)
   [[nodiscard]] static auto make_null() -> value { return value(nullptr); }
   [[nodiscard]] static auto make_bool(bool boolean) -> value { return value(boolean); }
@@ -132,6 +139,7 @@ struct nlohmann_codec {
 };
 
 static_assert(json::json_codec<nlohmann_codec>);
+static_assert(ce::v3::json::json_codec<nlohmann_codec>);
 
 }  // namespace ce::v1::codec
 

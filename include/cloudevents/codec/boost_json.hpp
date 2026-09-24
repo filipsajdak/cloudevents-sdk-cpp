@@ -136,9 +136,17 @@ struct boost_json_codec {
   [[nodiscard]] static auto dump(const value& held) -> std::string {
     return boost::json::serialize(held);
   }
+
+  // spec: SWR-JSON-0039
+  static constexpr std::string_view identity = "io.cloudevents.cpp.codec.boost_json";
+  [[nodiscard]] static auto equal(const value& left, const value& right) -> bool {
+    return left == right;
+  }
+  [[nodiscard]] static auto copy(const value& held) -> value { return held; }
 };
 
 static_assert(json::json_codec<boost_json_codec>);
+static_assert(ce::v3::json::json_codec<boost_json_codec>);
 
 }  // namespace ce::v1::codec
 

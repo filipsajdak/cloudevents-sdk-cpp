@@ -156,9 +156,17 @@ struct rapidjson_codec {
     held.Accept(writer);
     return std::string{buffer.GetString(), buffer.GetSize()};
   }
+
+  // spec: SWR-JSON-0039
+  static constexpr std::string_view identity = "io.cloudevents.cpp.codec.rapidjson";
+  [[nodiscard]] static auto equal(const value& left, const value& right) -> bool {
+    return left == right;
+  }
+  [[nodiscard]] static auto copy(const value& held) -> value { return value{held, allocator()}; }
 };
 
 static_assert(json::json_codec<rapidjson_codec>);
+static_assert(ce::v3::json::json_codec<rapidjson_codec>);
 
 }  // namespace ce::v1::codec
 

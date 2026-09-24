@@ -2,7 +2,7 @@
 uid: SWR-JSON-0039
 title: The v3 codec concept requires value equality, a deep copy and an identity
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The encoder copies a retained DOM into its output document, and document equality needs the codec's own comparison.
@@ -15,8 +15,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/json_codec.hpp, code:include/cloudevents/codec/nlohmann.hpp, code:include/cloudevents/codec/boost_json.hpp, code:include/cloudevents/codec/rapidjson.hpp]
+verified_by: [test:test/json_codec_test.cpp::json-codec-requires-equal-copy-and-identity]
 owner: filip.sajdak
 version: 1
 ---

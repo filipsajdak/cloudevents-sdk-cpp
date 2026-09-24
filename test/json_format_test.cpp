@@ -1,13 +1,4 @@
-#include <boost/ut.hpp>
-
-#include <cloudevents/codec/nlohmann.hpp>
-#include <cloudevents/core.hpp>
-#include <cloudevents/detail/timestamp.hpp>
-#include <cloudevents/format/base64.hpp>
-#include <cloudevents/format/json_codec.hpp>
-#include <cloudevents/format/json_format.hpp>
-#include <cloudevents/result.hpp>
-
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -18,6 +9,16 @@
 #include <type_traits>
 #include <variant>
 #include <vector>
+
+#include <boost/ut.hpp>
+
+#include <cloudevents/codec/nlohmann.hpp>
+#include <cloudevents/core.hpp>
+#include <cloudevents/detail/timestamp.hpp>
+#include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/format/json_format.hpp>
+#include <cloudevents/result.hpp>
 
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
@@ -623,23 +624,42 @@ void check_retention_limit(std::string_view label) {
   expect(over && ce_test::same_json_payload<C>(over->data(), R"({"k":1})"sv))
       << label << ": the text carries the same value";
 
-  // The default is 64 KiB, measured on the whole input.
-  const std::string padding(std::size_t{64} * 1024, ' ');
-  expect(holds_text(format::decode(std::string{text} + padding))) << label << ": 64 KiB + text";
+  // The default is measured on the whole input.
+  constexpr auto default_limit = ce::json::decode_options::default_retention_limit;
+  const std::string at_default = std::string{text} + std::string(default_limit - text.size(), ' ');
+  expect(holds_document(format::decode(at_default))) << label << ": exactly the default";
+  expect(holds_text(format::decode(at_default + ' '))) << label << ": one byte over the default";
 
-  // A batch is measured as a whole, not per element.
-  const std::string batch = "[" + std::string{text} + "," + std::string{text} + "]";
+  // A batch is measured per event, by average size. The trailing space makes
+  // the batch text an exact multiple of its event count.
+  constexpr std::size_t events_in_batch = 2;
+  const std::string batch = "[" + std::string{text} + "," + std::string{text} + "] ";
+  const auto per_event = batch.size() / events_in_batch;
+  expect(per_event * events_in_batch == batch.size()) << label << ": the batch divides evenly";
   const auto batch_of = [&](std::size_t limit) {
     return format::decode_batch(batch, {.retain_document_up_to = limit});
   };
-  const auto whole = batch_of(batch.size());
-  const auto split = batch_of(batch.size() - 1);
-  expect(whole && whole->size() == 2U &&
-         std::holds_alternative<ce::json_document>(whole->back().data()))
-      << label << ": a batch at the limit";
-  expect(split && split->size() == 2U &&
-         std::holds_alternative<ce::json_text>(split->front().data()))
-      << label << ": a batch over the limit, though each element is under it";
+  const auto documents_in =
+      [](const ce::result<std::vector<ce::event>>& events) -> std::optional<std::size_t> {
+    if (!events || events->size() != events_in_batch) {
+      return std::nullopt;
+    }
+    return static_cast<std::size_t>(std::ranges::count_if(*events, [](const ce::event& decoded) {
+      return std::holds_alternative<ce::json_document>(decoded.data());
+    }));
+  };
+  constexpr std::optional<std::size_t> every_event{events_in_batch};
+  constexpr std::optional<std::size_t> no_event{0};
+  expect(documents_in(batch_of(per_event)) == every_event)
+      << label << ": a batch at the limit per event";
+  expect(documents_in(batch_of(per_event - 1)) == no_event)
+      << label << ": a batch over the limit per event, though each element is under it";
+  expect(documents_in(batch_of(0)) == no_event) << label << ": a batch with a limit of 0";
+
+  // A limit whose product with the event count wraps to 0 still retains.
+  constexpr auto wraps_to_zero = std::numeric_limits<std::size_t>::max() / events_in_batch + 1;
+  expect(documents_in(batch_of(wraps_to_zero)) == every_event)
+      << label << ": a limit whose product with the event count overflows";
 }
 
 template <class C>

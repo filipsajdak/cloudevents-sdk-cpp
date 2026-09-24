@@ -387,8 +387,9 @@ The media types are `json_format<Codec>::content_type` and `batch_content_type`.
 - Input longer than the retention limit keeps that payload as `ce::json_text` instead.
 
 A parsed document can take several times the memory of its text, and a retained one lives as long as the event.
-The retention limit bounds that: 64 KiB of input by default, set per call with `ce::json::decode_options`, and 0 always keeps text.
-For `decode_batch` the limit applies to the whole batch text:
+The retention limit bounds that: 16 KiB of input by default (`ce::json::decode_options::default_retention_limit`), set per call with `ce::json::decode_options`, and 0 always keeps text.
+For `decode_batch` the limit is per event, by average size: a batch keeps documents when its text is at most the limit times its number of events, and otherwise every event in it keeps text.
+Here the default keeps the document and 0 keeps text:
 
 ```cpp body
 constexpr std::string_view wire =

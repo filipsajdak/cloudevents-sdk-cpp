@@ -1189,7 +1189,7 @@ compare against the same event with its payload as a document.
 
 ## D-JSON-5: `decode_options` is a plain aggregate beside the content types
 
-`ce::json::decode_options{.retain_document_up_to = 64 * 1024}` sits in
+`ce::json::decode_options{.retain_document_up_to = 16 * 1024}` sits in
 `ce::v3::json`, next to `content_type`, and `decode` and `decode_batch` take it
 as a defaulted last parameter. A plain aggregate is written in one designated
 initializer at the call site, gains members without breaking a call, and keeps
@@ -1198,9 +1198,16 @@ template parameter or a member of `json_format` was rejected: the limit is a
 per-call policy, and a caller decoding trusted and untrusted input with one
 codec needs both.
 
-For a batch the limit is measured on the whole batch text, not per element. A
-per-element limit would let a batch of many small documents pin their sum,
-which is the expansion the limit exists to bound. The element events of a
+For a batch the limit is per event, by average size: a batch keeps documents
+when its text is at most the limit times its number of events, and otherwise
+every event in it keeps text. Measuring the whole batch text against the limit
+sent a batch of 100 typical events to text and cost `decode_batch_100` up to 42
+percent more allocated bytes than main. The average keeps retained memory
+proportional to the input, with a worst case around 3 times its text: one large
+event among tiny ones is retained because the average is small. The absolute
+per-event bound applies to single-event decode. The product of the limit and
+the event count is checked, so a huge count cannot wrap it to a small bound. The
+owner chose this on 2026-09-25 (SWR-JSON-0040). The element events of a
 batch move their payload out with `Codec::extract`, as a single decode does:
 the batch decoder owns the array it parsed and walks it with
 `for_each_mutable_element` (SWR-JSON-0039).

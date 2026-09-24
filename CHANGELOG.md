@@ -32,8 +32,9 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
 - **A structured decode keeps the payload as a `json_document`** built by the decoding codec, where v2 gave `json_text`.
   `decode` and `decode_batch` move the `data` member out of the document they parsed, so the payload is neither serialised nor copied; `from_value` copies it.
   A binary-mode body, a non-JSON string payload and `data_base64` decode as before.
-- **`ce::json::decode_options{.retain_document_up_to = 64 * 1024}`** bounds what one event can pin: input longer than the limit keeps its payload as `json_text`, and 0 always does.
-  `decode` and `decode_batch` take it, and for a batch it applies to the whole batch text.
+- **`ce::json::decode_options{.retain_document_up_to = 16 * 1024}`** bounds what one event can pin: input longer than the limit keeps its payload as `json_text`, and 0 always does.
+  The default is 16 KiB, named `decode_options::default_retention_limit`: a retained document measured up to 3.3 times the bytes of its text, so larger payloads stay text unless the caller raises the limit.
+  `decode` and `decode_batch` take it. A batch keeps documents when its text is at most the limit times its number of events, and otherwise every event in it keeps text.
 - **Encoding a `json_document` built by the encoding codec copies its DOM**, with no serialisation and no parse.
   A document from another codec, and `data_as`, convert it through the building codec's text.
 - The optional module exports `ce::v3` only.

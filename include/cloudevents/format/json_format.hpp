@@ -23,8 +23,8 @@ namespace ce::inline v3 {
 namespace json {
 // spec: SWR-JSON-0040
 struct decode_options {
-  static constexpr std::size_t default_retain_document_up_to = std::size_t{64} * 1024;
-  std::size_t retain_document_up_to = default_retain_document_up_to;
+  static constexpr std::size_t default_retention_limit = std::size_t{16} * 1024;
+  std::size_t retain_document_up_to = default_retention_limit;
 };
 }  // namespace json
 
@@ -184,7 +184,8 @@ struct json_format {
 
     // The batch owns its parsed array, so each element's data member is moved
     // into its event, as decode moves the one member of a single event.
-    const auto mode = retains(text, options) ? payload_mode::move : payload_mode::text;
+    const auto mode = retains_batch(text, Codec::size_of(*document), options) ? payload_mode::move
+                                                                              : payload_mode::text;
     std::vector<event> events;
     result<void> element_error{};
     Codec::for_each_mutable_element(*document, [&](value& element) {
@@ -212,6 +213,18 @@ struct json_format {
   [[nodiscard]] static auto retains(std::string_view text, const json::decode_options& options)
       -> bool {
     return options.retain_document_up_to != 0 && text.size() <= options.retain_document_up_to;
+  }
+
+  // spec: SWR-JSON-0040
+  [[nodiscard]] static auto retains_batch(std::string_view text,
+                                          std::size_t event_count,
+                                          const json::decode_options& options) -> bool {
+    const auto limit = options.retain_document_up_to;
+    if (limit == 0) {
+      return false;
+    }
+    return event_count > std::numeric_limits<std::size_t>::max() / limit ||
+           text.size() <= limit * event_count;
   }
 
   [[nodiscard]] static auto read_event(const value& document, value* owned, payload_mode mode)

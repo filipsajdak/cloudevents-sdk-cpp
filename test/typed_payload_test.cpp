@@ -285,6 +285,46 @@ const boost::ut::suite<"typed-payload-roundtrip"> payload_roundtrip = [] {
   "failures mini_codec"_test = [] { check_payload_failures<mini_codec>("mini_codec"); };
 };
 
+template<class Built, class Read>
+void check_payload_from_document(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto document = Built::parse(
+      R"({"sensor":"s-1","celsius":-7,"calibrated":true,"drift":0.25,"note":"n",)"
+      R"("tags":["a"],"labels":{"k":"v"}})");
+  expect(document.has_value()) << label << ": parse";
+  if (!document) {
+    return;
+  }
+  const ce::event subject =
+      minimal({.datacontenttype = "application/json"_mediatype,
+               .data = ce::json_document::make<Built>(Built::copy(*document))});
+
+  auto read = ce::data_as<reading, Read>(subject);
+  expect(read.has_value()) << label;
+  if (read) {
+    expect(read->sensor == "s-1" && read->celsius == -7 && read->calibrated) << label;
+    expect(read->tags == std::vector<std::string>{"a"}) << label;
+    expect(read->labels.size() == 1_ul) << label;
+  }
+}
+
+// spec: SWR-JSON-0042
+const boost::ut::suite<"typed-payload-reads-a-document-from-any-codec"> payload_from_document =
+    [] {
+      using namespace boost::ut;
+
+      "nlohmann document read with mini_codec"_test = [] {
+        check_payload_from_document<nlohmann_codec, mini_codec>("nlohmann -> mini_codec");
+      };
+      "mini_codec document read with nlohmann"_test = [] {
+        check_payload_from_document<mini_codec, nlohmann_codec>("mini_codec -> nlohmann");
+      };
+      "a document read with its own codec"_test = [] {
+        check_payload_from_document<nlohmann_codec, nlohmann_codec>("nlohmann -> nlohmann");
+      };
+    };
+
 // --- SWR-EXT-0006 -----------------------------------------------------------
 
 // spec: SWR-EXT-0006

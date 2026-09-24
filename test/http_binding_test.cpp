@@ -22,6 +22,7 @@
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "payload.hpp"
 
 // The binding is a template over the JSON codec, exactly as json_format is. So
 // every assertion that touches a codec is written once, as a function template,
@@ -487,6 +488,37 @@ void check_binary_mode_body(std::string_view label) {
     expect(back.has_value()) << label;
     if (back) {
       expect(std::holds_alternative<std::monostate>(back->data())) << label;
+    }
+  }
+}
+
+constexpr auto document_payload = R"({"a":[1,2],"b":{"c":null}})"sv;
+
+template <class C>
+void check_document_round_trip(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto parsed = C::parse(document_payload);
+  expect(parsed.has_value()) << label;
+  if (!parsed) {
+    return;
+  }
+  const ce::event subject = base_event({
+      .datacontenttype = "application/json"_mediatype,
+      .data = ce::json_document::make<C>(C::copy(*parsed)),
+  });
+
+  for (const auto mode : {ce::content_mode::structured, ce::content_mode::binary_mode}) {
+    auto laid_out = ce::http::to_message<C>(subject, mode);
+    expect(laid_out.has_value()) << label;
+    if (!laid_out) {
+      continue;
+    }
+    auto back = ce::http::from_message<C>(*laid_out);
+    expect(back && ce_test::same_json_payload<C>(back->data(), document_payload)) << label;
+    if (mode == ce::content_mode::binary_mode) {
+      expect(back && std::holds_alternative<ce::json_text>(back->data()))
+          << label << ": binary mode reads JSON text";
     }
   }
 }
@@ -1170,6 +1202,9 @@ const boost::ut::suite<"from-message-roundtrip"> from_message_roundtrip = [] {
 
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_from_message_roundtrip<C>(codec); };
+    test(std::string{codec} + " document payload") = [codec] {
+      check_document_round_trip<C>(codec);
+    };
   });
 };
 

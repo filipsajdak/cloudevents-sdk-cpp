@@ -5,6 +5,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 #include "equality.hpp"
+#include "mini_codec.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -351,6 +352,25 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
     expect(std::holds_alternative<ce::binary>(binding::read_body(out.body, std::nullopt)));
     expect(std::holds_alternative<std::monostate>(
         binding::read_body(ce::binary{}, subject.datacontenttype())));
+  };
+
+  "a document body is its compact serialisation, and reads back as JSON text"_test = [] {
+    const auto parsed = ce::test::mini_codec::parse(R"({ "a" : [1, 2] })");
+    expect(parsed.has_value());
+    if (!parsed) {
+      return;
+    }
+    const ce::event subject =
+        base_event({.datacontenttype = "application/json"_mediatype,
+                    .data = ce::json_document::make<ce::test::mini_codec>(*parsed)});
+
+    ce::message out;
+    binding::write_body(subject, out);
+    const auto body_read = binding::read_body(out.body, subject.datacontenttype());
+    expect(std::holds_alternative<ce::json_text>(body_read));
+    if (const auto* text = std::get_if<ce::json_text>(&body_read)) {
+      expect(text->raw == R"({"a":[1,2]})"sv);
+    }
   };
 };
 

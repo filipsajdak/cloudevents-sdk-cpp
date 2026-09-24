@@ -455,6 +455,14 @@ struct json_format {
           } else if constexpr (std::is_same_v<held_type, std::string>) {
             Codec::set(root, "data", Codec::make_string(held));
             return {};
+          } else if constexpr (std::is_same_v<held_type, json_document>) {
+            // spec: SWR-JSON-0042
+            auto converted = Codec::parse(held.dump());
+            if (!converted) {
+              return fail(errc::parse_error, "data is not well-formed JSON", "/data");
+            }
+            Codec::set(root, "data", std::move(*converted));
+            return {};
           } else {
             auto parsed = Codec::parse(held.raw);
             if (!parsed) {

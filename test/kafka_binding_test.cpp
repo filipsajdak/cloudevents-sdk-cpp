@@ -11,10 +11,12 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <variant>
 
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "payload.hpp"
 
 // Every assertion that touches a codec is a function template instantiated for
 // each enabled codec, as in the HTTP suite. A suite that ran over one codec would
@@ -93,6 +95,38 @@ void check_structured_mode(std::string_view codec) {
   expect(bool{read_back}) << codec;
   if (read_back) {
     expect(read_back->id() == subject.id()) << codec;
+  }
+}
+
+constexpr auto document_payload = R"({"a":[1,2],"b":{"c":null}})"sv;
+
+template <class Codec>
+void check_document_round_trip(std::string_view codec) {
+  using namespace boost::ut;
+
+  const auto parsed = Codec::parse(document_payload);
+  expect(parsed.has_value()) << codec;
+  if (!parsed) {
+    return;
+  }
+  const ce::event subject = base_event({
+      .datacontenttype = "application/json"_mediatype,
+      .data = ce::json_document::make<Codec>(Codec::copy(*parsed)),
+  });
+
+  for (const auto mode : {ce::content_mode::structured, ce::content_mode::binary_mode}) {
+    auto laid_out = ce::kafka::to_message<Codec>(subject, mode);
+    expect(bool{laid_out}) << codec;
+    if (!laid_out) {
+      continue;
+    }
+    auto read_back = ce::kafka::from_message<Codec>(*laid_out);
+    expect(read_back && ce_test::same_json_payload<Codec>(read_back->data(), document_payload))
+        << codec;
+    if (mode == ce::content_mode::binary_mode) {
+      expect(read_back && std::holds_alternative<ce::json_text>(read_back->data()))
+          << codec << ": binary mode reads JSON text";
+    }
   }
 }
 
@@ -274,6 +308,7 @@ const boost::ut::suite<"kafka-binary-mode"> kafka_binary_mode = [] {
     test(std::string{codec}) = [codec] {
       check_binary_mode<C>(codec);
       check_structured_mode<C>(codec);
+      check_document_round_trip<C>(codec);
     };
   });
 };

@@ -9,10 +9,12 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <variant>
 
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "payload.hpp"
 
 namespace {
 
@@ -49,6 +51,40 @@ void check_round_trip(std::string_view codec) {
     expect(read_back->type() == subject.type()) << codec;
     expect(ce_test::equal(read_back->subject(), subject.subject())) << codec;
     expect(read_back->extensions().size() == 1U) << codec;
+  }
+}
+
+constexpr auto document_payload = R"({"a":[1,2],"b":{"c":null}})"sv;
+
+template <class Codec>
+void check_document_round_trip(std::string_view codec) {
+  using namespace boost::ut;
+
+  const auto parsed = Codec::parse(document_payload);
+  expect(parsed.has_value()) << codec;
+  if (!parsed) {
+    return;
+  }
+  const ce::event subject = base_event({
+      .datacontenttype = "application/json"_mediatype,
+      .data = ce::json_document::make<Codec>(Codec::copy(*parsed)),
+  });
+
+  auto payload = ce::nats::to_payload<Codec>(subject);
+  expect(bool{payload}) << codec << ": structured";
+  if (payload) {
+    auto read_back = ce::nats::from_payload<Codec>(*payload);
+    expect(read_back && ce_test::same_json_payload<Codec>(read_back->data(), document_payload))
+        << codec << ": structured";
+  }
+
+  auto binary = ce::nats::to_message<Codec>(subject, ce::content_mode::binary_mode);
+  expect(bool{binary}) << codec << ": binary";
+  if (binary) {
+    auto read_back = ce::nats::from_message<Codec>(*binary);
+    expect(read_back && std::holds_alternative<ce::json_text>(read_back->data()) &&
+           ce_test::same_json_payload<Codec>(read_back->data(), document_payload))
+        << codec << ": binary mode reads JSON text";
   }
 }
 
@@ -220,6 +256,7 @@ const boost::ut::suite<"nats-structured-only"> nats_structured_only = [] {
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] {
       check_round_trip<C>(codec);
+      check_document_round_trip<C>(codec);
       check_invalid_event_is_refused<C>(codec);
     };
   });

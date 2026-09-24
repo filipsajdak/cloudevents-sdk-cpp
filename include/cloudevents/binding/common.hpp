@@ -234,6 +234,8 @@ inline void write_body(const event& cloud_event, message& into) {
           into.body = held;
         } else if constexpr (std::is_same_v<held_type, std::string>) {
           into.body = to_bytes(held);
+        } else if constexpr (std::is_same_v<held_type, json_document>) {
+          into.body = to_bytes(held.dump());
         } else {
           into.body = to_bytes(held.raw);
         }

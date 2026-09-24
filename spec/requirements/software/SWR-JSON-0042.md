@@ -2,7 +2,7 @@
 uid: SWR-JSON-0042
 title: A json_document from another codec is converted through text
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   An event decoded with one codec may be encoded or read with another.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/json_format.hpp, code:include/cloudevents/format/typed_payload.hpp]
+verified_by: [test:test/json_format_test.cpp::document-from-another-codec-converts, test:test/typed_payload_test.cpp::typed-payload-reads-a-document-from-any-codec]
 owner: filip.sajdak
 version: 1
 ---

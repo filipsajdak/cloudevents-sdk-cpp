@@ -1068,6 +1068,58 @@ const boost::ut::suite<"decode-data-yields-json-text"> decode_data_json_text = [
   });
 };
 
+/// The JSON payload of `subject` as a value of codec `C`, whether the event
+/// holds it as text or as a document.
+template <class C>
+[[nodiscard]] auto payload_of(const ce::event& subject) -> ce::result<typename C::value> {
+  if (const auto* text = std::get_if<ce::json_text>(&subject.data())) {
+    return C::parse(text->raw);
+  }
+  if (const auto* document = std::get_if<ce::json_document>(&subject.data())) {
+    return C::parse(document->dump());
+  }
+  return ce::fail(ce::errc::type_mismatch, "the event carries no JSON payload", "data");
+}
+
+constexpr auto converted_payload = R"({"b":[1,2],"a":{"x":"y","n":null},"t":true})"sv;
+
+template <class From, class To>
+void check_document_converts(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto payload = From::parse(converted_payload);
+  const auto expected = To::parse(converted_payload);
+  expect(payload.has_value() && expected.has_value()) << label << ": parse";
+  if (!payload || !expected) {
+    return;
+  }
+  const ce::event subject =
+      base_event({.datacontenttype = "application/json"_mediatype,
+                  .data = ce::json_document::make<From>(From::copy(*payload))});
+
+  auto document = encoded_document<To>(subject);
+  expect(document.has_value()) << label << ": encode";
+  if (!document) {
+    return;
+  }
+  const auto* data = To::find(*document, "data");
+  expect(data != nullptr && To::equal(*data, *expected))
+      << label << ": the payload is spliced as JSON, not as a string";
+
+  const auto text = ce::json_format<To>::encode(subject);
+  expect(text.has_value()) << label << ": encode to text";
+  if (!text) {
+    return;
+  }
+  const auto decoded = ce::json_format<To>::decode(*text);
+  expect(decoded.has_value()) << label << ": decode";
+  if (!decoded) {
+    return;
+  }
+  const auto back = payload_of<To>(*decoded);
+  expect(back.has_value() && To::equal(*back, *expected)) << label << ": round trip";
+}
+
 template <class C>
 void check_extension_name_grammar(std::string_view label) {
   using namespace boost::ut;
@@ -1112,6 +1164,26 @@ void check_extension_name_grammar(std::string_view label) {
     }
   }
 }
+
+// spec: SWR-JSON-0042
+const boost::ut::suite<"document-from-another-codec-converts"> document_converts = [] {
+  using namespace boost::ut;
+
+  "nlohmann to mini_codec"_test = [] {
+    check_document_converts<nlohmann_codec, mini_codec>("nlohmann -> mini_codec");
+  };
+  "mini_codec to nlohmann"_test = [] {
+    check_document_converts<mini_codec, nlohmann_codec>("mini_codec -> nlohmann");
+  };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec} + " to nlohmann") = [codec] {
+      check_document_converts<C, nlohmann_codec>(codec);
+    };
+    test("nlohmann to " + std::string{codec}) = [codec] {
+      check_document_converts<nlohmann_codec, C>(codec);
+    };
+  });
+};
 
 // spec: SWR-JSON-0020
 const boost::ut::suite<"decode-data-string-with-non-json-content-type-yields-string">

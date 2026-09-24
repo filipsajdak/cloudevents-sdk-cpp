@@ -122,7 +122,8 @@ class json_document {
 };
 
 // spec: SWR-CORE-0012
-using data_t = std::variant<std::monostate, std::string, binary, json_text>;
+// spec: SWR-CORE-0013
+using data_t = std::variant<std::monostate, std::string, binary, json_text, json_document>;
 
 // spec: SWR-CORE-0014
 class event {

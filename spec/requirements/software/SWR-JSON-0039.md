@@ -23,8 +23,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-JSON-0001]
-satisfied_by: [code:include/cloudevents/format/json_codec.hpp, code:include/cloudevents/codec/nlohmann.hpp, code:include/cloudevents/codec/boost_json.hpp, code:include/cloudevents/codec/rapidjson.hpp]
-verified_by: [test:test/json_codec_test.cpp::json-codec-requires-equal-copy-and-identity]
+satisfied_by: [code:include/cloudevents/format/json_codec.hpp, code:include/cloudevents/format/json_format.hpp, code:include/cloudevents/codec/nlohmann.hpp, code:include/cloudevents/codec/boost_json.hpp, code:include/cloudevents/codec/rapidjson.hpp]
+verified_by: [test:test/json_codec_test.cpp::json-codec-requires-equal-copy-and-identity, test:test/json_format_test.cpp::decode-batch-moves-each-payload]
 owner: filip.sajdak
 version: 3
 ---

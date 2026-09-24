@@ -136,6 +136,17 @@ struct rapidjson_codec {
       visit(*it);
     }
   }
+  /// Visits each element as a mutable reference, so a caller that owns the
+  /// array can move out of its elements.
+  template <class F>
+  static void for_each_mutable_element(value& array, F&& visit) {
+    if (!array.IsArray()) {
+      return;
+    }
+    for (auto it = array.Begin(); it != array.End(); ++it) {
+      visit(*it);
+    }
+  }
 
   static auto parse(std::string_view text) -> ce::result<value> {
     rj_document document{&allocator()};

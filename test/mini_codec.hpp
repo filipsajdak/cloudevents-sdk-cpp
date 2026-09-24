@@ -142,6 +142,12 @@ struct mini_codec {
       visit(element);
     }
   }
+  template <class F>
+  static void for_each_mutable_element(value& array, F visit) {
+    for (auto& element : array.elements) {
+      visit(element);
+    }
+  }
 
   // --- text <-> DOM --------------------------------------------------------
   [[nodiscard]] static auto parse(std::string_view text) -> ce::result<value>;

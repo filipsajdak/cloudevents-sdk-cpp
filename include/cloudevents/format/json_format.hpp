@@ -170,6 +170,7 @@ struct json_format {
                       retains(text, options) ? payload_mode::move : payload_mode::text);
   }
 
+  // spec: SWR-JSON-0039
   // spec: SWR-JSON-0040
   [[nodiscard]] static auto decode_batch(std::string_view text, json::decode_options options = {})
       -> result<std::vector<event>> {
@@ -181,14 +182,16 @@ struct json_format {
       return fail(errc::parse_error, "a batch must be a JSON array");
     }
 
-    const auto mode = retains(text, options) ? payload_mode::copy : payload_mode::text;
+    // The batch owns its parsed array, so each element's data member is moved
+    // into its event, as decode moves the one member of a single event.
+    const auto mode = retains(text, options) ? payload_mode::move : payload_mode::text;
     std::vector<event> events;
     result<void> element_error{};
-    Codec::for_each_element(*document, [&](const value& element) {
+    Codec::for_each_mutable_element(*document, [&](value& element) {
       if (!element_error) {
         return;
       }
-      auto cloud_event = read_event(element, nullptr, mode);
+      auto cloud_event = read_event(element, &element, mode);
       if (!cloud_event) {
         element_error =
             fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);

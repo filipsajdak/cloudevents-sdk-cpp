@@ -143,6 +143,14 @@ struct nlohmann_codec {
       visit(element);
     }
   }
+  /// Visits each element as a mutable reference, so a caller that owns the
+  /// array can move out of its elements.
+  template <class F>
+  static void for_each_mutable_element(value& array, F visit) {
+    for (auto& element : array) {
+      visit(element);
+    }
+  }
 };
 
 static_assert(json::json_codec<nlohmann_codec>);

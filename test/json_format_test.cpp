@@ -1159,6 +1159,70 @@ const boost::ut::suite<"decode-retains-document-up-to-limit"> retention_limit = 
   });
 };
 
+/// mini_codec that counts the deep copies and member moves the decoder asks for.
+struct move_counting_codec : mini_codec {
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.move-counting";
+  static inline std::size_t copies = 0;
+  static inline std::size_t extracts = 0;
+
+  [[nodiscard]] static auto copy(const value& held) -> value {
+    ++copies;
+    return mini_codec::copy(held);
+  }
+  [[nodiscard]] static auto extract(value& object, std::string_view key) -> value {
+    ++extracts;
+    return mini_codec::extract(object, key);
+  }
+};
+static_assert(ce::json::json_codec<move_counting_codec>);
+
+void check_decode_batch_moves_payloads() {
+  using namespace boost::ut;
+  using format = ce::json_format<move_counting_codec>;
+
+  constexpr auto batch =
+      R"([{"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":[1,2]}},)"
+      R"({"specversion":"1.0","id":"2","source":"/s","type":"t","data":"text"},)"
+      R"({"specversion":"1.0","id":"3","source":"/s","type":"t","data":[true]}])"sv;
+
+  move_counting_codec::copies = 0;
+  move_counting_codec::extracts = 0;
+  const auto events = format::decode_batch(batch);
+  expect(events.has_value() && events->size() == 3U);
+  expect(move_counting_codec::copies == 0U) << "a batch element's payload was copied";
+  expect(move_counting_codec::extracts == 3U) << "each element's payload is moved once";
+  if (events && events->size() == 3U) {
+    expect(ce_test::same_json_payload<move_counting_codec>(events->at(0).data(),
+                                                          R"({"k":[1,2]})"sv));
+    expect(ce_test::same_json_payload<move_counting_codec>(events->at(1).data(), R"("text")"sv));
+    expect(ce_test::same_json_payload<move_counting_codec>(events->at(2).data(), "[true]"sv));
+  }
+
+  // A batch over the retention limit keeps text, and neither copies nor moves.
+  move_counting_codec::extracts = 0;
+  expect(format::decode_batch(batch, {.retain_document_up_to = 1}).has_value());
+  expect(move_counting_codec::copies == 0U);
+  expect(move_counting_codec::extracts == 0U);
+
+  // from_value reads a document its caller keeps, so it still copies.
+  const auto kept = move_counting_codec::parse(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1}})"sv);
+  expect(kept.has_value());
+  if (kept) {
+    expect(format::from_value(*kept).has_value());
+    expect(move_counting_codec::copies == 1U) << "from_value copies the caller's payload";
+  }
+}
+
+// spec: SWR-JSON-0039
+const boost::ut::suite<"decode-batch-moves-each-payload"> batch_moves = [] {
+  using namespace boost::ut;
+
+  "decode_batch moves every element's payload and copies none"_test = [] {
+    check_decode_batch_moves_payloads();
+  };
+};
+
 /// The JSON payload of `subject` as a value of codec `C`, whether the event
 /// holds it as text or as a document.
 template <class C>

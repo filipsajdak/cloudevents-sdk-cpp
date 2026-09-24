@@ -131,11 +131,11 @@ struct codec {
   static auto dump(const value& v) -> std::string;
   static auto parse(std::string_view text) -> ce::result<value>;
 
-  /// v3 asks four more things of a codec: JSON value equality, with object
+  /// v3 asks five more things of a codec: JSON value equality, with object
   /// members compared regardless of order, a deep copy of a value, a move of
-  /// one member out of an object, and an identity. The identity is a
-  /// reverse-DNS name under a domain you control; two codecs must never share
-  /// one.
+  /// one member out of an object, a walk over an array's elements that may
+  /// change them, and an identity. The identity is a reverse-DNS name under a
+  /// domain you control; two codecs must never share one.
   static constexpr std::string_view identity = "io.cloudevents.cpp.example.custom";
   static auto equal(const value& left, const value& right) -> bool;
   static auto copy(const value& v) -> value { return v; }
@@ -148,6 +148,14 @@ struct codec {
       }
     }
     return value{};
+  }
+  /// The batch decoder owns the array it parsed and moves each element's
+  /// data out, so it walks the elements through mutable references.
+  template <class F>
+  static void for_each_mutable_element(value& array, F&& visit) {
+    for (auto& element : array.elements) {
+      visit(element);
+    }
   }
 };
 

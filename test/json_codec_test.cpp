@@ -68,10 +68,12 @@ struct identity_base<true> {
   static constexpr std::string_view identity = "io.cloudevents.cpp.test.partial";
 };
 
-/// mini_codec with `equal`, `copy`, `identity` or `extract` switched off.
-/// Deriving cannot remove a member, so this forwards every operation instead and
-/// constrains the four the v3 concept adds.
-template <bool with_equal, bool with_copy, bool with_identity = true, bool with_extract = true>
+/// mini_codec with `equal`, `copy`, `identity`, `extract` or
+/// `for_each_mutable_element` switched off. Deriving cannot remove a member, so
+/// this forwards every operation instead and constrains the five the v3 concept
+/// adds. Its `for_each_element` accepts any visitor, as the in-tree codecs' do.
+template <bool with_equal, bool with_copy, bool with_identity = true, bool with_extract = true,
+          bool with_mutable_elements = true>
 struct partial_codec : identity_base<with_identity> {
   using value = mini_codec::value;
 
@@ -142,6 +144,12 @@ struct partial_codec : identity_base<with_identity> {
     requires with_extract
   {
     return mini_codec::extract(object, key);
+  }
+  template <class F>
+  static void for_each_mutable_element(value& array, F visit)
+    requires with_mutable_elements
+  {
+    mini_codec::for_each_mutable_element(array, std::move(visit));
   }
 };
 
@@ -704,6 +712,31 @@ void check_extract(std::string_view label) {
   expect(scalar_held.has_value() && *scalar_held == 7) << label << ": a non-object is left alone";
 }
 
+template <class C>
+void check_mutable_elements(std::string_view label) {
+  using namespace boost::ut;
+
+  auto batch = C::parse(R"([{"data":1,"id":"a"},{"data":2,"id":"b"}])"sv);
+  const auto emptied = C::parse(R"([{"data":null,"id":"a"},{"data":null,"id":"b"}])"sv);
+  expect(batch.has_value() && emptied.has_value()) << label << ": parse";
+  if (!batch || !emptied) {
+    return;
+  }
+
+  std::vector<std::int64_t> moved;
+  C::for_each_mutable_element(*batch, [&moved](typename C::value& element) {
+    const auto held = C::as_int(C::extract(element, "data"));
+    moved.push_back(held ? *held : -1);
+  });
+  expect(moved == std::vector<std::int64_t>{1, 2}) << label << ": every element, in order";
+  expect(C::equal(*batch, *emptied)) << label << ": the moves land in the array itself";
+
+  std::size_t visited = 0;
+  auto empty = C::make_array();
+  C::for_each_mutable_element(empty, [&visited](typename C::value&) { ++visited; });
+  expect(visited == 0U) << label << ": an empty array has no elements";
+}
+
 // spec: SWR-JSON-0039
 const boost::ut::suite<"json-codec-requires-equal-copy-and-identity"> v3_codec_surface = [] {
   using namespace boost::ut;
@@ -730,6 +763,14 @@ const boost::ut::suite<"json-codec-requires-equal-copy-and-identity"> v3_codec_s
   "a codec without extract satisfies only the v1 concept"_test = [] {
     static_assert(ce::v1::json::json_codec<partial_codec<true, true, true, false>>);
     static_assert(!ce::v3::json::json_codec<partial_codec<true, true, true, false>>);
+    expect(true);
+  };
+
+  "a codec without the mutable element walk satisfies only the v1 concept"_test = [] {
+    // Its const for_each_element accepts any visitor, so a value& argument
+    // would bind to it; the concept asks for the walk by its own name.
+    static_assert(ce::v1::json::json_codec<partial_codec<true, true, true, true, false>>);
+    static_assert(!ce::v3::json::json_codec<partial_codec<true, true, true, true, false>>);
     expect(true);
   };
 
@@ -761,6 +802,9 @@ const boost::ut::suite<"json-codec-requires-equal-copy-and-identity"> v3_codec_s
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_equal_and_copy<C>(codec); };
     test(std::string{codec} + " extract") = [codec] { check_extract<C>(codec); };
+    test(std::string{codec} + " mutable elements") = [codec] {
+      check_mutable_elements<C>(codec);
+    };
   });
 };
 

@@ -136,6 +136,17 @@ struct glaze_codec {
       visit(element);
     }
   }
+  /// Visits each element as a mutable reference, so a caller that owns the
+  /// array can move out of its elements.
+  template <class F>
+  static void for_each_mutable_element(value& array, F&& visit) {
+    if (!array.is_array()) {
+      return;
+    }
+    for (auto& element : array.get_array()) {
+      visit(element);
+    }
+  }
 
   static auto parse(std::string_view text) -> ce::result<value> {
     value out;

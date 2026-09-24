@@ -12,7 +12,7 @@ They are the operations `bench/codec_bench.cpp` times, over the documents in `be
 
 | measure | how | on the pull request |
 |---|---|---|
-| `instructions` | Callgrind, collecting only inside the measured loop, divided by its iterations | fails above +2% over main (`SWR-PERF-0001`) |
+| `instructions` | Callgrind, collecting only inside the measured loop, divided by its iterations, in `bench/perf/perf_probe_instr`: the same operations with no allocation accounting linked in | fails above +2% over main (`SWR-PERF-0001`) |
 | `allocations`, `allocated_bytes` | a counting global `operator new` in `bench/perf/perf_probe`, one operation after warm-up | fails on any increase (`SWR-PERF-0002`) |
 | `retained_bytes` | live heap bytes while a decoded event is held, minus before the decode | fails above +1% (`SWR-PERF-0003`) |
 | any of the above | against `bench/budgets.json` | fails above the budget (`SWR-PERF-0004`) |
@@ -25,6 +25,8 @@ Wall time on a shared runner moves by 10 to 20 percent, which is why it never ga
 
 On Linux the probe also counts direct `malloc` calls from the code it compiles, which is how RapidJSON's `CrtAllocator` allocates.
 Elsewhere it counts `operator new` only, and its output says so in `counts_malloc`.
+Every count is of the bytes a caller asked for, never the size the allocator rounded a block up to: that size depends on where in the heap the block landed, so it differs between identical runs.
+`test/malloc_accounting_test.cpp` checks the `malloc` counting on Linux, `realloc` in every form included.
 
 ## Reading the pull request table
 
@@ -32,6 +34,7 @@ The job writes one table to its summary and to a single comment on the pull requ
 Failures come first, each with the requirement it breaks, then any warnings, then the table.
 Each row is one id and measure: main, the pull request, the change, the budget and the verdict.
 The measurements within their limits are folded away below.
+When the pull request cannot be measured at all, the comment has no table: it names the id and mode that failed and quotes what the probe said, and the job fails.
 
 An id is `<operation>/<codec>`, such as `decode_full/rapidjson`; `consumer/<codec>` carries the binary size.
 

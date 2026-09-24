@@ -133,6 +133,20 @@ if(Python3_Interpreter_FOUND)
   set_tests_properties(perf_tools PROPERTIES LABELS "perf")
 endif()
 
+# The performance probe's malloc counting (SWR-PERF-0002, SWR-PERF-0003), linked
+# with the probe's own --wrap options. Only where the linker can wrap malloc:
+# elsewhere the probe does not count direct malloc calls, so there is nothing
+# to check.
+include("${PROJECT_SOURCE_DIR}/bench/perf/malloc_wrap.cmake")
+if(CE_PERF_COUNTS_MALLOC)
+  ce_add_test(malloc_accounting_test SOURCES malloc_accounting_test.cpp)
+  target_sources(malloc_accounting_test PRIVATE
+    "${PROJECT_SOURCE_DIR}/bench/perf/heap_counters.cpp" "${CE_PERF_RAW_LAYER}")
+  target_include_directories(malloc_accounting_test PRIVATE "${PROJECT_SOURCE_DIR}/bench/perf")
+  ce_perf_wrap_malloc(malloc_accounting_test)
+  set_tests_properties(malloc_accounting_test PROPERTIES LABELS "perf")
+endif()
+
 # Marking the dependencies SYSTEM must scope the suppression to THEIR headers and
 # not to ours. That is easy to get wrong later -- someone marks our own include
 # directory SYSTEM to silence something -- and the failure is invisible: the build

@@ -35,6 +35,13 @@ struct nlohmann_codec {
     return left == right;
   }
   [[nodiscard]] static auto copy(const value& held) -> value { return held; }
+  [[nodiscard]] static auto extract(value& object, std::string_view key) -> value {
+    if (!object.is_object()) {
+      return make_null();
+    }
+    const auto found = object.find(std::string{key});
+    return found == object.end() ? make_null() : std::move(*found);
+  }
 
   // NOLINTBEGIN(modernize-return-braced-init-list)
   [[nodiscard]] static auto make_null() -> value { return value(nullptr); }
@@ -133,6 +140,14 @@ struct nlohmann_codec {
   template <class F>
   static void for_each_element(const value& array, F visit) {
     for (const auto& element : array) {
+      visit(element);
+    }
+  }
+  /// Visits each element as a mutable reference, so a caller that owns the
+  /// array can move out of its elements.
+  template <class F>
+  static void for_each_mutable_element(value& array, F visit) {
+    for (auto& element : array) {
       visit(element);
     }
   }

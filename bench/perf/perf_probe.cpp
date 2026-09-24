@@ -11,7 +11,8 @@
 ///   perf_probe retained <id>         heap bytes a decoded event holds
 ///   perf_probe instr <id> <n>        run <id> n times in ce_perf_measured_loop
 ///
-/// `instr` counts nothing itself. It is run under
+/// `instr` counts nothing itself. It is run, in the `perf_probe_instr` build
+/// that has no allocation accounting linked in, under
 ///   valgrind --tool=callgrind --collect-atstart=no
 ///            --toggle-collect=ce_perf_measured_loop
 /// so only the loop is counted, and instructions per operation are the loop's

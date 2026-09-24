@@ -29,7 +29,7 @@ The codecs are the four bench codecs: nlohmann, RapidJSON, Boost.JSON and Glaze.
 
 | measure | how | gates |
 |---|---|---|
-| instructions per operation | Callgrind with collection toggled on around the measured loop only | fails above +2% over main (`SWR-PERF-0001`) |
+| instructions per operation | Callgrind with collection toggled on around the measured loop only, measured in a probe without allocation accounting | fails above +2% over main (`SWR-PERF-0001`) |
 | allocations per operation, count and bytes | a counting global allocator in the measuring binary | fails on any increase (`SWR-PERF-0002`) |
 | bytes a decoded event retains | the counting allocator's live bytes while the event is held, per payload size | fails above +1% (`SWR-PERF-0003`) |
 | budgets | `bench/budgets.json`, seeded from main plus 10% headroom | fails when exceeded (`SWR-PERF-0004`) |

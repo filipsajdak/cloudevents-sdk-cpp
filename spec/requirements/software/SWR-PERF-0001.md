@@ -10,7 +10,7 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
-satisfied_by: [code:bench/perf/compare.py, code:bench/perf/perf_probe.cpp, code:bench/perf/measure.py, code:.github/workflows/perf.yml]
+satisfied_by: [code:bench/perf/compare.py, code:bench/perf/perf_probe.cpp, code:bench/perf/CMakeLists.txt, code:bench/perf/measure.py, code:.github/workflows/perf.yml]
 verified_by: [test:bench/perf/test_perf_tools.py::InstructionGate]
 owner: filip.sajdak
 version: 1

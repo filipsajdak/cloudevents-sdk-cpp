@@ -17,9 +17,14 @@ namespace ce::inline v3 {
 template<described T, json::json_codec Codec>
 [[nodiscard]] auto data_as(const event& cloud_event) -> result<T> {
   const std::string* text = nullptr;
+  std::string converted;
 
   if (const auto* stored = std::get_if<json_text>(&cloud_event.data())) {
     text = &stored->raw;
+  } else if (const auto* document = std::get_if<json_document>(&cloud_event.data())) {
+    // spec: SWR-JSON-0042
+    converted = document->dump();
+    text = &converted;
   } else if (const auto* plain = std::get_if<std::string>(&cloud_event.data())) {
     const auto& media_type = cloud_event.datacontenttype();
     if (!media_type || !is_json_content_type(media_type->view())) {

@@ -109,13 +109,19 @@ constexpr std::array producers{"go"sv, "java"sv, "cpp"sv};
   if (const auto* bytes = std::get_if<ce::binary>(&subject.data())) {
     return *bytes;
   }
-  if (const auto* json = std::get_if<ce::json_text>(&subject.data())) {
+  const auto bytes_of = [](std::string_view text) {
     std::vector<std::byte> out;
-    out.reserve(json->raw.size());
-    for (const char character : json->raw) {
+    out.reserve(text.size());
+    for (const char character : text) {
       out.push_back(static_cast<std::byte>(character));
     }
     return out;
+  };
+  if (const auto* json = std::get_if<ce::json_text>(&subject.data())) {
+    return bytes_of(json->raw);
+  }
+  if (const auto* document = std::get_if<ce::json_document>(&subject.data())) {
+    return bytes_of(document->dump());
   }
   return {};
 }

@@ -1160,13 +1160,58 @@ tidying the code would plausibly undo.
 | `binding/http.hpp`, `http::detail` | helpers are using-declarations, not wrappers | a using-declaration keeps `constexpr`, which the suites' `static_assert(ce::http::detail::needs_escape(...))` depends on |
 | `binding/http.hpp`, `binding/kafka.hpp`, `detect_content_mode` | the batch prefix is tested first | `application/cloudevents-batch+json` also starts with `application/cloudevents`; tested second, a batch reaches the format layer and is reported as a parse error instead of a mode error |
 | `binding/kafka.hpp`, `record` | the key sits beside the message rather than in it | `message` is shared by every binding and its shape is pinned by `SWR-HTTP-0001` |
-| `format/json_format.hpp`, `from_value` | context attributes, then the payload, then the extensions, with `specversion` first | the order decides which problem a document with several is reported for, and a document from another version is named as such |
+| `format/json_format.hpp`, `read_event` | context attributes, then the payload, then the extensions, with `specversion` first | the order decides which problem a document with several is reported for, and a document from another version is named as such |
+| `format/json_format.hpp`, `json_payload` | `extract` is the decoder's last touch of the document, and runs only when `find` returns the very member that was claimed | every attribute and extension has been read by then, so nothing reads a moved-from member; with duplicate `data` keys the claimed member may not be the one `find` sees, and that case copies instead |
 | `codec/nlohmann.hpp`, `as_int` | `is_number_unsigned` is tested before `is_number_integer` | the latter is also true for an unsigned value, which would make the range check dead code (D-JSON-3) |
 | `codec/rapidjson.hpp`, `chars_of` | an empty view's pointer is replaced by `""` | RapidJSON asserts a non-null pointer, and the assertion is compiled out of a release build |
 | `detail/describe_reflection.hpp` | a wire name is interned with `define_static_string` | an extracted annotation is a prvalue whose array a `string_view` would outlive |
 | `core.hpp`, `json_document` | copy operations are declared `= default` and move operations are not declared | an rvalue then copies, which is one reference-count increment, so no moved-from document with an empty model can exist and every member may dereference it |
 | `core.hpp`, `json_document` | codec identities are compared by value, never by the address of a tag | MSVC's default `/OPT:ICF` can give different read-only data one address, and a false match would make the downcast undefined behaviour (ADR-0010) |
 | `core.hpp`, `json_document_holder` | `value_` is initialised with parentheses | braces on `nlohmann::json` select its `initializer_list` constructor and wrap the document in a one-element array |
+
+## D-JSON-4: A `json_text` payload never equals a `json_document` payload
+
+Two events that differ only in holding the same JSON value as text and as a
+document compare unequal. `data_t` keeps its defaulted comparison, which
+compares the alternative first.
+
+The alternative, comparing text with a document by value, breaks
+transitivity. `json_text` compares by its bytes, as it has since v0.1.0, so
+`{"a":1}` and `{ "a" : 1 }` are two unequal texts. Both would equal the
+document holding that value, and equality would stop being an equivalence
+relation, which every container and algorithm that uses `==` assumes. Making
+`json_text` compare by value instead would change a v0.4.0 behaviour and
+require a parser in `core.hpp`.
+
+The cost falls on a test or caller that builds an event from text and compares
+it with a decoded one; the decoded payload is now a document. The v3 suites
+compare against the same event with its payload as a document.
+
+## D-JSON-5: `decode_options` is a plain aggregate beside the content types
+
+`ce::json::decode_options{.retain_document_up_to = 64 * 1024}` sits in
+`ce::v3::json`, next to `content_type`, and `decode` and `decode_batch` take it
+as a defaulted last parameter. A plain aggregate is written in one designated
+initializer at the call site, gains members without breaking a call, and keeps
+`json_format<Codec>` a set of static functions with no state to configure. A
+template parameter or a member of `json_format` was rejected: the limit is a
+per-call policy, and a caller decoding trusted and untrusted input with one
+codec needs both.
+
+For a batch the limit is measured on the whole batch text, not per element. A
+per-element limit would let a batch of many small documents pin their sum,
+which is the expansion the limit exists to bound. The element events of a
+batch move their payload out with `Codec::extract`, as a single decode does:
+the batch decoder owns the array it parsed and walks it with
+`for_each_mutable_element` (SWR-JSON-0039).
+
+## D-JSON-6: `from_value` always keeps a document
+
+`from_value(const value&)` keeps the payload as a `json_document`, copying the
+member with `Codec::copy`, and takes no `decode_options`. It has no text to
+measure, and its caller already holds the whole DOM in memory, so the limit's
+purpose, bounding what a small hostile input can expand into, does not arise.
+It cannot move the member out, since the DOM is const and remains the caller's.
 
 ## D-TIDY-5: The v2 copies are outside the clang-tidy gate
 

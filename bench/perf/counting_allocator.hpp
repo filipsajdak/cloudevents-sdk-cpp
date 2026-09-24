@@ -27,11 +27,12 @@ struct heap_counters {
 
 [[nodiscard]] auto counters() noexcept -> heap_counters;
 
-/// Called by the counting layers for every allocation and release they see.
-/// `requested` is what the caller asked for; `held` is what the live-byte
-/// count moves by, which for `malloc` is the usable size of the block.
-void record_allocation(std::size_t requested, std::size_t held) noexcept;
-void record_release(std::size_t held) noexcept;
+/// Called by the counting layers for every allocation and release they see,
+/// with the size the caller requested. Never the size the allocator rounded
+/// the block up to: that depends on where in the heap the block landed, so it
+/// differs between identical runs and no gate could compare it.
+void record_allocation(std::size_t requested) noexcept;
+void record_release(std::size_t requested) noexcept;
 
 /// The allocator beneath the counting `operator new`. It must not be counted
 /// again by the `malloc` layer, so each raw layer provides its own.

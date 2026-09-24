@@ -131,13 +131,32 @@ struct codec {
   static auto dump(const value& v) -> std::string;
   static auto parse(std::string_view text) -> ce::result<value>;
 
-  /// v3 asks three more things of a codec: JSON value equality, with object
-  /// members compared regardless of order, a deep copy of a value, and an
-  /// identity. The identity is a reverse-DNS name under a domain you control;
-  /// two codecs must never share one.
+  /// v3 asks five more things of a codec: JSON value equality, with object
+  /// members compared regardless of order, a deep copy of a value, a move of
+  /// one member out of an object, a walk over an array's elements that may
+  /// change them, and an identity. The identity is a reverse-DNS name under a
+  /// domain you control; two codecs must never share one.
   static constexpr std::string_view identity = "io.cloudevents.cpp.example.custom";
   static auto equal(const value& left, const value& right) -> bool;
   static auto copy(const value& v) -> value { return v; }
+  /// The decoder calls this only for a member `find` returned. Any other key
+  /// returns null and leaves the object as it was.
+  static auto extract(value& object, std::string_view key) -> value {
+    for (auto& [existing, stored] : object.members) {
+      if (existing == key) {
+        return std::exchange(stored, value{});
+      }
+    }
+    return value{};
+  }
+  /// The batch decoder owns the array it parsed and moves each element's
+  /// data out, so it walks the elements through mutable references.
+  template <class F>
+  static void for_each_mutable_element(value& array, F&& visit) {
+    for (auto& element : array.elements) {
+      visit(element);
+    }
+  }
 };
 
 using value = codec::value;
@@ -156,6 +175,15 @@ int main() {
 
   using format = ce::json_format<demo::codec>;
 
+  // A payload held as the codec's own document. Decoding gives one back, so the
+  // round trip compares equal; a json_text payload would come back as a
+  // document and compare unequal to its text.
+  auto payload = demo::codec::parse(R"({"total":42})");
+  if (!payload) {
+    std::fprintf(stderr, "parse: %s\n", payload.error().detail.c_str());
+    return 1;
+  }
+
   using namespace ce::literals;
   const ce::event subject{
       "A234-1234-1234"_id,
@@ -163,7 +191,7 @@ int main() {
       "com.example.order.placed"_type,
       {
           .datacontenttype = "application/json"_mediatype,
-          .data = ce::json_text{.raw = R"({"total":42})"},
+          .data = ce::json_document::make<demo::codec>(std::move(*payload)),
       },
   };
 

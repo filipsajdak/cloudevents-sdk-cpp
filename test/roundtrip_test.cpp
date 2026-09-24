@@ -18,6 +18,7 @@
 
 #include "mini_codec.hpp"
 #include "equality.hpp"
+#include "payload.hpp"
 
 // decode(encode(e)) == e, for generated events, in every mode.
 //
@@ -151,7 +152,7 @@ void check_structured_roundtrip(std::string_view label) {
     if (!decoded) {
       continue;
     }
-    expect(bool{*decoded == subject}) << label << " #" << index;
+    expect(bool{*decoded == ce_test::as_decoded(subject)}) << label << " #" << index;
   }
 }
 
@@ -198,7 +199,7 @@ void check_structured_message_roundtrip(std::string_view label) {
     expect(decoded.has_value()) << label << " #" << index;
     if (decoded) {
       // Structured mode carries the JSON document, so the event survives whole.
-      expect(bool{*decoded == subject}) << label << " #" << index;
+      expect(bool{*decoded == ce_test::as_decoded(subject)}) << label << " #" << index;
     }
   }
 }
@@ -230,7 +231,7 @@ void check_batched_roundtrip(std::string_view label) {
     return;
   }
   for (std::size_t i = 0; i < events.size(); ++i) {
-    expect(bool{(*decoded)[i] == events[i]}) << label << " #" << i;
+    expect(bool{(*decoded)[i] == ce_test::as_decoded(events[i])}) << label << " #" << i;
   }
 
   // The same batch through the HTTP binding.
@@ -245,7 +246,7 @@ void check_batched_roundtrip(std::string_view label) {
     expect(from_message->size() == events.size()) << label;
     if (from_message->size() == events.size()) {
       for (std::size_t i = 0; i < events.size(); ++i) {
-        expect(bool{(*from_message)[i] == events[i]}) << label << " #" << i;
+        expect(bool{(*from_message)[i] == ce_test::as_decoded(events[i])}) << label << " #" << i;
       }
     }
   }

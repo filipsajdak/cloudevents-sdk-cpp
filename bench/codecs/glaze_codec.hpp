@@ -136,6 +136,17 @@ struct glaze_codec {
       visit(element);
     }
   }
+  /// Visits each element as a mutable reference, so a caller that owns the
+  /// array can move out of its elements.
+  template <class F>
+  static void for_each_mutable_element(value& array, F&& visit) {
+    if (!array.is_array()) {
+      return;
+    }
+    for (auto& element : array.get_array()) {
+      visit(element);
+    }
+  }
 
   static auto parse(std::string_view text) -> ce::result<value> {
     value out;
@@ -158,6 +169,16 @@ struct glaze_codec {
     return glz::equal(left, right);
   }
   static auto copy(const value& v) -> value { return v; }
+  /// A moved-from variant keeps its alternative in an unspecified state, so the
+  /// member is exchanged for null rather than moved from.
+  static auto extract(value& object, std::string_view key) -> value {
+    if (!object.is_object()) {
+      return make_null();
+    }
+    auto& map = object.get_object();
+    auto found = map.find(key);
+    return found == map.end() ? make_null() : std::exchange(found->second, make_null());
+  }
 };
 
 }  // namespace ce::bench

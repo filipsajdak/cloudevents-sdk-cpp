@@ -118,6 +118,17 @@ struct boost_json_codec {
       visit(element);
     }
   }
+  /// Visits each element as a mutable reference, so a caller that owns the
+  /// array can move out of its elements.
+  template <class F>
+  static void for_each_mutable_element(value& array, F&& visit) {
+    if (!array.is_array()) {
+      return;
+    }
+    for (auto& element : array.get_array()) {
+      visit(element);
+    }
+  }
 
   static auto parse(std::string_view text) -> ce::result<value> {
     boost::system::error_code error;
@@ -133,6 +144,13 @@ struct boost_json_codec {
   static constexpr std::string_view identity = "io.cloudevents.cpp.bench.boost_json";
   static auto equal(const value& left, const value& right) -> bool { return left == right; }
   static auto copy(const value& v) -> value { return v; }
+  static auto extract(value& object, std::string_view key) -> value {
+    if (!object.is_object()) {
+      return make_null();
+    }
+    auto* found = object.get_object().if_contains(key);
+    return found == nullptr ? make_null() : value(std::move(*found));
+  }
 };
 
 }  // namespace ce::bench

@@ -2,29 +2,26 @@
 # benchmark, and like it at C++23 because of Glaze, but needing neither Google
 # Benchmark nor the ceiling libraries.
 #
-#   perf_probe             instructions, allocations and retained bytes
+#   perf_probe             allocations and retained bytes, counted exactly
+#   perf_probe_instr       the same operations for Callgrind, with no counting
 #   perf_consumer_<codec>  a minimal consumer, whose stripped size is measured
 #
 # measure.py drives both; see docs/PERFORMANCE.md.
 
 set(ce_bench_dir "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
-# On Linux the linker wraps malloc for this binary, so RapidJSON's direct
-# malloc calls are counted with everything that goes through operator new.
-# Other linkers have no --wrap, and there the probe says it counts operator new
-# alone.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  set(ce_perf_raw_layer raw_malloc_wrapped.cpp)
-else()
-  set(ce_perf_raw_layer raw_malloc_plain.cpp)
-endif()
-
-ce_add_bench(perf_probe SOURCES perf_probe.cpp counting_allocator.cpp ${ce_perf_raw_layer})
+include("${CMAKE_CURRENT_SOURCE_DIR}/malloc_wrap.cmake")
+ce_add_bench(perf_probe
+  SOURCES perf_probe.cpp counting_allocator.cpp heap_counters.cpp ${CE_PERF_RAW_LAYER})
 target_include_directories(perf_probe PRIVATE ${ce_bench_dir})
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_options(perf_probe PRIVATE
-    "LINKER:--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free")
-endif()
+ce_perf_wrap_malloc(perf_probe)
+
+# Instructions are counted in a binary with no allocation accounting: neither
+# the counting operator new nor the malloc wrap, so Callgrind sees only the SDK
+# and the codec. The counters it links stay at zero and are never read.
+ce_add_bench(perf_probe_instr
+  SOURCES perf_probe.cpp heap_counters.cpp raw_malloc_plain.cpp)
+target_include_directories(perf_probe_instr PRIVATE ${ce_bench_dir})
 
 set(ce_perf_consumers
   "nlohmann|<cloudevents/codec/nlohmann.hpp>|ce::codec::nlohmann_codec"
@@ -47,7 +44,7 @@ endforeach()
 # Everything measure.py runs. bench/CMakeLists.txt adds codec_bench to it when
 # Google Benchmark and the ceiling libraries are present.
 add_custom_target(perf_measure)
-add_dependencies(perf_measure perf_probe)
+add_dependencies(perf_measure perf_probe perf_probe_instr)
 foreach(entry IN LISTS ce_perf_consumers)
   string(REGEX REPLACE "\\|.*" "" codec "${entry}")
   string(REPLACE "." "_" target_codec "${codec}")

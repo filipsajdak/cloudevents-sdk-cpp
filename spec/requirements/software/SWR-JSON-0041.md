@@ -2,7 +2,7 @@
 uid: SWR-JSON-0041
 title: A json_document from the encoding codec is copied, not re-parsed
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Encoding a json_text payload parses it before splicing it under data.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/json_format.hpp]
+verified_by: [test:test/json_format_test.cpp::encode-copies-same-codec-document]
 owner: filip.sajdak
 version: 1
 ---

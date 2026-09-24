@@ -19,6 +19,8 @@
 #include <expected>
 #endif
 
+#include "mini_codec.hpp"
+
 // The core is the one layer with no I/O and no codec, so everything it promises is
 // checkable in-process: the attribute type system, the RFC 3339 parser, the
 // validator and the error carrier. The constexpr validators are asserted with
@@ -47,6 +49,7 @@ template <class T>
 concept has_transform = requires(T r) { r.transform([](auto&& v) { return v; }); };
 
 using namespace ce::literals;
+using mini_codec = ce::test::mini_codec;
 
 /// A minimal event, built in ONE expression from literals the compiler checked.
 /// The caller states every optional attribute it wants in `rest`.
@@ -591,13 +594,40 @@ const boost::ut::suite<"core-timestamp-no-chrono-parse"> core_timestamp_no_chron
 const boost::ut::suite<"core-data-t-variant"> core_data_t_variant = [] {
   using namespace boost::ut;
 
-  "data is absent, text, bytes or pre-serialized JSON"_test = [] {
-    static_assert(std::variant_size_v<ce::data_t> == 4);
+  "data is absent, text, bytes, pre-serialized JSON or a parsed document"_test = [] {
+    static_assert(std::variant_size_v<ce::data_t> == 5);
     static_assert(std::is_same_v<std::variant_alternative_t<0, ce::data_t>, std::monostate>);
     static_assert(std::is_same_v<std::variant_alternative_t<1, ce::data_t>, std::string>);
     static_assert(std::is_same_v<std::variant_alternative_t<2, ce::data_t>, ce::binary>);
     static_assert(std::is_same_v<std::variant_alternative_t<3, ce::data_t>, ce::json_text>);
+    static_assert(
+        std::is_same_v<std::variant_alternative_t<4, ce::data_t>, ce::json_document>);
     expect(true);
+  };
+
+  "a parsed document is reachable as the fifth alternative"_test = [] {
+    const auto parsed = mini_codec::parse(R"({"a":1})");
+    expect(parsed.has_value());
+    if (!parsed) {
+      return;
+    }
+    const auto event = good_event({.data = ce::json_document::make<mini_codec>(*parsed)});
+    expect(std::holds_alternative<ce::json_document>(event.data()));
+    expect(event.data().index() == 4U);
+  };
+
+  "a json_text payload never equals a json_document payload"_test = [] {
+    const auto parsed = mini_codec::parse(R"({"a":1})");
+    expect(parsed.has_value());
+    if (!parsed) {
+      return;
+    }
+    const auto as_text = good_event({.data = ce::json_text{.raw = R"({"a":1})"}});
+    const auto as_document =
+        good_event({.data = ce::json_document::make<mini_codec>(*parsed)});
+    expect(!(as_text == as_document));
+    expect(!(as_document == as_text));
+    expect(as_document == as_document);
   };
 
   // monostate first, so a default-constructed event has no data rather than an

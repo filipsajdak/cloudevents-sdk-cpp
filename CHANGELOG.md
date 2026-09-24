@@ -16,9 +16,9 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
   A v2 declaration does not change; v2 takes defect fixes only.
 - **The attribute types are shared by v2 and v3**: `id`, `source`, `timestamp`, `message`, the literals, the typed extensions and the rest of `attributes.hpp` are declared once, in `ce::v2`, and are one type through `ce::`, `ce::v2::` and `ce::v3::`.
 - **What v0.3.0 already shared stays shared**: `errc`, `error`, `result`, the three codecs, base64 and the describe seam are one type through all three generations.
-- **v3 codecs provide `equal`, `copy` and `identity`.**
-  `ce::v3::json::json_codec` adds three members to the v1 concept: `C::equal(const value&, const value&) -> bool`, JSON value equality with object members in any order; `C::copy(const value&) -> value`, a deep copy; and `C::identity`, a non-empty `static constexpr std::string_view` naming the codec.
-  The three in-tree codecs gain all three, and keep their v1 declarations; their identities are `io.cloudevents.cpp.codec.nlohmann`, `io.cloudevents.cpp.codec.boost_json` and `io.cloudevents.cpp.codec.rapidjson`.
+- **v3 codecs provide `equal`, `copy`, `extract`, `for_each_mutable_element` and `identity`.**
+  `ce::v3::json::json_codec` adds five members to the v1 concept: `C::equal(const value&, const value&) -> bool`, JSON value equality with object members in any order; `C::copy(const value&) -> value`, a deep copy; `C::extract(value& object, std::string_view key) -> value`, which moves a member out of an object and returns null for a key `find` would not return; `C::for_each_mutable_element(value& array, F visit)`, which hands each element to `visit` as a `value&`; and `C::identity`, a non-empty `static constexpr std::string_view` naming the codec.
+  The three in-tree codecs gain all five, and keep their v1 declarations; their identities are `io.cloudevents.cpp.codec.nlohmann`, `io.cloudevents.cpp.codec.boost_json` and `io.cloudevents.cpp.codec.rapidjson`.
   A third-party codec must add them to serve `ce::v3`, with an identity that is a reverse-DNS name under a domain its author controls and that no other codec uses.
   It keeps serving `ce::v1` and `ce::v2` unchanged, since their concept is the v1 one.
 - **`ce::json_document` holds a parsed JSON document** in `core.hpp`, which still names no codec type.
@@ -26,8 +26,25 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
   Documents compare as JSON values, across codecs too.
   Copies share one immutable DOM, so a document can be copied, compared and read from several threads at once.
   A document is never empty: it has no default constructor, and moving one copies it.
-  `data_t` does not hold one yet.
+- **`data_t` has a fifth alternative, `json_document`.**
+  Code that visits `data_t` exhaustively stops compiling against `ce::v3` until it handles it; that is the migration.
+  An event holding `json_text` never equals one holding `json_document`, even for the same JSON value, so equality stays transitive.
+- **A structured decode keeps the payload as a `json_document`** built by the decoding codec, where v2 gave `json_text`.
+  `decode` and `decode_batch` move the `data` member out of the document they parsed, so the payload is neither serialised nor copied; `from_value` copies it.
+  A binary-mode body, a non-JSON string payload and `data_base64` decode as before.
+- **`ce::json::decode_options{.retain_document_up_to = 64 * 1024}`** bounds what one event can pin: input longer than the limit keeps its payload as `json_text`, and 0 always does.
+  `decode` and `decode_batch` take it, and for a batch it applies to the whole batch text.
+- **Encoding a `json_document` built by the encoding codec copies its DOM**, with no serialisation and no parse.
+  A document from another codec, and `data_as`, convert it through the building codec's text.
 - The optional module exports `ce::v3` only.
+
+#### Moving to the v3 payload
+
+- Add a `json_document` case wherever you visit `data_t`; `document.dump()` gives its compact text.
+- Code that read `std::get<ce::json_text>(event.data()).raw` after a structured decode now finds a `json_document`.
+  Read it with `document.get<Codec>()` for the DOM, or `document.dump()` for text.
+- Code that compares a decoded event with one built from `json_text` now compares unequal; build the expected event with a `json_document`, or compare the payloads by value.
+- Pass `{.retain_document_up_to = 0}` to keep the v2 behaviour of always decoding to text.
 
 CR-0003 and ADR-0010 record why: the v0.5.0 event model adds an alternative to `data_t`, and SPEC section 3 rule 4 sends a breaking change to a new generation.
 

@@ -75,7 +75,7 @@ auto probe() -> report {
   auto decoded = format::decode(*encoded);
   const bool round_tripped = decoded.has_value() && decoded->id() == subject.id() &&
                              decoded->type() == subject.type() &&
-                             std::holds_alternative<ce::json_text>(decoded->data());
+                             std::holds_alternative<ce::json_document>(decoded->data());
 
   // The typed payload accessors, over the same user-supplied codec.
   ce::event typed{"2"_id, "/spec/test"_source, "com.example.parcel"_type};

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -23,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import compare  # noqa: E402
 import history  # noqa: E402
+import measure  # noqa: E402
 import seed_budgets  # noqa: E402
 
 TOOLCHAIN = {"arch": "x86_64", "compiler": "g++-14 (Ubuntu) 14.2.0", "compiler_id": "gcc-14"}
@@ -295,6 +297,50 @@ class SummaryTable(unittest.TestCase):
                                      "--budgets", str(root / "budgets.json")])
             self.assertEqual(code, 0)
             self.assertIn("Only the budgets gate", out.getvalue())
+
+    def test_a_failed_probe_names_its_id_mode_and_message(self):
+        said = "perf_probe: decode_large/rapidjson retained 3, 1 and 2 bytes across identical runs"
+
+        def failing(cmd, **_):
+            raise subprocess.CalledProcessError(1, cmd, output="", stderr=said + "\n")
+
+        original = measure.run
+        measure.run = failing
+        try:
+            with self.assertRaises(measure.MeasureFailure) as caught:
+                measure.probe_json(Path("perf_probe"), "retained", "decode_large/rapidjson")
+        finally:
+            measure.run = original
+        self.assertEqual(caught.exception.as_json(),
+                         {"id": "decode_large/rapidjson", "mode": "perf_probe retained",
+                          "message": said})
+
+    def test_a_measurement_that_failed_is_reported_and_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "failure.json").write_text(json.dumps(
+                {"id": "decode_large/rapidjson", "mode": "perf_probe retained",
+                 "message": "perf_probe: retained 3, 1 and 2 bytes <across> runs"}))
+            argv = ["--measure-failure", str(root / "failure.json"),
+                    "--summary", str(root / "s.md")]
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(compare.main(argv), 1)
+            text = (root / "s.md").read_text()
+        self.assertTrue(text.startswith(compare.MARKER))
+        self.assertIn("could not be measured", text)
+        self.assertIn("`decode_large/rapidjson` failed in `perf_probe retained`", text)
+        self.assertIn("retained 3, 1 and 2 bytes &lt;across&gt; runs", text)
+
+    def test_a_build_that_stopped_before_measuring_is_reported_and_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            argv = ["--measure-failure", str(root / "never-written.json"),
+                    "--summary", str(root / "s.md")]
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(compare.main(argv), 1)
+            text = (root / "s.md").read_text()
+        self.assertTrue(text.startswith(compare.MARKER))
+        self.assertIn("The probe did not build or did not run", text)
 
 
 # spec: SWR-PERF-0006

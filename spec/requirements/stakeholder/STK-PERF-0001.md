@@ -2,7 +2,7 @@
 uid: STK-PERF-0001
 title: A change that makes event handling costlier is caught before it merges
 type: stakeholder
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The SDK sits on the hot path of every service that sends or receives an event.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: []
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:.github/workflows/perf.yml, doc:docs/PERFORMANCE.md]
+verified_by: [test:bench/perf/test_perf_tools.py::SummaryTable, test:bench/perf/test_perf_tools.py::InstructionGate, test:bench/perf/test_perf_tools.py::AllocationGate]
 owner: filip.sajdak
 version: 1
 ---

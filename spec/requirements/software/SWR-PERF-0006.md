@@ -2,7 +2,7 @@
 uid: SWR-PERF-0006
 title: A binary that grows more than 5 percent is flagged
 type: software
-status: reviewed
+status: approved
 priority: low
 rationale: >
   The SDK is header-only, so its code lands in every consumer binary.
@@ -10,7 +10,7 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
-satisfied_by: []
+satisfied_by: [code:bench/perf/compare.py, code:bench/perf/consumer.cpp, code:bench/perf/measure.py, code:.github/workflows/perf.yml]
 verified_by: [test:bench/perf/test_perf_tools.py::BinarySizeWarning]
 owner: filip.sajdak
 version: 1

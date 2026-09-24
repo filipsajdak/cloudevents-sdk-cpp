@@ -48,6 +48,15 @@ auto request = ce::v2::http::to_message<ce::v2::codec::nlohmann_codec>(
 
 Code that names only shared entities, such as an attribute type or a codec, needs no change.
 
+### Tooling
+
+- **Every pull request is measured against main and against budgets.**
+  The `perf` workflow gates on instructions under Callgrind, heap allocations and the bytes a decoded event retains, per operation and codec, and comments the table on the pull request.
+  Wall time and binary size are reported.
+  Each merge to main is recorded on the `bench-data` branch.
+  [docs/PERFORMANCE.md](docs/PERFORMANCE.md) explains the table and how to accept a deliberate cost.
+- The bench's Boost.JSON codec builds its values with parentheses, so it works with Boost before 1.84.
+
 ## v0.4.0
 
 A second API generation, `ce::v2`, in which an invalid CloudEvent cannot be

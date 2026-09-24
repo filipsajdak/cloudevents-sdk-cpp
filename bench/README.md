@@ -11,6 +11,10 @@ times the binary. nlohmann is 2.0 to 2.4 times slower than either and remains
 a defensible default for its ubiquity. Glaze needs C++23 and so is unavailable
 to anyone on the SDK's C++20 floor.
 
+This page answers "which library". Whether a change made the SDK costlier is
+the performance job's question, answered on every pull request from the probe
+in `perf/`; see [docs/PERFORMANCE.md](../docs/PERFORMANCE.md).
+
 ## Correctness came first, and three of the four needed work
 
 A benchmark of codecs that disagree measures nothing, so `codec_check` runs the

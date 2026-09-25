@@ -39,7 +39,7 @@ struct nlohmann_codec {
     if (!object.is_object()) {
       return make_null();
     }
-    const auto found = object.find(std::string{key});
+    const auto found = object.find(key);
     return found == object.end() ? make_null() : std::move(*found);
   }
 
@@ -88,7 +88,7 @@ struct nlohmann_codec {
     if (!object.is_object()) {
       return nullptr;
     }
-    const auto found = object.find(std::string{key});
+    const auto found = object.find(key);
     return found == object.end() ? nullptr : &(*found);
   }
 

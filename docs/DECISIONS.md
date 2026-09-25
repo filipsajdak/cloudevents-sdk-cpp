@@ -836,6 +836,25 @@ a Homebrew Boost is built against libc++, so a GCC/libstdc++ build compiles the
 header and then fails to link on mangling differences. That is an ABI mismatch,
 not a defect, and the guide says so.
 
+## D-CODEC-3: A body-only performance change is a fix for the frozen generations
+
+The three codecs are declared once in `ce::v1` and serve every generation
+(ADR-0009), and `ce::v1` and `ce::v2` take fixes that keep their declarations.
+A change to a function body that keeps every declaration, and keeps what each
+function returns for every input, counts as such a fix. A needless copy is a
+defect of the implementation, not of the published interface: no caller can
+name it, and removing it changes no signature, type or result.
+
+So `nlohmann_codec::find` and `extract` look a member up with the key as a
+`std::string_view` instead of building a `std::string` for every lookup
+(nlohmann 3.11 added the heterogeneous overloads, and 3.12.0 is the floor), and
+`rapidjson_codec::dump` writes straight into the `std::string` it returns instead
+of into a `StringBuffer` that is then copied. The string starts at the capacity
+`StringBuffer` starts at, and grows by doubling.
+
+A change that alters a declaration, or what a function returns, is still not a
+fix and still needs a change request.
+
 ## D-BUILD-3: A codec header may carry a conditional that only refuses
 
 `SWR-BUILD-0002` keeps capability gating in `detail/config.hpp`, because gating

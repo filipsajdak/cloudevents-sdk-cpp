@@ -162,10 +162,21 @@ struct rapidjson_codec {
   }
 
   [[nodiscard]] static auto dump(const value& held) -> std::string {
-    rapidjson::StringBuffer buffer;
-    rapidjson::Writer<rapidjson::StringBuffer> writer{buffer};
+    struct string_output {
+      using Ch = char;
+
+      std::string* text;
+
+      void Put(Ch character) { text->push_back(character); }
+      void Flush() {}
+    };
+
+    std::string text;
+    text.reserve(rapidjson::StringBuffer::kDefaultCapacity);
+    string_output output{.text = &text};
+    rapidjson::Writer<string_output> writer{output};
     held.Accept(writer);
-    return std::string{buffer.GetString(), buffer.GetSize()};
+    return text;
   }
 
   // spec: SWR-JSON-0039

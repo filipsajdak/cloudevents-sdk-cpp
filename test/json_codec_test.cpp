@@ -178,6 +178,44 @@ concept has_dump_member = requires(V value) { value.dump(); };
 constexpr auto sample_document =
     R"({"a":1,"b":"x","c":[1,2],"d":null,"e":1.5,"f":true})"sv;
 
+/// Longer than the buffer any codec starts a dump in, so the dump has to grow.
+constexpr std::size_t text_longer_than_a_first_dump_buffer = 1024;
+
+/// A codec writes its dump straight into the string it returns and looks a
+/// member up by the caller's view of the key. So the dump must survive growing
+/// and escaping, and a key view that is not null-terminated must match exactly
+/// its own characters.
+template <class C>
+void check_dump_grows_and_keys_are_views(std::string_view label) {
+  using namespace boost::ut;
+
+  const std::string long_text =
+      std::string(text_longer_than_a_first_dump_buffer, 'x') + "\"\\\n\xC3\xA9";
+  auto object = C::make_object();
+  C::set(object, "long", C::make_string(long_text));
+
+  auto again = C::parse(C::dump(object));
+  expect(again.has_value()) << label << ": re-parse of a grown dump";
+  if (!again) {
+    return;
+  }
+
+  constexpr std::string_view longer_key = "longer";
+  const std::string_view key = longer_key.substr(0, std::string_view{"long"}.size());
+  const auto* found = C::find(*again, key);
+  expect(found != nullptr) << label << ": find by a view that is not null-terminated";
+  if (found != nullptr) {
+    const auto text = C::as_string(*found);
+    expect(text.has_value() && *text == long_text) << label;
+  }
+  expect(C::find(*again, longer_key) == nullptr) << label;
+  expect(C::find(*again, key.substr(1)) == nullptr) << label;
+
+  auto extracted = C::extract(*again, key);
+  const auto extracted_text = C::as_string(extracted);
+  expect(extracted_text.has_value() && *extracted_text == long_text) << label << ": extract";
+}
+
 template <class C>
 void check_parse_dump_roundtrip(std::string_view label) {
   using namespace boost::ut;
@@ -481,6 +519,9 @@ const boost::ut::suite<"json-codec-parse-dump-roundtrip"> codec_parse_dump_round
 
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_parse_dump_roundtrip<C>(codec); };
+    test(std::string{codec} + " grown dump, key views") = [codec] {
+      check_dump_grows_and_keys_are_views<C>(codec);
+    };
   });
 };
 

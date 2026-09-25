@@ -7,7 +7,11 @@ name: perf
 # Wall time and binary size are reported and never fail the job.
 
 on:
+  # labeled and unlabeled re-run the job when `perf: accepted` is added or
+  # removed. Any label re-runs it: skipping the job for other labels would
+  # record a skipped check on the head commit, which reads as a pass.
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
   workflow_dispatch:
@@ -29,6 +33,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    # One run per pull request: a label added during a run cancels it and
+    # the new run measures with the label.
     concurrency:
       group: perf-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: true
@@ -98,13 +104,16 @@ jobs:
       # SWR-PERF-0001 instructions +2%, SWR-PERF-0002 any new allocation or
       # byte, SWR-PERF-0003 retained bytes +1%, SWR-PERF-0004 budgets,
       # SWR-PERF-0006 binary size +5% warns. A growth over main is accepted
-      # where this pull request raised the budget for it. The step records the verdict and
-      # a later step fails the job, so the comment is posted either way.
+      # where this pull request raised the budget for it, or everywhere when it
+      # carries the `perf: accepted` label; the budgets gate either way. The
+      # step records the verdict and a later step fails the job, so the comment
+      # is posted either way.
       - name: Compare with main and the budgets
         id: compare
         env:
           HARNESS: ${{ steps.base.outputs.harness }}
           MEASURED: ${{ steps.head.outputs.measured }}
+          ACCEPTED: "${{ contains(github.event.pull_request.labels.*.name, 'perf: accepted') }}"
         run: |
           set +e
           if [ "$MEASURED" != "true" ]; then
@@ -120,11 +129,15 @@ jobs:
             main) note="Main did not build with this pull request's probe and was measured with its own, so a change to the probe itself shows as a difference." ;;
             *)    note="Main could not be built for measurement." ;;
           esac
+          accept=()
+          if [ "$ACCEPTED" = "true" ]; then
+            accept=(--accept-regressions)
+          fi
           python3 bench/perf/compare.py \
             --base "$RUNNER_TEMP/base.json" --head "$RUNNER_TEMP/head.json" \
             --budgets bench/budgets.json --base-budgets "$RUNNER_TEMP/base-budgets.json" \
             --summary "$RUNNER_TEMP/summary.md" \
-            --note "$note" > /dev/null
+            --note "$note" "${accept[@]}" > /dev/null
           echo "status=$?" >> "$GITHUB_OUTPUT"
           cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
 

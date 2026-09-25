@@ -1161,6 +1161,8 @@ tidying the code would plausibly undo.
 | `binding/http.hpp`, `binding/kafka.hpp`, `detect_content_mode` | the batch prefix is tested first | `application/cloudevents-batch+json` also starts with `application/cloudevents`; tested second, a batch reaches the format layer and is reported as a parse error instead of a mode error |
 | `binding/kafka.hpp`, `record` | the key sits beside the message rather than in it | `message` is shared by every binding and its shape is pinned by `SWR-HTTP-0001` |
 | `format/json_format.hpp`, `read_event` | context attributes, then the payload, then the extensions, with `specversion` first | the order decides which problem a document with several is reported for, and a document from another version is named as such |
+| `format/detail/json_slice.hpp`, `json_slicer::string_run_end` | eight bytes are loaded with `memcpy` only outside constant evaluation, and the exact byte is taken from the lowest flagged bit only on a little-endian target | `memcpy` is not `constexpr`, and the byte loop that follows gives the same answer; the lowest flagged byte is exact because a borrow only propagates upward from a byte that is itself flagged, while on a big-endian target the loop finds the byte instead |
+| `format/detail/json_slice.hpp`, `json_slicer`, `batch_data_slices`, `data_member_text` | the slicer views the caller's input for one decode call; the constructors and `data_member_text` delete an rvalue `std::string` overload; `object_member` is private and views the slicer's input | a view of a temporary string dangles as soon as the full expression ends, and gcc 16 does not warn about it; a deleted overload turns the mistake into a compile error. The overload is a constrained template, so a string literal still converts to `std::string_view` rather than being ambiguous between the two |
 | `format/json_format.hpp`, `json_payload` | `extract` is the decoder's last touch of the document, and runs only when `find` returns the very member that was claimed | every attribute and extension has been read by then, so nothing reads a moved-from member; with duplicate `data` keys the claimed member may not be the one `find` sees, and that case copies instead |
 | `codec/nlohmann.hpp`, `as_int` | `is_number_unsigned` is tested before `is_number_integer` | the latter is also true for an unsigned value, which would make the range check dead code (D-JSON-3) |
 | `codec/rapidjson.hpp`, `chars_of` | an empty view's pointer is replaced by `""` | RapidJSON asserts a non-null pointer, and the assertion is compiled out of a release build |
@@ -1189,7 +1191,7 @@ compare against the same event with its payload as a document.
 
 ## D-JSON-5: `decode_options` is a plain aggregate beside the content types
 
-`ce::json::decode_options{.retain_document_up_to = 64 * 1024}` sits in
+`ce::json::decode_options{.retain_document_up_to = 16 * 1024}` sits in
 `ce::v3::json`, next to `content_type`, and `decode` and `decode_batch` take it
 as a defaulted last parameter. A plain aggregate is written in one designated
 initializer at the call site, gains members without breaking a call, and keeps
@@ -1198,9 +1200,16 @@ template parameter or a member of `json_format` was rejected: the limit is a
 per-call policy, and a caller decoding trusted and untrusted input with one
 codec needs both.
 
-For a batch the limit is measured on the whole batch text, not per element. A
-per-element limit would let a batch of many small documents pin their sum,
-which is the expansion the limit exists to bound. The element events of a
+For a batch the limit is per event, by average size: a batch keeps documents
+when its text is at most the limit times its number of events, and otherwise
+every event in it keeps text. Measuring the whole batch text against the limit
+sent a batch of 100 typical events to text and cost `decode_batch_100` up to 42
+percent more allocated bytes than main. The average keeps retained memory
+proportional to the input, with a worst case around 3 times its text: one large
+event among tiny ones is retained because the average is small. The absolute
+per-event bound applies to single-event decode. The product of the limit and
+the event count is checked, so a huge count cannot wrap it to a small bound. The
+owner chose this on 2026-09-25 (SWR-JSON-0040). The element events of a
 batch move their payload out with `Codec::extract`, as a single decode does:
 the batch decoder owns the array it parsed and walks it with
 `for_each_mutable_element` (SWR-JSON-0039).
@@ -1212,6 +1221,45 @@ member with `Codec::copy`, and takes no `decode_options`. It has no text to
 measure, and its caller already holds the whole DOM in memory, so the limit's
 purpose, bounding what a small hostile input can expand into, does not arise.
 It cannot move the member out, since the DOM is const and remains the caller's.
+
+## D-JSON-7: The payload's own text is found by a scanner that falls back when unsure
+
+Above the retention limit, `decode` and `decode_batch` store the `data`
+member's own bytes from the input as `json_text` (SWR-JSON-0043). The bytes are
+found by `json_slicer` in `format/detail/json_slice.hpp`, which runs only after
+the codec has parsed the input. It is linear, allocates nothing, tracks nesting
+with a counter rather than recursion, and validates numbers with CTRE.
+
+It is built for the text path's cost, since it reads every byte of a large
+payload. A 256-entry table classifies each character outside strings, so the
+nesting loop does one lookup per character. A string body is read eight bytes
+at a time, testing each word at once for a quote, a backslash or a control
+character, so escapes are validated only where a backslash occurs. On the
+52,889-byte benchmark event this cut the scanner from 1,210,146 to 565,365
+instructions per scan (g++-14, arm64 Valgrind), from about 23 to 11 per byte.
+
+The scanner returns nothing, and the decoder stores `Codec::dump` of the member,
+in each of these cases:
+
+| case | why the slice is not trusted |
+|---|---|
+| any top-level member name containing an escape | an escape can spell `data` (`"d\u0061ta"`), and decoding names to compare them would need a buffer; the rule is deliberately wider than "spells data" |
+| `data` at the top level more than once | codecs differ in which duplicate they keep: nlohmann the last, mini_codec the first |
+| a trailing comma, a number outside JSON's grammar, a misspelt literal, a raw control character or an unknown escape in a string | a lenient codec may accept them, and the stored text must be JSON any codec reads |
+| a byte order mark, content after the event, or anything else that is not an object where one is expected | the scanner cannot tell what the codec made of it |
+
+In a batch the scanner decides per element: an element it is unsure of falls
+back on its own, and the next one still gets its slice. A structural surprise
+(the scanner losing its place) sends the rest of the batch to the fallback,
+since the scanner can no longer line its elements up with the codec's.
+
+The constants in the header come from RFC 8259: section 2 for the four
+whitespace characters and the structural terminators, section 6 for the number
+grammar, and section 7 for the escapes, the four hex digits of `\u`, the two
+characters that introduce an escape, and `0x20`, the first character a string
+may hold unescaped. The word constants follow from the word's type:
+`every_byte_one` is the word's maximum divided by the byte's, and
+`every_byte_high_bit` shifts it by one less than the bits in a byte.
 
 ## D-TIDY-5: The v2 copies are outside the clang-tidy gate
 
@@ -1254,6 +1302,9 @@ than prose. Its reason is here.
 | `describe.hpp`, `name::value` | avoid-c-arrays | the describe seam is shared with `ce::v1`, which published `char value[N]` in v0.3.0 and keeps that declaration (ADR-0009) |
 | `describe.hpp`, `for_each_field` (both overloads) | missing-std-forward | v0.3.0 published the visitor as `F&&`, which `ce::v1` keeps; it is called once per member, so forwarding it would move from it more than once |
 | `format/base64.hpp`, `base64_character` | pro-bounds-avoid-unchecked-container-access | the mask bounds the index, and a `static_assert` keeps the alphabet exactly as long as the mask allows |
+| `format/detail/json_slice.hpp`, `json_slicer::text_`, `object_member::name` and `value` | scudoai-copy-view-member | each view borrows the input of one decode call, which outlives the slicer; see D-CODE-1 for how a temporary is refused |
+| `format/detail/json_slice.hpp`, `json_slicer::at` | pro-bounds-avoid-unchecked-container-access | the index is compared with the size on the same line, and past the end `at` returns `'\0'`, which every caller treats as a character it does not accept |
+| `format/detail/json_slice.hpp`, `class_of` | pro-bounds-avoid-unchecked-container-access, pro-bounds-constant-array-index | the index is an `unsigned char`, and the table has one entry for every value it can hold |
 | `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
 | `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |
 | `core.hpp`, `json_document` | special-member-functions | see D-CODE-1: declaring no move operations is what keeps a document from ever being empty |

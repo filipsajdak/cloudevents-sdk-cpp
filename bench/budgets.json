@@ -48,25 +48,25 @@
       "allocated_bytes": 339841,
       "allocations": 3326,
       "instructions": 3444751,
-      "retained_bytes": 156950
+      "retained_bytes": 72162
     },
     "decode_large/glaze": {
       "allocated_bytes": 415486,
       "allocations": 1132,
       "instructions": 3562866,
-      "retained_bytes": 217677
+      "retained_bytes": 87898
     },
     "decode_large/nlohmann": {
       "allocated_bytes": 485333,
       "allocations": 4473,
       "instructions": 11053009,
-      "retained_bytes": 278793
+      "retained_bytes": 84552
     },
     "decode_large/rapidjson": {
       "allocated_bytes": 458763,
       "allocations": 1144,
       "instructions": 3658422,
-      "retained_bytes": 111250
+      "retained_bytes": 58079
     },
     "decode_minimal/boost.json": {
       "allocated_bytes": 291,

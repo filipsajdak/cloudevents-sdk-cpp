@@ -1,13 +1,4 @@
-#include <boost/ut.hpp>
-
-#include <cloudevents/codec/nlohmann.hpp>
-#include <cloudevents/core.hpp>
-#include <cloudevents/detail/timestamp.hpp>
-#include <cloudevents/format/base64.hpp>
-#include <cloudevents/format/json_codec.hpp>
-#include <cloudevents/format/json_format.hpp>
-#include <cloudevents/result.hpp>
-
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -16,8 +7,20 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
+
+#include <boost/ut.hpp>
+
+#include <cloudevents/codec/nlohmann.hpp>
+#include <cloudevents/core.hpp>
+#include <cloudevents/detail/timestamp.hpp>
+#include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/detail/json_slice.hpp>
+#include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/format/json_format.hpp>
+#include <cloudevents/result.hpp>
 
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
@@ -623,23 +626,243 @@ void check_retention_limit(std::string_view label) {
   expect(over && ce_test::same_json_payload<C>(over->data(), R"({"k":1})"sv))
       << label << ": the text carries the same value";
 
-  // The default is 64 KiB, measured on the whole input.
-  const std::string padding(std::size_t{64} * 1024, ' ');
-  expect(holds_text(format::decode(std::string{text} + padding))) << label << ": 64 KiB + text";
+  // The default is measured on the whole input.
+  constexpr auto default_limit = ce::json::decode_options::default_retention_limit;
+  const std::string at_default = std::string{text} + std::string(default_limit - text.size(), ' ');
+  expect(holds_document(format::decode(at_default))) << label << ": exactly the default";
+  expect(holds_text(format::decode(at_default + ' '))) << label << ": one byte over the default";
 
-  // A batch is measured as a whole, not per element.
-  const std::string batch = "[" + std::string{text} + "," + std::string{text} + "]";
+  // A batch is measured per event, by average size. The trailing space makes
+  // the batch text an exact multiple of its event count.
+  constexpr std::size_t events_in_batch = 2;
+  const std::string batch = "[" + std::string{text} + "," + std::string{text} + "] ";
+  const auto per_event = batch.size() / events_in_batch;
+  expect(per_event * events_in_batch == batch.size()) << label << ": the batch divides evenly";
   const auto batch_of = [&](std::size_t limit) {
     return format::decode_batch(batch, {.retain_document_up_to = limit});
   };
-  const auto whole = batch_of(batch.size());
-  const auto split = batch_of(batch.size() - 1);
-  expect(whole && whole->size() == 2U &&
-         std::holds_alternative<ce::json_document>(whole->back().data()))
-      << label << ": a batch at the limit";
-  expect(split && split->size() == 2U &&
-         std::holds_alternative<ce::json_text>(split->front().data()))
-      << label << ": a batch over the limit, though each element is under it";
+  const auto documents_in =
+      [](const ce::result<std::vector<ce::event>>& events) -> std::optional<std::size_t> {
+    if (!events || events->size() != events_in_batch) {
+      return std::nullopt;
+    }
+    return static_cast<std::size_t>(std::ranges::count_if(*events, [](const ce::event& decoded) {
+      return std::holds_alternative<ce::json_document>(decoded.data());
+    }));
+  };
+  constexpr std::optional<std::size_t> every_event{events_in_batch};
+  constexpr std::optional<std::size_t> no_event{0};
+  expect(documents_in(batch_of(per_event)) == every_event)
+      << label << ": a batch at the limit per event";
+  expect(documents_in(batch_of(per_event - 1)) == no_event)
+      << label << ": a batch over the limit per event, though each element is under it";
+  expect(documents_in(batch_of(0)) == no_event) << label << ": a batch with a limit of 0";
+
+  // A limit whose product with the event count wraps to 0 still retains.
+  constexpr auto wraps_to_zero = std::numeric_limits<std::size_t>::max() / events_in_batch + 1;
+  expect(documents_in(batch_of(wraps_to_zero)) == every_event)
+      << label << ": a limit whose product with the event count overflows";
+}
+
+// --- SWR-JSON-0043: a payload kept as text is the input's own text ----------
+
+// The scanner is constexpr, so its answers are pinned at compile time too.
+static_assert(ce::json::detail::data_member_text(R"({"id":"1", "data" : [1, 2] })") ==
+              std::optional<std::string_view>{"[1, 2]"});
+static_assert(ce::json::detail::data_member_text(R"({"x":{"data":1},"data":"}{"})") ==
+              std::optional<std::string_view>{R"("}{")"});
+static_assert(!ce::json::detail::data_member_text(R"({"d\u0061ta":1})").has_value());
+static_assert(!ce::json::detail::data_member_text(R"({"data":1,"data":2})").has_value());
+
+/// Whether data_member_text accepts `Text`; it must refuse a temporary string,
+/// whose buffer the returned view would outlive.
+template <class Text>
+concept slices_text = requires(Text&& text) {
+  ce::json::detail::data_member_text(std::forward<Text>(text));
+};
+
+/// The header every event in these checks shares; the caller appends members
+/// and the closing brace.
+constexpr auto event_head = R"({"specversion":"1.0","id":"1","source":"/s","type":"t")"sv;
+
+[[nodiscard]] auto event_with(std::string_view members) -> std::string {
+  return std::string{event_head} + std::string{members} + "}";
+}
+
+constexpr ce::json::decode_options always_text{.retain_document_up_to = 0};
+
+/// The json_text a decode kept, or nothing when it kept something else.
+template <class C>
+[[nodiscard]] auto kept_text(std::string_view input,
+                             ce::json::decode_options options = always_text)
+    -> std::optional<std::string> {
+  const auto decoded = ce::json_format<C>::decode(input, options);
+  if (!decoded) {
+    return std::nullopt;
+  }
+  if (const auto* text = std::get_if<ce::json_text>(&decoded->data())) {
+    return text->raw;
+  }
+  return std::nullopt;
+}
+
+/// What the codec serialises for the data member it decoded from `input`.
+template <class C>
+[[nodiscard]] auto codec_dump_of_data(std::string_view input) -> std::optional<std::string> {
+  const auto parsed = C::parse(input);
+  if (!parsed) {
+    return std::nullopt;
+  }
+  const auto* data = C::find(*parsed, "data");
+  if (data == nullptr) {
+    return std::nullopt;
+  }
+  return C::dump(*data);
+}
+
+template <class C>
+void check_own_text_slices(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto own = [](std::string_view payload) -> std::optional<std::string> {
+    return std::string{payload};
+  };
+
+  expect(kept_text<C>(event_with(",\"data\" : \n\t {\"k\" : 1} \r\n")) == own(R"({"k" : 1})"))
+      << label << ": the whitespace around the value is trimmed";
+
+  for (const auto payload : {R"({ "a" : [1, 2] })"sv, R"([ 1, "x", null ])"sv,
+                             R"("a \"quoted\" string")"sv, "-12.5e+3"sv, "0"sv, "true"sv,
+                             "false"sv, "null"sv}) {
+    expect(kept_text<C>(event_with(std::string{",\"data\": "} + std::string{payload})) ==
+           own(payload))
+        << label << ": " << payload;
+  }
+
+  constexpr auto tricky = R"({"s":"}{][,:\"\\","t":"\\","u":"\u007b"})"sv;
+  expect(kept_text<C>(event_with(std::string{",\"data\":"} + std::string{tricky})) == own(tricky))
+      << label << ": strings holding braces, brackets, commas, escaped quotes and backslashes";
+
+  constexpr auto nesting = R"({ "data" : [ "inner" ], "k" : { "data" : 2 } })"sv;
+  expect(kept_text<C>(event_with(std::string{",\"data\":"} + std::string{nesting} +
+                                 R"(,"subject":"s")")) == own(nesting))
+      << label << ": a data member nested in the payload is not the payload";
+
+  expect(kept_text<C>(event_with(R"(,"subject":"\"data\":1","ext":"data","data": 7 )")) ==
+         own("7"))
+      << label << ": data inside a string value is not a member";
+}
+
+template <class C>
+void check_own_text_fallbacks(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto escaped = event_with(R"(,"d\u0061ta":{ "k" : 1 })");
+  expect(kept_text<C>(escaped).has_value()) << label << ": an escaped name still decodes";
+  expect(kept_text<C>(escaped) == codec_dump_of_data<C>(escaped))
+      << label << ": an escaped name that spells data falls back to the codec";
+
+  const auto escaped_other = event_with(R"(,"\u0065xt":"x","data":{ "k" : 1 })");
+  expect(kept_text<C>(escaped_other) == codec_dump_of_data<C>(escaped_other))
+      << label << ": any escaped top-level name falls back to the codec";
+
+  const auto duplicate = event_with(R"(,"data":[1, 2],"data":[3, 4])");
+  expect(kept_text<C>(duplicate).has_value()) << label << ": a duplicate data still decodes";
+  expect(kept_text<C>(duplicate) == codec_dump_of_data<C>(duplicate))
+      << label << ": a duplicate data member falls back to the codec";
+
+  // A lenient codec may accept a number JSON does not allow. Its own
+  // serialisation is then stored, never the sender's non-JSON spelling.
+  const auto lenient = event_with(R"(,"data":[.5])");
+  if (C::parse(lenient)) {
+    expect(kept_text<C>(lenient) == codec_dump_of_data<C>(lenient))
+        << label << ": a number JSON does not allow falls back to the codec";
+  }
+}
+
+template <class C>
+void check_own_text_in_a_batch(std::string_view label) {
+  using namespace boost::ut;
+
+  const std::string batch = "[ " + event_with(R"(,"data" : [1, 2] )") + " , " +
+                            event_with(R"(,"d\u0061ta":[3, 4])") + "," +
+                            event_with(R"(,"data":"five","subject":"data")") + " ]";
+  const auto events = ce::json_format<C>::decode_batch(batch, always_text);
+  constexpr std::size_t events_in_batch = 3;
+  expect(events.has_value() && events->size() == events_in_batch) << label;
+  if (!events || events->size() != events_in_batch) {
+    return;
+  }
+  const auto text_of = [&](std::size_t index) -> std::optional<std::string> {
+    if (const auto* text = std::get_if<ce::json_text>(&events->at(index).data())) {
+      return text->raw;
+    }
+    return std::nullopt;
+  };
+  constexpr std::size_t second = 1;
+  constexpr std::size_t third = 2;
+  expect(text_of(0) == std::optional<std::string>{"[1, 2]"})
+      << label << ": the first element keeps its own text";
+  expect(text_of(second) == codec_dump_of_data<C>(event_with(R"(,"data":[3, 4])")))
+      << label << ": an escaped name falls back for its element only";
+  expect(text_of(third) == std::optional<std::string>{R"("five")"})
+      << label << ": the element after a fallback keeps its own text";
+}
+
+template <class C>
+void check_own_text_at_the_limit(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::json_format<C>;
+
+  constexpr auto default_limit = ce::json::decode_options::default_retention_limit;
+  const auto payload_of = [](std::size_t filler) {
+    return std::string{R"({ "pad" : ")"} + std::string(filler, 'x') + R"(" })";
+  };
+  const auto event_of = [&](std::size_t filler) {
+    return event_with(",\"data\": " + payload_of(filler));
+  };
+  const auto framing = event_of(0).size();
+  expect(framing < default_limit) << label;
+  if (framing >= default_limit) {
+    return;
+  }
+  const auto at_limit = event_of(default_limit - framing);
+  expect(at_limit.size() == default_limit) << label;
+
+  const auto kept = format::decode(at_limit);
+  expect(kept.has_value() && std::holds_alternative<ce::json_document>(kept->data()))
+      << label << ": an event of exactly the limit keeps its document";
+
+  const auto over = default_limit - framing + 1;
+  expect(kept_text<C>(event_of(over), {}) == std::optional<std::string>{payload_of(over)})
+      << label << ": one byte over the limit keeps the payload's own text";
+}
+
+template <class C>
+void check_own_text_equality(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::json_format<C>;
+
+  const auto compact = event_with(R"(,"data":{"k":[1,2]})");
+  const auto spaced = event_with(R"(,"data":{ "k" : [ 1, 2 ] })");
+
+  const auto compact_text = format::decode(compact, always_text);
+  const auto spaced_text = format::decode(spaced, always_text);
+  expect(compact_text.has_value() && spaced_text.has_value()) << label;
+  if (compact_text && spaced_text) {
+    expect(bool{*compact_text != *spaced_text})
+        << label << ": the same JSON spelled differently is unequal as json_text";
+    expect(ce_test::same_json_payload<C>(spaced_text->data(), R"({"k":[1,2]})"sv))
+        << label << ": both still hold the same JSON value";
+  }
+
+  const auto compact_document = format::decode(compact);
+  const auto spaced_document = format::decode(spaced);
+  expect(compact_document.has_value() && spaced_document.has_value()) << label;
+  if (compact_document && spaced_document) {
+    expect(bool{*compact_document == *spaced_document})
+        << label << ": within the limit the documents compare by value";
+  }
 }
 
 template <class C>
@@ -1157,6 +1380,102 @@ const boost::ut::suite<"decode-retains-document-up-to-limit"> retention_limit = 
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_retention_limit<C>(codec); };
   });
+};
+
+// spec: SWR-JSON-0043
+const boost::ut::suite<"decode-keeps-the-payloads-own-text"> payloads_own_text = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec} + ": the slice of each payload kind") = [codec] {
+      check_own_text_slices<C>(codec);
+    };
+    test(std::string{codec} + ": the fallbacks to the codec") = [codec] {
+      check_own_text_fallbacks<C>(codec);
+    };
+    test(std::string{codec} + ": each batch element on its own") = [codec] {
+      check_own_text_in_a_batch<C>(codec);
+    };
+    test(std::string{codec} + ": the retention limit") = [codec] {
+      check_own_text_at_the_limit<C>(codec);
+    };
+    test(std::string{codec} + ": equality keeps the spelling") = [codec] {
+      check_own_text_equality<C>(codec);
+    };
+  });
+
+  "the scanner declines what a strict JSON reader would not expect"_test = [] {
+    using ce::json::detail::data_member_text;
+    expect(!data_member_text(R"({"data":[1,],"id":"1"})").has_value()) << "a trailing comma";
+    expect(!data_member_text(R"({"data":1,})").has_value()) << "a trailing member comma";
+    expect(!data_member_text(R"({"data":.5})").has_value()) << "a number JSON does not allow";
+    expect(!data_member_text(R"({"data":01})").has_value()) << "a leading zero";
+    expect(!data_member_text(R"({"data":tru})").has_value()) << "a misspelt literal";
+    expect(!data_member_text("{\"data\":\"a\tb\"}").has_value()) << "a raw control character";
+    expect(!data_member_text(R"({"data":"\x"})").has_value()) << "an unknown escape";
+    expect(!data_member_text(R"({"data":"\u12G4"})").has_value()) << "a bad unicode escape";
+    expect(!data_member_text("\xEF\xBB\xBF{\"data\":1}").has_value()) << "a byte order mark";
+    expect(!data_member_text(R"({"data":1} x)").has_value()) << "trailing content";
+    expect(!data_member_text(R"([{"data":1}])").has_value()) << "not an object";
+    expect(!data_member_text(R"({"data":{"a":1})").has_value()) << "an unclosed object";
+    expect(!data_member_text(R"({"data":"open)").has_value()) << "an unclosed string";
+    expect(!data_member_text(R"({"id":"1"})").has_value()) << "no data member";
+    expect(data_member_text(R"({"data":"\u00e9\n"})") ==
+           std::optional<std::string_view>{R"("\u00e9\n")"})
+        << "valid escapes stay as written";
+  };
+
+  "the scanner refuses a temporary string it would outlive"_test = [] {
+    using ce::json::detail::batch_data_slices;
+    using ce::json::detail::json_slicer;
+    static_assert(!std::is_constructible_v<json_slicer, std::string>);
+    static_assert(!std::is_constructible_v<batch_data_slices, std::string>);
+    static_assert(!slices_text<std::string>);
+    static_assert(std::is_constructible_v<json_slicer, const std::string&>);
+    static_assert(std::is_constructible_v<batch_data_slices, const std::string&>);
+    static_assert(slices_text<const std::string&>);
+    static_assert(std::is_constructible_v<json_slicer, const char*>);
+    static_assert(slices_text<std::string_view>);
+    expect(true);
+  };
+
+  "the scanner finds a string's end at every offset in a long string"_test = [] {
+    using ce::json::detail::data_member_text;
+    // Longer than two machine words, so every special character lands at each
+    // position within a word and across a word boundary.
+    constexpr std::size_t words_spanned = 3;
+    constexpr std::size_t body_length = (words_spanned * sizeof(std::uint64_t)) + 1;
+    const std::string plain(body_length, 'x');
+    for (std::size_t offset = 0; offset <= body_length; ++offset) {
+      const auto with = [&](std::string_view inserted) {
+        return "\"" + plain.substr(0, offset) + std::string{inserted} + plain.substr(offset) + "\"";
+      };
+      for (const auto special : {R"(\")"sv, R"(\\)"sv, R"(\u00e9)"sv, "]}"sv, "\x7f"sv, "\xc3\xa9"sv}) {
+        const auto payload = with(special);
+        const auto event = R"({"data":)" + payload + "}";
+        expect(data_member_text(event) == std::optional<std::string_view>{payload})
+            << "a string holding " << special << " at " << offset;
+      }
+      for (const auto refused : {"\n"sv, "\x1f"sv, std::string_view{"\0", 1}, R"(\q)"sv}) {
+        const auto event = R"({"data":)" + with(refused) + "}";
+        expect(!data_member_text(event).has_value())
+            << "a string refused at " << offset;
+      }
+      const auto unterminated = R"({"data":")" + plain.substr(0, offset);
+      expect(!data_member_text(unterminated).has_value())
+          << "an unterminated string of " << offset;
+    }
+  };
+
+  "the batch scanner loses its place only for the rest of the batch"_test = [] {
+    ce::json::detail::batch_data_slices slices{R"([{"data":1},{"data":[2,]},{"data":3}])"};
+    expect(slices.next() == std::optional<std::string_view>{"1"});
+    expect(!slices.next().has_value()) << "the element it cannot read";
+    expect(!slices.next().has_value()) << "every element after it";
+
+    ce::json::detail::batch_data_slices not_a_batch{R"({"data":1})"};
+    expect(!not_a_batch.next().has_value());
+  };
 };
 
 /// mini_codec that counts the deep copies and member moves the decoder asks for.

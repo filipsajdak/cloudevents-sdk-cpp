@@ -83,7 +83,12 @@ using ce::v3::skip;
 using ce::v3::base64_decode;
 using ce::v3::base64_encode;
 using ce::v3::data_as;
+using ce::v3::decode_as;
+using ce::v3::decode_batch_as;
+using ce::v3::decoded;
+using ce::v3::encode_as;
 using ce::v3::event_of;
+using ce::v3::from_value_as;
 using ce::v3::from_json_value;
 using ce::v3::json_format;
 using ce::v3::set_data;
@@ -92,6 +97,7 @@ using ce::v3::to_json_value;
 namespace json {
 using ce::v3::json::batch_content_type;
 using ce::v3::json::content_type;
+using ce::v3::json::decode_options;
 using ce::v3::json::json_codec;
 using ce::v3::json::kind;
 }  // namespace json

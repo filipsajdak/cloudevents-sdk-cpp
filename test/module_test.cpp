@@ -54,8 +54,9 @@
   X(valid_attribute_name)           \
   X(backend_of) X(describe_backend) X(described) X(field_count) X(field_names)                   \
   X(for_each_field) X(members_supported) X(name) X(reflect) X(skip)                              \
-  X(base64_decode) X(base64_encode) X(data_as) X(event_of) X(from_json_value) X(json_format)     \
-  X(set_data) X(to_json_value)
+  X(base64_decode) X(base64_encode) X(data_as) X(decode_as) X(decode_batch_as) X(decoded)       \
+  X(encode_as) X(event_of) X(from_json_value) X(from_value_as) X(json_format) X(set_data)        \
+  X(to_json_value)
 
 namespace {
 
@@ -75,7 +76,7 @@ constexpr std::array exported_names{CE_MODULE_EXPORTS(CE_NAME_STRING)};
 /// Names exported from a nested namespace inside the module. Checked for
 /// presence in the file, and their existence is proven by the includes above.
 constexpr std::array nested_exports{
-    "ce::v3::json::json_codec"sv, "ce::v3::json::kind"sv,
+    "ce::v3::json::json_codec"sv, "ce::v3::json::kind"sv, "ce::v3::json::decode_options"sv,
     "ce::v3::http::from_message"sv, "ce::v3::http::to_message"sv,
     "ce::v3::ext::tracing"sv,       "ce::v3::ext::dataref"sv,
     "ce::v3::binding::binding_traits"sv,

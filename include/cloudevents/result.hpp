@@ -57,8 +57,8 @@ enum class errc : std::uint8_t {
 // spec: SWR-CORE-0028
 struct static_error {
   errc code;
-  std::string_view detail = {};
-  std::string_view where = {};
+  std::string_view detail = {};  // NOLINT(scudoai-copy-view-member)
+  std::string_view where = {};   // NOLINT(scudoai-copy-view-member)
 
   friend auto operator==(const static_error&, const static_error&) -> bool = default;
 };

@@ -32,7 +32,7 @@ class literal {
     }
   }
 
-  std::string_view text_;
+  std::string_view text_;  // NOLINT(scudoai-copy-view-member)
 };
 
 template <class Policy>
@@ -119,7 +119,7 @@ class validated_string {
   validated_string() = default;
 
   std::string owned_;
-  std::string_view borrowed_;
+  std::string_view borrowed_;  // NOLINT(scudoai-copy-view-member)
 };
 
 }  // namespace ce::v2::detail

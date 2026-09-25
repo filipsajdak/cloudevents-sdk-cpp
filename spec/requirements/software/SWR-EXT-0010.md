@@ -2,7 +2,7 @@
 uid: SWR-EXT-0010
 title: encode_as writes a typed payload without an intermediate text form
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A producer that calls set_data and then encode serialises the payload to text, parses it, and serialises the document.
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp, code:include/cloudevents/format/json_format.hpp]
+verified_by: [test:test/typed_payload_test.cpp::encode-as-writes-the-payload-dom]
 owner: filip.sajdak
 version: 2
 ---

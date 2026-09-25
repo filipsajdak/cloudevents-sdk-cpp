@@ -172,9 +172,8 @@ void decode_batch_as_100(benchmark::State& state) {
 template<class C>
 void encode_as_full(benchmark::State& state) {
   for (auto _ : state) {
-    ce::event subject = ce::bench::full_event();
-    ce::set_data<ce::bench::placed, C>(subject, ce::bench::typed_placed());
-    auto text = ce::json_format<C>::encode(subject);
+    auto text =
+        ce::encode_as<ce::bench::placed, C>(ce::bench::full_event(), ce::bench::typed_placed());
     benchmark::DoNotOptimize(text);
   }
 }

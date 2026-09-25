@@ -46,38 +46,11 @@ struct json_format {
   static constexpr std::string_view batch_content_type = json::batch_content_type;
 
   [[nodiscard]] static auto to_value(const event& cloud_event) -> result<value> {
-    auto root = Codec::make_object();
-    Codec::set(root, "specversion", Codec::make_string(spec_version::view()));
-    Codec::set(root, "id", Codec::make_string(cloud_event.id().view()));
-    Codec::set(root, "source", Codec::make_string(cloud_event.source().view()));
-    Codec::set(root, "type", Codec::make_string(cloud_event.type().view()));
-
-    if (const auto& media_type = cloud_event.datacontenttype(); media_type) {
-      Codec::set(root, "datacontenttype", Codec::make_string(media_type->view()));
-    }
-    if (const auto& schema = cloud_event.dataschema(); schema) {
-      Codec::set(root, "dataschema", Codec::make_string(schema->view()));
-    }
-    if (const auto& named = cloud_event.subject(); named) {
-      Codec::set(root, "subject", Codec::make_string(named->view()));
-    }
-    if (const auto& when = cloud_event.time(); when) {
-      Codec::set(root, "time", Codec::make_string(to_string(*when)));
-    }
-
-    for (const auto& [name, attribute] : cloud_event.extensions()) {
-      auto encoded = encode_attribute(attribute);
-      if (!encoded) {
-        return fail(encoded.error().code, encoded.error().detail, name.str());
-      }
-      Codec::set(root, name.view(), std::move(*encoded));
-    }
-
-    if (auto stored = encode_data(root, cloud_event.data()); !stored) {
-      return fail(stored.error().code, stored.error().detail, stored.error().where);
-    }
-
-    return root;
+    const auto& media_type = cloud_event.datacontenttype();
+    return to_value_writing(
+        cloud_event,
+        media_type ? std::optional<std::string_view>{media_type->view()} : std::nullopt,
+        [&cloud_event](value& root) { return encode_data(root, cloud_event.data()); });
   }
 
   [[nodiscard]] static auto encode(const event& cloud_event) -> result<std::string> {
@@ -187,6 +160,44 @@ struct json_format {
   enum class payload_mode : std::uint8_t { text, copy, move };
 
   struct keep_event {};
+
+  template<class WriteData>
+  [[nodiscard]] static auto to_value_writing(const event& cloud_event,
+                                             std::optional<std::string_view> media_type,
+                                             WriteData write_data) -> result<value> {
+    auto root = Codec::make_object();
+    Codec::set(root, "specversion", Codec::make_string(spec_version::view()));
+    Codec::set(root, "id", Codec::make_string(cloud_event.id().view()));
+    Codec::set(root, "source", Codec::make_string(cloud_event.source().view()));
+    Codec::set(root, "type", Codec::make_string(cloud_event.type().view()));
+
+    if (media_type) {
+      Codec::set(root, "datacontenttype", Codec::make_string(*media_type));
+    }
+    if (const auto& schema = cloud_event.dataschema(); schema) {
+      Codec::set(root, "dataschema", Codec::make_string(schema->view()));
+    }
+    if (const auto& named = cloud_event.subject(); named) {
+      Codec::set(root, "subject", Codec::make_string(named->view()));
+    }
+    if (const auto& when = cloud_event.time(); when) {
+      Codec::set(root, "time", Codec::make_string(to_string(*when)));
+    }
+
+    for (const auto& [name, attribute] : cloud_event.extensions()) {
+      auto encoded = encode_attribute(attribute);
+      if (!encoded) {
+        return fail(encoded.error().code, encoded.error().detail, name.str());
+      }
+      Codec::set(root, name.view(), std::move(*encoded));
+    }
+
+    if (auto stored = write_data(root); !stored) {
+      return fail(stored.error().code, stored.error().detail, stored.error().where);
+    }
+
+    return root;
+  }
 
   template<class Out, class Read>
   [[nodiscard]] static auto from_value_reading(const value& document, Read read) -> result<Out> {
@@ -703,6 +714,17 @@ struct typed_entry {
   template<class Out, class Read>
   [[nodiscard]] static auto from_value(const value& document, Read read) -> result<Out> {
     return format::template from_value_reading<Out>(document, std::move(read));
+  }
+
+  // spec: SWR-EXT-0010
+  [[nodiscard]] static auto to_value(const event& cloud_event,
+                                     std::string_view media_type,
+                                     value payload) -> result<value> {
+    return format::to_value_writing(
+        cloud_event, media_type, [&payload](value& root) -> result<void> {
+          Codec::set(root, "data", std::move(payload));
+          return {};
+        });
   }
 };
 }  // namespace json::detail

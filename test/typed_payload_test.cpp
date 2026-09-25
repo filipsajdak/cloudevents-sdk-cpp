@@ -768,6 +768,85 @@ const boost::ut::suite<"from-value-as-reads-a-parsed-document"> from_value_as_su
   "mini_codec"_test = [] { check_from_value_as<mini_codec>("mini_codec"); };
 };
 
+// --- SWR-EXT-0010 -----------------------------------------------------------
+
+template<class Base>
+void check_encode_as(std::string_view label) {
+  using namespace boost::ut;
+  using counted = counting_codec<Base>;
+  using format = ce::json_format<counted>;
+
+  const reading sent = sample();
+  const auto written = [&](ce::event::options rest) {
+    return ce::event{"id-1"_id,
+                     "/spec/test"_source,
+                     "com.example.thing"_type,
+                     ce::event::options{
+                         .datacontenttype = std::move(rest.datacontenttype),
+                         .subject = "s"_subject,
+                         .extensions = {{"partitionkey"_ext, std::string{"k"}}},
+                         .data = std::move(rest.data),
+                     }};
+  };
+
+  // No datacontenttype, and a payload encode_as replaces: the output is the
+  // event set_data would write, with no payload text in between.
+  const ce::event subject = written({.data = ce::binary{std::byte{0x01}}});
+  const ce::event untouched = subject;
+  counted::reset();
+  const auto text = ce::encode_as<reading, counted>(subject, sent);
+  expect(text.has_value()) << label;
+  expect(counted::counts().parses == 0U) << label << ": encode_as parsed the payload";
+  expect(counted::counts().dumps == 1U) << label << ": only the output document is serialised";
+  expect(bool{subject == untouched}) << label << ": encode_as modified the event";
+
+  ce::event two_steps = subject;
+  ce::set_data<reading, counted>(two_steps, sent);
+  const auto expected_text = format::encode(two_steps);
+  expect(expected_text.has_value()) << label;
+  if (text && expected_text) {
+    const auto produced = counted::parse(*text);
+    const auto expected = counted::parse(*expected_text);
+    expect(produced.has_value() && expected.has_value() && counted::equal(*produced, *expected))
+        << label << ": the output is what set_data then encode writes";
+    const auto* media_type = produced ? counted::find(*produced, "datacontenttype") : nullptr;
+    const auto media_text =
+        media_type != nullptr ? counted::as_string(*media_type) : ce::result<std::string_view>{};
+    expect(media_text.has_value() && *media_text == "application/json") << label;
+    expect(produced && counted::find(*produced, "data_base64") == nullptr) << label;
+    const auto decoded = ce::decode_as<reading, counted>(*text);
+    expect(decoded.has_value() && same(decoded->payload, sent)) << label;
+  }
+
+  // A JSON datacontenttype is kept.
+  for (const auto declared :
+       {"application/json"_mediatype, "application/vnd.example+json"_mediatype}) {
+    const auto kept = ce::encode_as<reading, counted>(written({.datacontenttype = declared}), sent);
+    expect(kept.has_value()) << label;
+    if (kept) {
+      const auto reread = format::decode(*kept);
+      expect(reread.has_value() && reread->datacontenttype() == declared) << label;
+    }
+  }
+
+  // Any other datacontenttype would describe the output wrongly.
+  const auto refused = ce::encode_as<reading, counted>(
+      written({.datacontenttype = "text/plain"_mediatype, .data = std::string{"x"}}), sent);
+  expect(!refused.has_value()) << label;
+  if (!refused) {
+    expect(refused.error().code == ce::errc::type_mismatch) << label;
+    expect(refused.error().where == "datacontenttype") << label;
+  }
+}
+
+// spec: SWR-EXT-0010
+const boost::ut::suite<"encode-as-writes-the-payload-dom"> encode_as_suite = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_encode_as<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_encode_as<mini_codec>("mini_codec"); };
+};
+
 // --- SWR-EXT-0006 -----------------------------------------------------------
 
 // spec: SWR-EXT-0006

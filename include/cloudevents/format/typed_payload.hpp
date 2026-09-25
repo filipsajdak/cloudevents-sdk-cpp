@@ -110,6 +110,26 @@ template<described T, json::json_codec Codec>
       document, detail::typed_read<T, Codec>);
 }
 
+// spec: SWR-EXT-0010
+template<described T, json::json_codec Codec>
+[[nodiscard]] auto encode_as(const event& cloud_event, const T& payload) -> result<std::string> {
+  std::string_view media_type = "application/json";
+  if (const auto& declared = cloud_event.datacontenttype(); declared) {
+    if (!is_json_content_type(declared->view())) {
+      return fail(errc::type_mismatch,
+                  "a typed payload is JSON but datacontenttype says otherwise",
+                  "datacontenttype");
+    }
+    media_type = declared->view();
+  }
+  auto document = json::detail::typed_entry<Codec>::to_value(
+      cloud_event, media_type, to_json_value<Codec>(payload));
+  if (!document) {
+    return fail(document.error().code, document.error().detail, document.error().where);
+  }
+  return Codec::dump(*document);
+}
+
 // spec: SWR-EXT-0011
 template<described T, json::json_codec Codec>
 void set_data(event& cloud_event, const T& value) {

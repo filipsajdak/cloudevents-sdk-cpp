@@ -49,6 +49,15 @@ No external service, account or token is involved.
 A pull request that needs more instructions, an allocation or more retained memory raises the budget in `bench/budgets.json` in the same change.
 The reviewer then sees the cost as a diff line, not as a red job.
 
+**A pull request may accept a regression against main by label, within budget.**
+Some changes trade a measure on purpose and stay inside a budget that was never tightened, such as a lower document-retention default that sends large events back to the text path: more instructions and allocations than main, still under the limits.
+Raising a budget there only to signal acceptance would be bookkeeping, not a real limit.
+Such a pull request carries the GitHub label `perf: accepted`, which anyone with triage rights on the repository can add, and says why in its description.
+With the label, a growth over main in instructions, allocations or retained bytes (`SWR-PERF-0001` to `SWR-PERF-0003`) is reported as accepted and does not fail the job; the budgets (`SWR-PERF-0004`) still fail it, and binary size still only warns.
+The table and the comment say the pull request ran with the label and list each accepted growth, so the acceptance is visible where the cost is.
+A label rather than a file, because the acceptance belongs to one pull request and has nothing to say once it merges: a file in the tree would outlive it and accept the next regression too.
+Raise the budget instead when the new level should be the standard.
+
 ## Consequences
 
 ### Positive
@@ -63,6 +72,8 @@ The reviewer then sees the cost as a diff line, not as a red job.
   Wall time remains the measure of record for a release, taken on quiet hardware.
 - Glaze is not packaged on the CI image, so the job builds a pinned release from source.
 - A comment from a fork's pull request needs a separate, privileged workflow; until one exists, forks see the table in the job summary only.
+- An acceptance by label lives in GitHub, not in the repository history: `git log` does not show that a regression was accepted, only the pull request and its perf comment do.
+  The owner accepted this on 2026-09-25, because the alternative was raising budgets that were not real limits.
 
 ### Neutral
 - `bench/README.md` stays the place for the one-off codec comparison on quiet hardware; this job answers a different question, "did this change make it worse".

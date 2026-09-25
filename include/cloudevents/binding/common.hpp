@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -98,6 +99,20 @@ template <binding_traits T>
     }
   }
   return name;
+}
+
+[[nodiscard]] inline auto text_attribute(const attribute_value& value) noexcept
+    -> std::optional<std::string_view> {
+  if (const auto* text = std::get_if<std::string>(&value)) {
+    return *text;
+  }
+  if (const auto* link = std::get_if<uri>(&value)) {
+    return link->view();
+  }
+  if (const auto* reference = std::get_if<uri_ref>(&value)) {
+    return reference->view();
+  }
+  return std::nullopt;
 }
 
 // spec: SWR-BIND-0005
@@ -205,7 +220,11 @@ template <binding_traits T>
     put_attribute("time", to_string(*when));
   }
   for (const auto& [name, attribute] : cloud_event.extensions()) {
-    put_attribute(name.view(), render_attribute(attribute));
+    if (const auto text = detail::text_attribute(attribute); text) {
+      put_attribute(name.view(), *text);
+    } else {
+      put_attribute(name.view(), render_attribute(attribute));
+    }
   }
 
   if (!failure) {

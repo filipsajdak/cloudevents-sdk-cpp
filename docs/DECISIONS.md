@@ -1280,6 +1280,57 @@ may hold unescaped. The word constants follow from the word's type:
 `every_byte_one` is the word's maximum divided by the byte's, and
 `every_byte_high_bit` shifts it by one less than the bits in a byte.
 
+## D-JSON-8: The typed entry points reach the event reader through one friend
+
+`decode_as`, `decode_batch_as`, `from_value_as` and `encode_as` live in
+`format/typed_payload.hpp`, and `json_format.hpp` names no describe type
+(ADR-0010). They need what `json_format` does privately: the event read, the
+retention rule and the scanner's text. `json_format` therefore declares one
+friend, `json::detail::typed_entry<Codec>`, defined in `json_format.hpp`, with
+four static functions and no state. `decode`, `decode_batch` and `from_value`
+run through the same private readers the friend uses, each handing the event
+and, where the payload stayed in the parsed document, its `data` member to a
+reader. So the event read exists once, and a typed decode reads exactly the
+event an untyped one does.
+
+A public generic reader on `json_format` was rejected: it would put a callback
+shape into the format's public contract. Duplicating the read in
+`typed_payload.hpp` was rejected because the two would drift.
+
+The payload of a decode is read from the parsed member only when the member is
+still in the document: above the retention limit, and in `from_value_as`.
+Within the limit the member is moved into the event's `json_document`, so the
+payload is read from that document with `get<Codec>()`, which is the same DOM.
+Every other case falls to `data_as`, so the typed failures are its failures by
+construction.
+
+## D-JSON-9: `encode_as` refuses a non-JSON media type rather than replace it
+
+`encode_as` writes a JSON payload. An event whose `datacontenttype` says
+`text/plain` would describe the output wrongly, so it fails with
+`type_mismatch` at `datacontenttype`, and never rewrites an attribute the
+caller set. An absent `datacontenttype` becomes `application/json`, as
+`set_data` sets it, and any JSON media type (`application/json` or a `+json`
+suffix) is kept. Whatever payload the event carried is left out of the output.
+The owner decided this on 2026-09-24 (SWR-EXT-0010).
+
+## D-PERF-1: The typed read measures a payload its own codec wrote
+
+`typed_payload_read/<codec>` read an event whose payload `set_data` wrote with
+nlohmann, for every codec. Once `set_data` stores a `json_document`, that
+workload measures, for RapidJSON, Boost.JSON and Glaze, a nlohmann document
+converted through text: a cross-codec path, not the typed read. The operation
+now reads a payload `set_data` wrote with the reading codec, which is the path
+CR-0003's acceptance names. The new `typed_payload_read_document` reads a
+document the reading codec built directly.
+
+The typed entry points are measured as `decode_as_full`, `decode_as_large`,
+`decode_batch_as_100` and `encode_as_full`. The describe seam has no field type
+for an object of mixed member types, so the full event's payload is read as its
+three scalar members and the large event's as a type whose one optional member
+is absent: that operation measures the event and the retention path, not
+payload fields.
+
 ## D-TIDY-5: The v2 copies are outside the clang-tidy gate
 
 `include/cloudevents/v2/` holds what v0.4.0 published, copied for ADR-0010.

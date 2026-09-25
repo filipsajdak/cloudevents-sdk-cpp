@@ -7,6 +7,7 @@
 #include "equality.hpp"
 #include "mini_codec.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -191,6 +192,52 @@ const boost::ut::suite<"binding-core-emission-order"> binding_core_emission_orde
         "x_subject",     "x_time",  "x_alpha",  "x_beta", "content-type",
     };
     expect(field_names(fields) == expected);
+  };
+
+  // String, URI and URI-reference extensions reach the value codec as views of
+  // the event's own text; every other type is rendered first. Both paths must
+  // write what render_attribute says the value is.
+  "every extension type is written as render_attribute renders it"_test = [] {
+    const auto when = ce::parse_timestamp("2026-09-21T00:00:00Z");
+    expect(when.has_value());
+    if (!when) {
+      return;
+    }
+    const ce::event subject = base_event({
+        .extensions =
+            {
+                {"text"_ext, std::string{"plain text"}},
+                {"empty"_ext, std::string{}},
+                {"link"_ext, ce::uri{"https://example.test/x"}},
+                {"relref"_ext, ce::uri_ref{"/relative"}},
+                {"flag"_ext, true},
+                {"count"_ext, std::int32_t{-7}},
+                {"blob"_ext, ce::binary{std::byte{0x01}, std::byte{0xFF}}},
+                {"seen"_ext, *when},
+            },
+    });
+
+    ce::raw_headers fields;
+    expect(bool{binding::write_attributes<exact_traits>(subject, fields)});
+    for (const auto& [name, attribute] : subject.extensions()) {
+      const std::string* written = fields.find_exact(std::string{"x_"}.append(name.view()));
+      expect(written != nullptr) << name.view();
+      if (written != nullptr) {
+        expect(*written == binding::render_attribute(attribute)) << name.view();
+      }
+    }
+  };
+
+  "an extension string the value codec refuses is still refused"_test = [] {
+    const ce::event subject = base_event({.extensions = {{"bad"_ext, std::string{"\xC3"}}}});
+
+    ce::raw_headers fields;
+    const auto written = binding::write_attributes<exact_traits>(subject, fields);
+    expect(!written.has_value());
+    if (!written) {
+      expect(written.error().code == ce::errc::invalid_utf8);
+      expect(written.error().where == "bad"sv);
+    }
   };
 
   "the content type is the only unprefixed field"_test = [] {

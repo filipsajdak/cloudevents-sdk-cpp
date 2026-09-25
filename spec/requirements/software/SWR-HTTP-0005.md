@@ -12,7 +12,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-HTTP-0001]
 satisfied_by: [code:include/cloudevents/binding/http.hpp]
-verified_by: [test:test/http_binding_test.cpp::batched-variants]
+verified_by: [test:test/http_binding_test.cpp::batched-variants, test:test/http_binding_test.cpp::structured-body-read-in-place]
 owner: filip.sajdak
 version: 1
 ---

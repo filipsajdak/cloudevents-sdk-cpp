@@ -6,9 +6,10 @@ The design is ADR-0011; the rules are `SWR-PERF-0001` to `SWR-PERF-0007`.
 
 ## What is measured
 
-Nine operations, each with the four bench codecs (nlohmann, RapidJSON, Boost.JSON and Glaze):
+Fourteen operations, each with the four bench codecs (nlohmann, RapidJSON, Boost.JSON and Glaze):
 decode of a minimal, a full and a large event, encode of the full event, a round trip, a batch of 100 each way, and a typed payload read and write.
-They are the operations `bench/codec_bench.cpp` times, over the documents in `bench/documents.hpp`.
+Five more go through the bindings with the full event: HTTP binary-mode decode and encode, HTTP structured decode, and Kafka and NATS binary-mode decode.
+The first nine are the operations `bench/codec_bench.cpp` times, over the documents in `bench/documents.hpp`.
 
 | measure | how | on the pull request |
 |---|---|---|

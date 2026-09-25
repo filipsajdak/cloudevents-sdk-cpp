@@ -14,7 +14,7 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-MSG-0001]
-satisfied_by: [code:include/cloudevents/message.hpp]
+satisfied_by: [code:include/cloudevents/message.hpp, code:include/cloudevents/binding/common.hpp]
 verified_by: [test:test/message_headers_test.cpp::headers-adopt-refuses-a-repeated-attribute]
 owner: filip.sajdak
 version: 1

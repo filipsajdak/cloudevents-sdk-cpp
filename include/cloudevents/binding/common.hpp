@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -27,6 +28,11 @@ concept binding_traits = requires(std::string_view text) {
 };
 
 namespace detail {
+
+[[nodiscard]] inline auto text_of(const binary& body) noexcept -> std::string_view {
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  return {reinterpret_cast<const char*>(body.data()), body.size()};
+}
 
 template <class T>
 concept declares_content_type_as_attribute = requires {
@@ -62,6 +68,28 @@ template <binding_traits T>
   }
 }
 
+// spec: SWR-MSG-0004
+template <binding_traits T>
+[[nodiscard]] auto same_field_name(std::string_view left, std::string_view right) -> bool {
+  if constexpr (T::case_sensitive_names) {
+    return left == right;
+  } else {
+    return ce::v3::detail::iequals(left, right);
+  }
+}
+
+template <binding_traits T>
+[[nodiscard]] auto first_repeated_name(const raw_headers& delivered) -> const std::string* {
+  for (auto later = delivered.begin(); later != delivered.end(); ++later) {
+    for (auto earlier = delivered.begin(); earlier != later; ++earlier) {
+      if (same_field_name<T>(earlier->first, later->first)) {
+        return &later->first;
+      }
+    }
+  }
+  return nullptr;
+}
+
 template <binding_traits T>
 [[nodiscard]] auto attribute_name_of(std::string_view field) -> std::string {
   std::string name{field.substr(std::string_view{T::attribute_prefix}.size())};
@@ -71,6 +99,20 @@ template <binding_traits T>
     }
   }
   return name;
+}
+
+[[nodiscard]] inline auto text_attribute(const attribute_value& value) noexcept
+    -> std::optional<std::string_view> {
+  if (const auto* text = std::get_if<std::string>(&value)) {
+    return *text;
+  }
+  if (const auto* link = std::get_if<uri>(&value)) {
+    return link->view();
+  }
+  if (const auto* reference = std::get_if<uri_ref>(&value)) {
+    return reference->view();
+  }
+  return std::nullopt;
 }
 
 // spec: SWR-BIND-0005
@@ -178,7 +220,11 @@ template <binding_traits T>
     put_attribute("time", to_string(*when));
   }
   for (const auto& [name, attribute] : cloud_event.extensions()) {
-    put_attribute(name.view(), render_attribute(attribute));
+    if (const auto text = detail::text_attribute(attribute); text) {
+      put_attribute(name.view(), *text);
+    } else {
+      put_attribute(name.view(), render_attribute(attribute));
+    }
   }
 
   if (!failure) {
@@ -197,16 +243,15 @@ template <binding_traits T>
 
 template <binding_traits T>
 [[nodiscard]] auto read_attributes(const raw_headers& delivered) -> result<event::builder> {
-  auto adopted = headers::adopt(delivered, T::case_sensitive_names
-                                               ? name_matching::case_sensitive
-                                               : name_matching::case_insensitive);
-  if (!adopted) {
-    return fail(adopted.error().code, adopted.error().detail, adopted.error().where);
+  if (const std::string* repeated = detail::first_repeated_name<T>(delivered);
+      repeated != nullptr) {
+    return fail(errc::invalid_argument,
+                "two fields carry the same attribute, so which one is meant is undecidable",
+                *repeated);
   }
-  const headers& fields = *adopted;
 
   event::builder under_construction{};
-  for (const auto& [name, raw_value] : fields) {
+  for (const auto& [name, raw_value] : delivered) {
     if (!detail::carries_prefix<T>(name)) {
       continue;
     }
@@ -270,7 +315,7 @@ template <binding_traits T, json::json_codec Codec>
 
 template <json::json_codec Codec>
 [[nodiscard]] auto decode_structured(const message& from) -> result<event> {
-  return json_format<Codec>::decode(to_text(from.body));
+  return json_format<Codec>::decode(detail::text_of(from.body));
 }
 
 }  // namespace ce::inline v3::binding

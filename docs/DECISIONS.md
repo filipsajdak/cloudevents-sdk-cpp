@@ -836,6 +836,25 @@ a Homebrew Boost is built against libc++, so a GCC/libstdc++ build compiles the
 header and then fails to link on mangling differences. That is an ABI mismatch,
 not a defect, and the guide says so.
 
+## D-CODEC-3: A body-only performance change is a fix for the frozen generations
+
+The three codecs are declared once in `ce::v1` and serve every generation
+(ADR-0009), and `ce::v1` and `ce::v2` take fixes that keep their declarations.
+A change to a function body that keeps every declaration, and keeps what each
+function returns for every input, counts as such a fix. A needless copy is a
+defect of the implementation, not of the published interface: no caller can
+name it, and removing it changes no signature, type or result.
+
+So `nlohmann_codec::find` and `extract` look a member up with the key as a
+`std::string_view` instead of building a `std::string` for every lookup
+(nlohmann 3.11 added the heterogeneous overloads, and 3.12.0 is the floor), and
+`rapidjson_codec::dump` writes straight into the `std::string` it returns instead
+of into a `StringBuffer` that is then copied. The string starts at the capacity
+`StringBuffer` starts at, and grows by doubling.
+
+A change that alters a declaration, or what a function returns, is still not a
+fix and still needs a change request.
+
 ## D-BUILD-3: A codec header may carry a conditional that only refuses
 
 `SWR-BUILD-0002` keeps capability gating in `detail/config.hpp`, because gating
@@ -1302,6 +1321,11 @@ than prose. Its reason is here.
 | `describe.hpp`, `name::value` | avoid-c-arrays | the describe seam is shared with `ce::v1`, which published `char value[N]` in v0.3.0 and keeps that declaration (ADR-0009) |
 | `describe.hpp`, `for_each_field` (both overloads) | missing-std-forward | v0.3.0 published the visitor as `F&&`, which `ce::v1` keeps; it is called once per member, so forwarding it would move from it more than once |
 | `format/base64.hpp`, `base64_character` | pro-bounds-avoid-unchecked-container-access | the mask bounds the index, and a `static_assert` keeps the alphabet exactly as long as the mask allows |
+| `binding/common.hpp`, `detail::text_of` | pro-type-reinterpret-cast | a structured or batched body is parsed through a `std::string_view` over the message's own bytes instead of a copy of them. Reading `std::byte` storage through `const char*` is defined because `char` may alias any object (`[basic.lval]`), both types are one byte, and the view only reads. It lives as long as the `message` it views, which the decode call holds by reference |
+| `detail/describe_macro.hpp`, `field::name` | scudoai-copy-view-member | the name is a string literal the macro writes: the stringised member name, or the wire name `CE_FIELD` passes. A literal has static storage, so the view outlives every `field`. The header is shared with `ce::v1`; a NOLINT is a comment and keeps the declaration (ADR-0009) |
+| `detail/validated_string.hpp`, `literal::text_` | scudoai-copy-view-member | both constructors are `consteval`, so the pointer is a constant expression, and a pointer in a constant expression can only point to an object with static storage duration |
+| `detail/validated_string.hpp`, `validated_string::borrowed_` | scudoai-copy-view-member | it views either a `literal`'s static text or the object's own `owned_`. Each copy and move operation re-points it at the new object's `owned_` whenever that is not empty, and an owning instance is never empty because every policy refuses the empty string; the test "an owning instance is never empty" pins that |
+| `result.hpp`, `static_error::detail` and `where` | scudoai-copy-view-member | the library fills them only with string literals and with attribute names that are themselves literals, and `widen` copies both into an owning `error` before a diagnosis leaves the check that made it. The header is shared with `ce::v1`; a NOLINT is a comment and keeps the declaration (ADR-0009) |
 | `format/detail/json_slice.hpp`, `json_slicer::text_`, `object_member::name` and `value` | scudoai-copy-view-member | each view borrows the input of one decode call, which outlives the slicer; see D-CODE-1 for how a temporary is refused |
 | `format/detail/json_slice.hpp`, `json_slicer::at` | pro-bounds-avoid-unchecked-container-access | the index is compared with the size on the same line, and past the end `at` returns `'\0'`, which every caller treats as a character it does not accept |
 | `format/detail/json_slice.hpp`, `class_of` | pro-bounds-avoid-unchecked-container-access, pro-bounds-constant-array-index | the index is an `unsigned char`, and the table has one entry for every value it can hold |

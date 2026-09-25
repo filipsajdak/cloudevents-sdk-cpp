@@ -98,6 +98,20 @@ const boost::ut::suite<"attribute-types-refuse-invalid-text"> attribute_types_re
   // --- the storage, which is where a mistake is a crash rather than a wrong
   // answer. owned_ empty means the text is borrowed from a literal; any copy or
   // move has to re-point the view or leave it pointing into a moved-from string.
+  // An empty owned_ is how the storage tells a borrowed value from an owned one,
+  // so an owning value whose text were empty would be copied as if borrowed and
+  // keep viewing the original's buffer. Every rule refusing the empty string is
+  // what makes that state unreachable.
+  "an owning instance is never empty"_test = [] {
+    expect(!ce::id::make(std::string{}).has_value());
+    expect(!ce::source::make(std::string{}).has_value());
+    expect(!ce::type::make(std::string{}).has_value());
+    expect(!ce::subject::make(std::string{}).has_value());
+    expect(!ce::dataschema::make(std::string{}).has_value());
+    expect(!ce::datacontenttype::make(std::string{}).has_value());
+    expect(!ce::extension_name::make(std::string{}).has_value());
+  };
+
   "a borrowed value survives being copied and moved"_test = [] {
     const ce::id borrowed = "A234-1234"_id;
     expect(borrowed.view() == "A234-1234"sv);

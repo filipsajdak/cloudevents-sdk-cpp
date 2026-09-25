@@ -16,7 +16,7 @@ struct describe_tag {};
 
 template <class T, class M>
 struct field {
-  std::string_view name;
+  std::string_view name;  // NOLINT(scudoai-copy-view-member)
   M T::* ptr;
 };
 

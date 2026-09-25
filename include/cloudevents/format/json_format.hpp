@@ -190,9 +190,11 @@ struct json_format {
 
     // The batch owns its parsed array, so each element's data member is moved
     // into its event, as decode moves the one member of a single event.
-    const auto mode = retains_batch(text, Codec::size_of(*document), options) ? payload_mode::move
-                                                                              : payload_mode::text;
+    const std::size_t event_count = Codec::size_of(*document);
+    const auto mode =
+        retains_batch(text, event_count, options) ? payload_mode::move : payload_mode::text;
     std::vector<event> events;
+    events.reserve(event_count);
     result<void> element_error{};
     json::detail::batch_data_slices own_texts{text};
     Codec::for_each_mutable_element(*document, [&](value& element) {

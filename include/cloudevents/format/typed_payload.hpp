@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -8,6 +9,7 @@
 #include <cloudevents/describe.hpp>
 #include <cloudevents/format/describe_json.hpp>
 #include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/format/json_format.hpp>
 #include <cloudevents/result.hpp>
 
 // spec: SWR-EXT-0006
@@ -62,6 +64,34 @@ template<described T, json::json_codec Codec>
   }
 
   return detail::payload_from<T, Codec>(*document);
+}
+
+// spec: SWR-EXT-0007
+template<class T>
+struct decoded {
+  ce::v3::event event;
+  T payload;
+};
+
+namespace detail {
+template<described T, json::json_codec Codec>
+[[nodiscard]] auto typed_read(event&& cloud_event, const typename Codec::value* json_member)
+    -> result<decoded<T>> {
+  auto payload = json_member != nullptr ? payload_from<T, Codec>(*json_member)
+                                        : data_as<T, Codec>(cloud_event);
+  if (!payload) {
+    return fail(payload.error().code, payload.error().detail, payload.error().where);
+  }
+  return decoded<T>{.event = std::move(cloud_event), .payload = std::move(*payload)};
+}
+}  // namespace detail
+
+// spec: SWR-EXT-0007
+template<described T, json::json_codec Codec>
+[[nodiscard]] auto decode_as(std::string_view text, json::decode_options options = {})
+    -> result<decoded<T>> {
+  return json::detail::typed_entry<Codec>::template decode<decoded<T>>(
+      text, options, detail::typed_read<T, Codec>);
 }
 
 // spec: SWR-EXT-0011

@@ -492,6 +492,137 @@ const boost::ut::suite<"set-data-stores-a-document"> set_data_stores_a_document 
   "mini_codec"_test = [] { check_set_data_stores_a_document<mini_codec>("mini_codec"); };
 };
 
+// --- SWR-EXT-0007 -----------------------------------------------------------
+
+constexpr std::string_view sample_payload_text =
+    R"({"sensor":"s-1","celsius":-7,"calibrated":true,"drift":0.25,"note":"recalibrated",)"
+    R"("tags":["outdoor","north"],"labels":{"site":"oslo","rack":"3"}})";
+
+[[nodiscard]] auto event_text(std::string_view members) -> std::string {
+  return std::string{R"({"specversion":"1.0","id":"id-1","source":"/spec/test",)"} +
+         R"("type":"com.example.thing")" + std::string{members} + "}";
+}
+
+[[nodiscard]] auto sample_event_text() -> std::string {
+  return event_text(R"(,"datacontenttype":"application/json","data":)" +
+                    std::string{sample_payload_text});
+}
+
+/// decode_as must fail where decode and data_as fail, with the same code and place.
+template<ce::described T, class C>
+void check_decode_as_fails_like_two_steps(std::string_view text,
+                                          ce::errc expected,
+                                          std::string_view label) {
+  using namespace boost::ut;
+
+  const auto typed = ce::decode_as<T, C>(text);
+  expect(!typed.has_value()) << label << ": " << text;
+  if (typed) {
+    return;
+  }
+  expect(typed.error().code == expected) << label << ": " << text;
+
+  const auto event = ce::json_format<C>::decode(text);
+  const auto two_steps = event ? ce::data_as<T, C>(*event) : ce::result<T>{};
+  const auto& reference = event ? two_steps.error() : event.error();
+  expect(!event || !two_steps.has_value()) << label;
+  expect(typed.error().code == reference.code) << label << ": " << text;
+  expect(typed.error().where == reference.where) << label << ": " << text;
+}
+
+template<class Base>
+void check_decode_as(std::string_view label) {
+  using namespace boost::ut;
+  using counted = counting_codec<Base>;
+  using format = ce::json_format<counted>;
+
+  const std::string text = sample_event_text();
+
+  // Within the retention limit: one parse, no serialisation, and the event is
+  // the one decode returns, holding the codec's document.
+  counted::reset();
+  const auto typed = ce::decode_as<reading, counted>(text);
+  expect(typed.has_value()) << label;
+  expect(counted::counts().parses == 1U) << label << ": decode_as parses once";
+  expect(counted::counts().dumps == 0U) << label << ": decode_as serialised the payload";
+  const auto reference = format::decode(text);
+  expect(reference.has_value()) << label;
+  if (typed && reference) {
+    expect(same(typed->payload, sample())) << label;
+    expect(bool{typed->event == *reference}) << label << ": the event is decode's";
+    const auto* kept = std::get_if<ce::json_document>(&typed->event.data());
+    expect(kept != nullptr && kept->template built_by<counted>()) << label;
+  }
+
+  // Above the limit the event keeps the input's own text, and the payload is
+  // still read from the parsed member rather than parsed again.
+  for (const auto limit : {std::size_t{0}, std::size_t{1}}) {
+    const ce::json::decode_options options{.retain_document_up_to = limit};
+    counted::reset();
+    const auto over = ce::decode_as<reading, counted>(text, options);
+    expect(over.has_value()) << label;
+    expect(counted::counts().parses == 1U) << label << ": the text path parses once";
+    expect(counted::counts().dumps == 0U) << label << ": the text path serialised the payload";
+    const auto kept = format::decode(text, options);
+    if (over && kept) {
+      expect(same(over->payload, sample())) << label;
+      expect(bool{over->event == *kept}) << label << ": the event is decode's";
+      const auto* own = std::get_if<ce::json_text>(&over->event.data());
+      expect(own != nullptr && own->raw == sample_payload_text) << label;
+    }
+  }
+
+  // A payload that is not JSON of the described shape fails as data_as does.
+  check_decode_as_fails_like_two_steps<reading, counted>(
+      event_text(""), ce::errc::missing_required_attribute, label);
+  check_decode_as_fails_like_two_steps<reading, counted>(
+      event_text(R"(,"data_base64":"AAE=")"), ce::errc::type_mismatch, label);
+  check_decode_as_fails_like_two_steps<reading, counted>(
+      event_text(R"(,"datacontenttype":"text/plain","data":"{\"sensor\":\"s\"}")"),
+      ce::errc::type_mismatch,
+      label);
+  check_decode_as_fails_like_two_steps<reading, counted>(
+      event_text(R"(,"datacontenttype":"application/json","data":{"sensor":7})"),
+      ce::errc::type_mismatch,
+      label);
+  check_decode_as_fails_like_two_steps<reading, counted>(
+      event_text(R"(,"datacontenttype":"application/json","data":[1])"),
+      ce::errc::type_mismatch,
+      label);
+  check_decode_as_fails_like_two_steps<narrow, counted>(
+      event_text(R"(,"data":{"value":2147483648})"), ce::errc::out_of_range, label);
+
+  // A document that is not a valid event fails as decode does.
+  check_decode_as_fails_like_two_steps<reading, counted>(
+      R"({"specversion":"1.0","source":"/s","type":"t","data":{}})",
+      ce::errc::missing_required_attribute,
+      label);
+  check_decode_as_fails_like_two_steps<reading, counted>(
+      R"({"specversion":"1.0",)", ce::errc::parse_error, label);
+
+  // A mistyped member is named, as data_as names it.
+  const auto mistyped = ce::decode_as<reading, counted>(event_text(R"(,"data":{"sensor":7})"));
+  expect(!mistyped.has_value() && mistyped.error().where == "sensor") << label;
+
+  // A JSON payload whose datacontenttype is absent is still JSON.
+  const auto undeclared = ce::decode_as<narrow, counted>(event_text(R"(,"data":{"value":3})"));
+  expect(undeclared.has_value() && undeclared->payload.value == 3) << label;
+}
+
+// spec: SWR-EXT-0007
+const boost::ut::suite<"decode-as-reads-event-and-payload-in-one-parse"> decode_as_suite = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_decode_as<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_decode_as<mini_codec>("mini_codec"); };
+
+  "decoded names the event and the payload"_test = [] {
+    const ce::decoded<narrow> built{.event = minimal(), .payload = {.value = 1}};
+    expect(built.event.id() == "id-1");
+    expect(built.payload.value == 1);
+  };
+};
+
 // --- SWR-EXT-0006 -----------------------------------------------------------
 
 // spec: SWR-EXT-0006

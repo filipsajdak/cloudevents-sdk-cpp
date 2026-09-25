@@ -148,26 +148,16 @@ void typed_payload_write(benchmark::State& state) {
 template<class C>
 void decode_as_full(benchmark::State& state) {
   for (auto _ : state) {
-    auto event = ce::json_format<C>::decode(ce::bench::full_document);
-    if (!event) {
-      state.SkipWithError("decode failed");
-      break;
-    }
-    auto payload = ce::data_as<ce::bench::placed, C>(*event);
-    benchmark::DoNotOptimize(payload);
+    auto decoded = ce::decode_as<ce::bench::placed, C>(ce::bench::full_document);
+    benchmark::DoNotOptimize(decoded);
   }
 }
 
 template<class C>
 void decode_as_large(benchmark::State& state) {
   for (auto _ : state) {
-    auto event = ce::json_format<C>::decode(ce::bench::large_document());
-    if (!event) {
-      state.SkipWithError("decode failed");
-      break;
-    }
-    auto payload = ce::data_as<ce::bench::report, C>(*event);
-    benchmark::DoNotOptimize(payload);
+    auto decoded = ce::decode_as<ce::bench::report, C>(ce::bench::large_document());
+    benchmark::DoNotOptimize(decoded);
   }
 }
 

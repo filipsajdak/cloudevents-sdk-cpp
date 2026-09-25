@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -27,6 +28,11 @@ struct decode_options {
   static constexpr std::size_t default_retention_limit = std::size_t{16} * 1024;
   std::size_t retain_document_up_to = default_retention_limit;
 };
+
+namespace detail {
+template<json_codec Codec>
+struct typed_entry;
+}  // namespace detail
 }  // namespace json
 
 // spec: SYS-JSON-0001
@@ -164,15 +170,7 @@ struct json_format {
   // spec: SWR-JSON-0043
   [[nodiscard]] static auto decode(std::string_view text, json::decode_options options = {})
       -> result<event> {
-    auto document = Codec::parse(text);
-    if (!document) {
-      return fail(document.error().code, document.error().detail);
-    }
-    if (retains(text, options)) {
-      return read_event(*document, &*document, payload_mode::move, std::nullopt);
-    }
-    return read_event(*document, &*document, payload_mode::text,
-                      json::detail::data_member_text(text));
+    return decode_reading<event>(text, options, keep_event{});
   }
 
   // spec: SWR-JSON-0039
@@ -219,7 +217,43 @@ struct json_format {
   }
 
  private:
+  friend struct json::detail::typed_entry<Codec>;
+
   enum class payload_mode : std::uint8_t { text, copy, move };
+
+  struct keep_event {};
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode_reading(std::string_view text,
+                                           const json::decode_options& options,
+                                           Read read) -> result<Out> {
+    auto document = Codec::parse(text);
+    if (!document) {
+      return fail(document.error().code, document.error().detail);
+    }
+    if constexpr (std::is_same_v<Read, keep_event>) {
+      if (retains(text, options)) {
+        return read_event(*document, &*document, payload_mode::move, std::nullopt);
+      }
+      return read_event(
+          *document, &*document, payload_mode::text, json::detail::data_member_text(text));
+    } else {
+      const value* json_member = nullptr;
+      auto cloud_event =
+          retains(text, options)
+              ? read_event(*document, &*document, payload_mode::move, std::nullopt, &json_member)
+              : read_event(*document,
+                           &*document,
+                           payload_mode::text,
+                           json::detail::data_member_text(text),
+                           &json_member);
+      if (!cloud_event) {
+        return fail(
+            cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
+      }
+      return read(std::move(*cloud_event), json_member);
+    }
+  }
 
   [[nodiscard]] static auto retains(std::string_view text, const json::decode_options& options)
       -> bool {
@@ -238,9 +272,11 @@ struct json_format {
            text.size() <= limit * event_count;
   }
 
-  [[nodiscard]] static auto read_event(const value& document, value* owned, payload_mode mode,
-                                       std::optional<std::string_view> own_text)
-      -> result<event> {
+  [[nodiscard]] static auto read_event(const value& document,
+                                       value* owned,
+                                       payload_mode mode,
+                                       std::optional<std::string_view> own_text,
+                                       const value** json_member = nullptr) -> result<event> {
     if (Codec::kind_of(document) != json::kind::object) {
       return fail(errc::parse_error, "a CloudEvent must be a JSON object");
     }
@@ -258,7 +294,8 @@ struct json_format {
     if (auto read = read_context(found, under_construction); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto stored = decode_data(found, owned, mode, own_text, under_construction.rest);
+    if (auto stored =
+            decode_data(found, owned, mode, own_text, json_member, under_construction.rest);
         !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
@@ -539,8 +576,11 @@ struct json_format {
   // spec: SWR-JSON-0019
   // spec: SWR-JSON-0020
   // spec: SWR-JSON-0021
-  [[nodiscard]] static auto decode_data(const members& found, value* owned, payload_mode mode,
+  [[nodiscard]] static auto decode_data(const members& found,
+                                        value* owned,
+                                        payload_mode mode,
                                         std::optional<std::string_view> own_text,
+                                        const value** json_member,
                                         event::options& into) -> result<void> {
     const value* data = found.data;
     const value* data_base64 = found.data_base64;
@@ -577,6 +617,9 @@ struct json_format {
       return {};
     }
 
+    if (json_member != nullptr && mode != payload_mode::move) {
+      *json_member = data;
+    }
     into.data = json_payload(*data, owned, mode, own_text);
     return {};
   }
@@ -598,5 +641,20 @@ struct json_format {
     return json_document::make<Codec>(Codec::extract(*owned, "data"));
   }
 };
+
+namespace json::detail {
+// spec: SWR-EXT-0007
+template<json_codec Codec>
+struct typed_entry {
+  using format = json_format<Codec>;
+  using value = Codec::value;
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode(std::string_view text, const decode_options& options, Read read)
+      -> result<Out> {
+    return format::template decode_reading<Out>(text, options, std::move(read));
+  }
+};
+}  // namespace json::detail
 
 }  // namespace ce::inline v3

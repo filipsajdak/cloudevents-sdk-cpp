@@ -237,24 +237,16 @@ auto typed_payload_write() -> bool {
 
 template<class C>
 auto decode_as_full() -> bool {
-  auto event = ce::json_format<C>::decode(ce::bench::full_document);
-  if (!event) {
-    return false;
-  }
-  auto payload = ce::data_as<ce::bench::placed, C>(*event);
-  escape(payload);
-  return payload.has_value();
+  auto decoded = ce::decode_as<ce::bench::placed, C>(ce::bench::full_document);
+  escape(decoded);
+  return decoded.has_value();
 }
 
 template<class C>
 auto decode_as_large() -> bool {
-  auto event = ce::json_format<C>::decode(ce::bench::large_document());
-  if (!event) {
-    return false;
-  }
-  auto payload = ce::data_as<ce::bench::report, C>(*event);
-  escape(payload);
-  return payload.has_value();
+  auto decoded = ce::decode_as<ce::bench::report, C>(ce::bench::large_document());
+  escape(decoded);
+  return decoded.has_value();
 }
 
 template<class C>

@@ -2,7 +2,7 @@
 uid: SWR-EXT-0007
 title: decode_as reads an event and its typed payload in one parse
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   A consumer that wants a typed payload decodes the event and then calls data_as.
@@ -15,8 +15,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp, code:include/cloudevents/format/json_format.hpp]
+verified_by: [test:test/typed_payload_test.cpp::decode-as-reads-event-and-payload-in-one-parse]
 owner: filip.sajdak
 version: 2
 ---

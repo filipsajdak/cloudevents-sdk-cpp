@@ -65,6 +65,9 @@ C++ SDK for the CloudEvents v1.0.2 specification. The full work specification is
   values, range limits and offsets are durations too, so a minutes-for-seconds
   mix-up is a compile error rather than an instant wrong by a factor of sixty.
   Convert to `.count()` only at the point of formatting or parsing digits.
+- Do not copy what you already hold: borrow with a view, transfer with a move, share
+  immutable data, and copy only at an ownership boundary you can name (the scudoai-cpp
+  no-needless-copies skill; its hook blocks here).
 - Formatting by the repository `.clang-format`; run it before committing.
 
 ## Toolchain facts (measured on this machine, not remembered)

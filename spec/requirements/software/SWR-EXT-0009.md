@@ -2,7 +2,7 @@
 uid: SWR-EXT-0009
 title: from_value_as reads a typed event from a document already parsed
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A caller that parsed the document itself, to route on it or to read a transport envelope, already holds the DOM.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp, code:include/cloudevents/format/json_format.hpp]
+verified_by: [test:test/typed_payload_test.cpp::from-value-as-reads-a-parsed-document]
 owner: filip.sajdak
 version: 2
 ---

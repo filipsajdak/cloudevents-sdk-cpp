@@ -103,6 +103,13 @@ template<described T, json::json_codec Codec>
       text, options, detail::typed_read<T, Codec>);
 }
 
+// spec: SWR-EXT-0009
+template<described T, json::json_codec Codec>
+[[nodiscard]] auto from_value_as(const typename Codec::value& document) -> result<decoded<T>> {
+  return json::detail::typed_entry<Codec>::template from_value<decoded<T>>(
+      document, detail::typed_read<T, Codec>);
+}
+
 // spec: SWR-EXT-0011
 template<described T, json::json_codec Codec>
 void set_data(event& cloud_event, const T& value) {

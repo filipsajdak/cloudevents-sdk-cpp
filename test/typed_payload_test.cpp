@@ -707,6 +707,67 @@ const boost::ut::suite<"decode-batch-as-reads-a-batch-in-one-parse"> decode_batc
   "mini_codec"_test = [] { check_decode_batch_as<mini_codec>("mini_codec"); };
 };
 
+// --- SWR-EXT-0009 -----------------------------------------------------------
+
+template<class Base>
+void check_from_value_as(std::string_view label) {
+  using namespace boost::ut;
+  using counted = counting_codec<Base>;
+  using format = ce::json_format<counted>;
+
+  const auto document = counted::parse(sample_event_text());
+  expect(document.has_value()) << label;
+  if (!document) {
+    return;
+  }
+  const auto before = counted::copy(*document);
+
+  counted::reset();
+  const auto typed = ce::from_value_as<reading, counted>(*document);
+  expect(typed.has_value()) << label;
+  expect(counted::counts().parses == 0U) << label << ": from_value_as parsed";
+  expect(counted::counts().dumps == 0U) << label << ": from_value_as serialised the payload";
+  const auto reference = format::from_value(*document);
+  expect(reference.has_value()) << label;
+  if (typed && reference) {
+    expect(same(typed->payload, sample())) << label;
+    expect(bool{typed->event == *reference}) << label << ": the event is from_value's";
+  }
+  expect(counted::equal(*document, before)) << label << ": the caller's document is unchanged";
+
+  // Failures match from_value followed by data_as.
+  const auto fails_with = [&](const std::string& text, ce::errc code, std::string_view where) {
+    const auto parsed = counted::parse(text);
+    expect(parsed.has_value()) << label << ": " << text;
+    if (!parsed) {
+      return;
+    }
+    const auto typed_failure = ce::from_value_as<reading, counted>(*parsed);
+    expect(!typed_failure.has_value()) << label << ": " << text;
+    if (!typed_failure) {
+      expect(typed_failure.error().code == code) << label << ": " << text;
+      expect(typed_failure.error().where == where) << label << ": " << text;
+    }
+  };
+  fails_with(event_text(""), ce::errc::missing_required_attribute, "data");
+  fails_with(event_text(R"(,"data_base64":"AAE=")"), ce::errc::type_mismatch, "data");
+  fails_with(
+      event_text(R"(,"datacontenttype":"text/plain","data":"x")"), ce::errc::type_mismatch, "data");
+  fails_with(event_text(R"(,"data":{"sensor":7})"), ce::errc::type_mismatch, "sensor");
+  fails_with(R"({"specversion":"1.0","id":"1","type":"t"})",
+             ce::errc::missing_required_attribute,
+             "source");
+  fails_with("[1]", ce::errc::parse_error, "");
+}
+
+// spec: SWR-EXT-0009
+const boost::ut::suite<"from-value-as-reads-a-parsed-document"> from_value_as_suite = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_from_value_as<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_from_value_as<mini_codec>("mini_codec"); };
+};
+
 // --- SWR-EXT-0006 -----------------------------------------------------------
 
 // spec: SWR-EXT-0006

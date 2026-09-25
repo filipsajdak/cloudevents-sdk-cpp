@@ -163,7 +163,7 @@ struct json_format {
 
   // spec: SWR-JSON-0031
   [[nodiscard]] static auto from_value(const value& document) -> result<event> {
-    return read_event(document, nullptr, payload_mode::copy, std::nullopt);
+    return from_value_reading<event>(document, keep_event{});
   }
 
   // spec: SWR-JSON-0040
@@ -187,6 +187,22 @@ struct json_format {
   enum class payload_mode : std::uint8_t { text, copy, move };
 
   struct keep_event {};
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto from_value_reading(const value& document, Read read) -> result<Out> {
+    if constexpr (std::is_same_v<Read, keep_event>) {
+      return read_event(document, nullptr, payload_mode::copy, std::nullopt);
+    } else {
+      const value* json_member = nullptr;
+      auto cloud_event =
+          read_event(document, nullptr, payload_mode::copy, std::nullopt, &json_member);
+      if (!cloud_event) {
+        return fail(
+            cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
+      }
+      return read(std::move(*cloud_event), json_member);
+    }
+  }
 
   template<class Out, class Read>
   [[nodiscard]] static auto decode_batch_reading(std::string_view text,
@@ -681,6 +697,12 @@ struct typed_entry {
                                          const decode_options& options,
                                          Read read) -> result<std::vector<Out>> {
     return format::template decode_batch_reading<Out>(text, options, std::move(read));
+  }
+
+  // spec: SWR-EXT-0009
+  template<class Out, class Read>
+  [[nodiscard]] static auto from_value(const value& document, Read read) -> result<Out> {
+    return format::template from_value_reading<Out>(document, std::move(read));
   }
 };
 }  // namespace json::detail

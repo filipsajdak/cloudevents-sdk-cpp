@@ -169,6 +169,53 @@ const boost::ut::suite<"headers-adopt-refuses-a-repeated-attribute"> headers_rep
     expect(!binding::read_attributes<lenient_traits>(delivered).has_value())
         << "case-insensitive: X_ID is ce-id arriving a second time";
   };
+
+  // read_attributes checks the delivered fields in place instead of adopting a
+  // copy of them, so its verdict must stay exactly the one adopt gives.
+  "read_attributes refuses exactly what adopt refuses, naming the same field"_test = [] {
+    const ce::raw_headers attributes{
+        {"x_specversion", "1.0"}, {"x_id", "1"}, {"x_source", "/s"}, {"x_type", "t"}};
+    const ce::raw_headers cases[] = {
+        attributes,
+        {{"x_specversion", "1.0"},
+         {"x_id", "1"},
+         {"x_source", "/s"},
+         {"x_type", "t"},
+         {"X_SOURCE", "/other"}},
+        {{"x_specversion", "1.0"},
+         {"x_id", "1"},
+         {"x_source", "/s"},
+         {"x_type", "t"},
+         {"authorization", "a"},
+         {"Authorization", "b"}},
+        {{"x_specversion", "1.0"},
+         {"x_id", "1"},
+         {"x_source", "/s"},
+         {"x_type", "t"},
+         {"trace", "a"},
+         {"trace", "b"}},
+    };
+
+    for (const auto& delivered : cases) {
+      const auto strict = ce::headers::adopt(delivered, ce::name_matching::case_sensitive);
+      const auto strict_read = binding::read_attributes<exact_traits>(delivered);
+      expect(strict.has_value() == strict_read.has_value());
+      if (!strict && !strict_read) {
+        expect(strict_read.error().code == strict.error().code);
+        expect(strict_read.error().where == strict.error().where);
+      }
+
+      const auto lenient = ce::headers::adopt(delivered, ce::name_matching::case_insensitive);
+      const auto lenient_read = binding::read_attributes<lenient_traits>(delivered);
+      expect(lenient.has_value() == lenient_read.has_value());
+      if (!lenient && !lenient_read) {
+        expect(lenient_read.error().code == lenient.error().code);
+        expect(lenient_read.error().where == lenient.error().where);
+      }
+    }
+    expect(!binding::read_attributes<exact_traits>(cases[3]).has_value())
+        << "a repeated field is refused even when it carries no attribute";
+  };
 };
 
 int main() {}

@@ -67,6 +67,28 @@ template <binding_traits T>
   }
 }
 
+// spec: SWR-MSG-0004
+template <binding_traits T>
+[[nodiscard]] auto same_field_name(std::string_view left, std::string_view right) -> bool {
+  if constexpr (T::case_sensitive_names) {
+    return left == right;
+  } else {
+    return ce::v3::detail::iequals(left, right);
+  }
+}
+
+template <binding_traits T>
+[[nodiscard]] auto first_repeated_name(const raw_headers& delivered) -> const std::string* {
+  for (auto later = delivered.begin(); later != delivered.end(); ++later) {
+    for (auto earlier = delivered.begin(); earlier != later; ++earlier) {
+      if (same_field_name<T>(earlier->first, later->first)) {
+        return &later->first;
+      }
+    }
+  }
+  return nullptr;
+}
+
 template <binding_traits T>
 [[nodiscard]] auto attribute_name_of(std::string_view field) -> std::string {
   std::string name{field.substr(std::string_view{T::attribute_prefix}.size())};
@@ -202,16 +224,15 @@ template <binding_traits T>
 
 template <binding_traits T>
 [[nodiscard]] auto read_attributes(const raw_headers& delivered) -> result<event::builder> {
-  auto adopted = headers::adopt(delivered, T::case_sensitive_names
-                                               ? name_matching::case_sensitive
-                                               : name_matching::case_insensitive);
-  if (!adopted) {
-    return fail(adopted.error().code, adopted.error().detail, adopted.error().where);
+  if (const std::string* repeated = detail::first_repeated_name<T>(delivered);
+      repeated != nullptr) {
+    return fail(errc::invalid_argument,
+                "two fields carry the same attribute, so which one is meant is undecidable",
+                *repeated);
   }
-  const headers& fields = *adopted;
 
   event::builder under_construction{};
-  for (const auto& [name, raw_value] : fields) {
+  for (const auto& [name, raw_value] : delivered) {
     if (!detail::carries_prefix<T>(name)) {
       continue;
     }

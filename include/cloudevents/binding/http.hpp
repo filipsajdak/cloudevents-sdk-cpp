@@ -34,6 +34,7 @@ using ce::v3::binding::detail::hex_value;
 using ce::v3::binding::detail::needs_escape;
 using ce::v3::binding::detail::percent_decode;
 using ce::v3::binding::detail::percent_encode;
+using ce::v3::binding::detail::text_of;
 
 inline constexpr unsigned char first_printable_ascii = 0x20U;
 inline constexpr unsigned char delete_character = 0x7FU;
@@ -206,7 +207,7 @@ template <json::json_codec Codec>
   if (detect_content_mode(request) != content_mode::batched) {
     return fail(errc::not_a_cloudevent, "the content type is not a CloudEvents batch");
   }
-  return json_format<Codec>::decode_batch(detail::to_text(request.body));
+  return json_format<Codec>::decode_batch(detail::text_of(request.body));
 }
 
 }  // namespace ce::inline v3::http

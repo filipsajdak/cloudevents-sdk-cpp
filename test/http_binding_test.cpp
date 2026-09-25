@@ -848,6 +848,42 @@ void check_not_a_cloudevent(std::string_view label) {
   }
 }
 
+/// A structured or batched body is read through a view of its bytes, so the view
+/// must cover every byte, bytes above 0x7F included, and an empty body must still
+/// reach the parser and be refused by it.
+template <class C>
+void check_structured_body_is_read_in_place(std::string_view codec) {
+  using namespace boost::ut;
+  const std::string label{codec};
+
+  const ce::message empty_structured{
+      .header_fields = {{"Content-Type", std::string{ce::json::content_type}}}};
+  auto empty_event = ce::http::from_message<C>(empty_structured);
+  expect(!empty_event.has_value()) << label;
+  if (!empty_event) {
+    expect(empty_event.error().code == ce::errc::parse_error) << label;
+  }
+
+  const ce::message empty_batch{
+      .header_fields = {{"Content-Type", std::string{ce::json::batch_content_type}}}};
+  auto empty_events = ce::http::from_batch_message<C>(empty_batch);
+  expect(!empty_events.has_value()) << label;
+  if (!empty_events) {
+    expect(empty_events.error().code == ce::errc::parse_error) << label;
+  }
+
+  const ce::message non_ascii{
+      .header_fields = {{"Content-Type", std::string{ce::json::content_type}}},
+      .body = ce::http::detail::to_bytes(
+          R"({"specversion":"1.0","id":"1","source":"/s","type":"t","subject":"zażółć"})"),
+  };
+  auto decoded = ce::http::from_message<C>(non_ascii);
+  expect(decoded.has_value() && decoded->subject().has_value()) << label;
+  if (decoded && decoded->subject()) {
+    expect(decoded->subject()->view() == "zażółć"sv) << label;
+  }
+}
+
 // --- SYS-HTTP-0001: the HTTP binding specification's own examples -------------
 
 /// The structured-mode document from the CloudEvents HTTP protocol binding,
@@ -1205,6 +1241,26 @@ const boost::ut::suite<"from-message-roundtrip"> from_message_roundtrip = [] {
     test(std::string{codec} + " document payload") = [codec] {
       check_document_round_trip<C>(codec);
     };
+  });
+};
+
+// spec: SWR-HTTP-0004
+// spec: SWR-HTTP-0005
+const boost::ut::suite<"structured-body-read-in-place"> structured_body_read_in_place = [] {
+  using namespace boost::ut;
+
+  "the body view covers every byte and nothing else"_test = [] {
+    const ce::binary empty{};
+    expect(ce::http::detail::text_of(empty).empty());
+
+    const ce::binary bytes = ce::http::detail::to_bytes("a\xC5\xBCz");
+    const std::string_view viewed = ce::http::detail::text_of(bytes);
+    expect(viewed == "a\xC5\xBCz"sv);
+    expect(static_cast<const void*>(viewed.data()) == static_cast<const void*>(bytes.data()));
+  };
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_structured_body_is_read_in_place<C>(codec); };
   });
 };
 

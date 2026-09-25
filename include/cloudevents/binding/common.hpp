@@ -28,6 +28,11 @@ concept binding_traits = requires(std::string_view text) {
 
 namespace detail {
 
+[[nodiscard]] inline auto text_of(const binary& body) noexcept -> std::string_view {
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  return {reinterpret_cast<const char*>(body.data()), body.size()};
+}
+
 template <class T>
 concept declares_content_type_as_attribute = requires {
   { T::content_type_is_attribute } -> std::convertible_to<bool>;
@@ -270,7 +275,7 @@ template <binding_traits T, json::json_codec Codec>
 
 template <json::json_codec Codec>
 [[nodiscard]] auto decode_structured(const message& from) -> result<event> {
-  return json_format<Codec>::decode(to_text(from.body));
+  return json_format<Codec>::decode(detail::text_of(from.body));
 }
 
 }  // namespace ce::inline v3::binding

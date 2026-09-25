@@ -2,7 +2,7 @@
 uid: SWR-EXT-0012
 title: data_as reads a matching json_document without parsing
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   data_as parsed the payload text on every call.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp]
+verified_by: [test:test/typed_payload_test.cpp::data-as-reads-a-same-codec-document]
 owner: filip.sajdak
 version: 2
 ---

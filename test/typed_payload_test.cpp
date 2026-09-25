@@ -325,6 +325,112 @@ const boost::ut::suite<"typed-payload-reads-a-document-from-any-codec"> payload_
       };
     };
 
+// --- SWR-EXT-0012 -----------------------------------------------------------
+
+template<class Base>
+inline constexpr std::string_view counting_identity{};
+template<>
+inline constexpr std::string_view counting_identity<nlohmann_codec> =
+    "io.cloudevents.cpp.test.counting.nlohmann";
+template<>
+inline constexpr std::string_view counting_identity<mini_codec> =
+    "io.cloudevents.cpp.test.counting.mini";
+
+struct call_counts {
+  std::size_t parses = 0;
+  std::size_t dumps = 0;
+};
+
+/// A codec that counts every parse and dump asked of it, so a suite can show
+/// that a path reads the DOM it was given rather than going through text. The
+/// counts live in a function-local static: Clang 23 reports a static data
+/// member of a class template as set but not used even where it is read.
+template<class Base>
+struct counting_codec : Base {
+  static constexpr std::string_view identity = counting_identity<Base>;
+
+  [[nodiscard]] static auto counts() -> call_counts& {
+    static call_counts held{};
+    return held;
+  }
+  [[nodiscard]] static auto parse(std::string_view text) -> ce::result<typename Base::value> {
+    ++counts().parses;
+    return Base::parse(text);
+  }
+  [[nodiscard]] static auto dump(const typename Base::value& held) -> std::string {
+    ++counts().dumps;
+    return Base::dump(held);
+  }
+  static void reset() { counts() = {}; }
+};
+static_assert(ce::json::json_codec<counting_codec<nlohmann_codec>>);
+static_assert(ce::json::json_codec<counting_codec<mini_codec>>);
+
+template<class Base>
+void check_same_codec_document_read(std::string_view label) {
+  using namespace boost::ut;
+  using counted = counting_codec<Base>;
+
+  const reading sent = sample();
+  const ce::event subject =
+      minimal({.datacontenttype = "application/json"_mediatype,
+               .data = ce::json_document::make<counted>(ce::to_json_value<counted>(sent))});
+
+  counted::reset();
+  auto read = ce::data_as<reading, counted>(subject);
+  expect(read.has_value()) << label;
+  if (read) {
+    expect(same(*read, sent)) << label;
+  }
+  expect(counted::counts().parses == 0U) << label << ": the payload was parsed";
+  expect(counted::counts().dumps == 0U) << label << ": the payload was serialised";
+
+  // A member of the wrong type is still reported by name on the fast path.
+  const auto mistyped_document = Base::parse(R"({"sensor":7,"celsius":1})");
+  expect(mistyped_document.has_value()) << label;
+  if (mistyped_document) {
+    const ce::event wrong =
+        minimal({.datacontenttype = "application/json"_mediatype,
+                 .data = ce::json_document::make<counted>(Base::copy(*mistyped_document))});
+    auto mistyped = ce::data_as<reading, counted>(wrong);
+    expect(!mistyped.has_value()) << label;
+    if (!mistyped) {
+      expect(mistyped.error().code == ce::errc::type_mismatch) << label;
+      expect(mistyped.error().where == "sensor") << label;
+    }
+    const auto array_document = Base::parse("[1]");
+    const ce::event array =
+        minimal({.datacontenttype = "application/json"_mediatype,
+                 .data = ce::json_document::make<counted>(Base::copy(*array_document))});
+    auto from_array = ce::data_as<reading, counted>(array);
+    expect(!from_array.has_value()) << label;
+    if (!from_array) {
+      expect(from_array.error().code == ce::errc::type_mismatch) << label;
+      expect(from_array.error().where == "data") << label;
+    }
+  }
+
+  // A document another codec built is converted through text, once.
+  const ce::event foreign =
+      minimal({.datacontenttype = "application/json"_mediatype,
+               .data = ce::json_document::make<Base>(ce::to_json_value<Base>(sent))});
+  counted::reset();
+  auto converted = ce::data_as<reading, counted>(foreign);
+  expect(converted.has_value()) << label;
+  if (converted) {
+    expect(same(*converted, sent)) << label;
+  }
+  expect(counted::counts().parses == 1U) << label << ": a foreign document is parsed once";
+}
+
+// spec: SWR-EXT-0012
+const boost::ut::suite<"data-as-reads-a-same-codec-document"> same_codec_document_read = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_same_codec_document_read<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_same_codec_document_read<mini_codec>("mini_codec"); };
+};
+
 // --- SWR-EXT-0006 -----------------------------------------------------------
 
 // spec: SWR-EXT-0006

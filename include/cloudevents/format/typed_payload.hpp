@@ -13,6 +13,19 @@
 // spec: SWR-EXT-0006
 namespace ce::inline v3 {
 
+namespace detail {
+template<described T, json::json_codec Codec>
+[[nodiscard]] auto payload_from(const typename Codec::value& document) -> result<T> {
+  auto decoded = from_json_value<Codec, T>(document);
+  if (!decoded) {
+    return fail(decoded.error().code,
+                decoded.error().detail,
+                decoded.error().where.empty() ? std::string{"data"} : decoded.error().where);
+  }
+  return decoded;
+}
+}  // namespace detail
+
 // spec: SWR-EXT-0005
 template<described T, json::json_codec Codec>
 [[nodiscard]] auto data_as(const event& cloud_event) -> result<T> {
@@ -22,6 +35,10 @@ template<described T, json::json_codec Codec>
   if (const auto* stored = std::get_if<json_text>(&cloud_event.data())) {
     text = &stored->raw;
   } else if (const auto* document = std::get_if<json_document>(&cloud_event.data())) {
+    // spec: SWR-EXT-0012
+    if (const auto* own = document->get<Codec>(); own != nullptr) {
+      return detail::payload_from<T, Codec>(*own);
+    }
     // spec: SWR-JSON-0042
     converted = document->dump();
     text = &converted;
@@ -44,13 +61,7 @@ template<described T, json::json_codec Codec>
     return fail(document.error().code, document.error().detail, "data");
   }
 
-  auto decoded = from_json_value<Codec, T>(*document);
-  if (!decoded) {
-    return fail(decoded.error().code,
-                decoded.error().detail,
-                decoded.error().where.empty() ? std::string{"data"} : decoded.error().where);
-  }
-  return decoded;
+  return detail::payload_from<T, Codec>(*document);
 }
 
 template<described T, json::json_codec Codec>

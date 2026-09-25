@@ -623,6 +623,90 @@ const boost::ut::suite<"decode-as-reads-event-and-payload-in-one-parse"> decode_
   };
 };
 
+// --- SWR-EXT-0008 -----------------------------------------------------------
+
+[[nodiscard]] auto batch_element(std::string_view id, std::string_view members) -> std::string {
+  return std::string{R"({"specversion":"1.0","id":")"} + std::string{id} +
+         R"(","source":"/spec/test","type":"com.example.thing")" + std::string{members} + "}";
+}
+
+[[nodiscard]] auto narrow_batch() -> std::string {
+  return "[" + batch_element("a", R"(,"datacontenttype":"application/json","data":{"value":0})") +
+         "," + batch_element("b", R"(,"data":{"value":1})") + "," +
+         batch_element("c", R"(,"datacontenttype":"application/json","data":{"value":2})") + "]";
+}
+
+template<class Base>
+void check_decode_batch_as(std::string_view label) {
+  using namespace boost::ut;
+  using counted = counting_codec<Base>;
+  using format = ce::json_format<counted>;
+
+  const std::string text = narrow_batch();
+  const std::vector<std::int32_t> expected_values{0, 1, 2};
+
+  for (const auto limit : {ce::json::decode_options::default_retention_limit, std::size_t{0}}) {
+    const ce::json::decode_options options{.retain_document_up_to = limit};
+    counted::reset();
+    const auto typed = ce::decode_batch_as<narrow, counted>(text, options);
+    expect(typed.has_value()) << label;
+    expect(counted::counts().parses == 1U) << label << ": decode_batch_as parses once";
+    expect(counted::counts().dumps == 0U) << label << ": decode_batch_as serialised a payload";
+    const auto reference = format::decode_batch(text, options);
+    expect(reference.has_value()) << label;
+    if (!typed || !reference) {
+      continue;
+    }
+    expect(typed->size() == reference->size()) << label;
+    std::vector<std::int32_t> values;
+    for (std::size_t i = 0; i < typed->size() && i < reference->size(); ++i) {
+      expect(bool{(*typed)[i].event == (*reference)[i]}) << label << ": event " << i;
+      values.push_back((*typed)[i].payload.value);
+    }
+    expect(values == expected_values) << label << ": the payloads, in order";
+  }
+
+  // One element whose payload does not decode as T fails the whole batch, with
+  // the error decode_as reports for it.
+  const auto fails_with = [&](const std::string& element, ce::errc code, std::string_view where) {
+    const std::string batch =
+        "[" + batch_element("a", R"(,"data":{"value":0})") + "," + element + "]";
+    const auto typed = ce::decode_batch_as<narrow, counted>(batch);
+    expect(!typed.has_value()) << label << ": " << batch;
+    if (!typed) {
+      expect(typed.error().code == code) << label << ": " << batch;
+      expect(typed.error().where == where) << label << ": " << batch;
+      const auto single = ce::decode_as<narrow, counted>(element);
+      expect(!single.has_value() && single.error().code == code) << label;
+    }
+  };
+  fails_with(batch_element("b", R"(,"data":{"value":"one"})"), ce::errc::type_mismatch, "value");
+  fails_with(
+      batch_element("b", R"(,"data":{"value":2147483648})"), ce::errc::out_of_range, "value");
+  fails_with(batch_element("b", ""), ce::errc::missing_required_attribute, "data");
+  fails_with(batch_element("b", R"(,"data_base64":"AAE=")"), ce::errc::type_mismatch, "data");
+  fails_with(batch_element("b", R"(,"datacontenttype":"text/plain","data":"x")"),
+             ce::errc::type_mismatch,
+             "data");
+  fails_with(R"({"specversion":"1.0","id":"b","source":"/s"})",
+             ce::errc::missing_required_attribute,
+             "type");
+
+  // The batch form itself fails as decode_batch does.
+  const auto not_array = ce::decode_batch_as<narrow, counted>(batch_element("a", ""));
+  expect(!not_array.has_value() && not_array.error().code == ce::errc::parse_error) << label;
+  const auto empty = ce::decode_batch_as<narrow, counted>("[]");
+  expect(empty.has_value() && empty->empty()) << label;
+}
+
+// spec: SWR-EXT-0008
+const boost::ut::suite<"decode-batch-as-reads-a-batch-in-one-parse"> decode_batch_as_suite = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] { check_decode_batch_as<nlohmann_codec>("nlohmann_codec"); };
+  "mini_codec"_test = [] { check_decode_batch_as<mini_codec>("mini_codec"); };
+};
+
 // --- SWR-EXT-0006 -----------------------------------------------------------
 
 // spec: SWR-EXT-0006

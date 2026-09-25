@@ -178,6 +178,20 @@ struct json_format {
   // spec: SWR-JSON-0043
   [[nodiscard]] static auto decode_batch(std::string_view text, json::decode_options options = {})
       -> result<std::vector<event>> {
+    return decode_batch_reading<event>(text, options, keep_event{});
+  }
+
+ private:
+  friend struct json::detail::typed_entry<Codec>;
+
+  enum class payload_mode : std::uint8_t { text, copy, move };
+
+  struct keep_event {};
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode_batch_reading(std::string_view text,
+                                                 const json::decode_options& options,
+                                                 Read read) -> result<std::vector<Out>> {
     auto document = Codec::parse(text);
     if (!document) {
       return fail(document.error().code, document.error().detail);
@@ -191,7 +205,7 @@ struct json_format {
     const std::size_t event_count = Codec::size_of(*document);
     const auto mode =
         retains_batch(text, event_count, options) ? payload_mode::move : payload_mode::text;
-    std::vector<event> events;
+    std::vector<Out> events;
     events.reserve(event_count);
     result<void> element_error{};
     json::detail::batch_data_slices own_texts{text};
@@ -199,15 +213,28 @@ struct json_format {
       if (!element_error) {
         return;
       }
-      auto cloud_event =
-          read_event(element, &element, mode,
-                     mode == payload_mode::text ? own_texts.next() : std::nullopt);
+      constexpr bool keeps_event = std::is_same_v<Read, keep_event>;
+      const value* json_member = nullptr;
+      auto cloud_event = read_event(element,
+                                    &element,
+                                    mode,
+                                    mode == payload_mode::text ? own_texts.next() : std::nullopt,
+                                    keeps_event ? nullptr : &json_member);
       if (!cloud_event) {
         element_error =
             fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
         return;
       }
-      events.push_back(std::move(*cloud_event));
+      if constexpr (keeps_event) {
+        events.push_back(std::move(*cloud_event));
+      } else {
+        auto out = read(std::move(*cloud_event), json_member);
+        if (!out) {
+          element_error = fail(out.error().code, out.error().detail, out.error().where);
+          return;
+        }
+        events.push_back(std::move(*out));
+      }
     });
     if (!element_error) {
       return fail(element_error.error().code, element_error.error().detail,
@@ -215,13 +242,6 @@ struct json_format {
     }
     return events;
   }
-
- private:
-  friend struct json::detail::typed_entry<Codec>;
-
-  enum class payload_mode : std::uint8_t { text, copy, move };
-
-  struct keep_event {};
 
   template<class Out, class Read>
   [[nodiscard]] static auto decode_reading(std::string_view text,
@@ -653,6 +673,14 @@ struct typed_entry {
   [[nodiscard]] static auto decode(std::string_view text, const decode_options& options, Read read)
       -> result<Out> {
     return format::template decode_reading<Out>(text, options, std::move(read));
+  }
+
+  // spec: SWR-EXT-0008
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode_batch(std::string_view text,
+                                         const decode_options& options,
+                                         Read read) -> result<std::vector<Out>> {
+    return format::template decode_batch_reading<Out>(text, options, std::move(read));
   }
 };
 }  // namespace json::detail

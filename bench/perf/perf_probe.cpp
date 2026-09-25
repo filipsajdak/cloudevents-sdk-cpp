@@ -251,21 +251,9 @@ auto decode_as_large() -> bool {
 
 template<class C>
 auto decode_batch_as_100() -> bool {
-  auto events = ce::json_format<C>::decode_batch(ce::bench::batch_document());
-  if (!events) {
-    return false;
-  }
-  std::vector<ce::bench::tick> payloads;
-  payloads.reserve(events->size());
-  for (const auto& event : *events) {
-    auto payload = ce::data_as<ce::bench::tick, C>(event);
-    if (!payload) {
-      return false;
-    }
-    payloads.push_back(*payload);
-  }
-  escape(payloads);
-  return payloads.size() == events->size();
+  auto decoded = ce::decode_batch_as<ce::bench::tick, C>(ce::bench::batch_document());
+  escape(decoded);
+  return decoded.has_value() && !decoded->empty();
 }
 
 template<class C>

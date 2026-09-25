@@ -164,17 +164,8 @@ void decode_as_large(benchmark::State& state) {
 template<class C>
 void decode_batch_as_100(benchmark::State& state) {
   for (auto _ : state) {
-    auto events = ce::json_format<C>::decode_batch(ce::bench::batch_document());
-    std::vector<ce::bench::tick> payloads;
-    if (events) {
-      payloads.reserve(events->size());
-      for (const auto& event : *events) {
-        if (auto payload = ce::data_as<ce::bench::tick, C>(event)) {
-          payloads.push_back(*payload);
-        }
-      }
-    }
-    benchmark::DoNotOptimize(payloads);
+    auto decoded = ce::decode_batch_as<ce::bench::tick, C>(ce::bench::batch_document());
+    benchmark::DoNotOptimize(decoded);
   }
 }
 

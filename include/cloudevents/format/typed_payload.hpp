@@ -4,6 +4,7 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>
@@ -91,6 +92,14 @@ template<described T, json::json_codec Codec>
 [[nodiscard]] auto decode_as(std::string_view text, json::decode_options options = {})
     -> result<decoded<T>> {
   return json::detail::typed_entry<Codec>::template decode<decoded<T>>(
+      text, options, detail::typed_read<T, Codec>);
+}
+
+// spec: SWR-EXT-0008
+template<described T, json::json_codec Codec>
+[[nodiscard]] auto decode_batch_as(std::string_view text, json::decode_options options = {})
+    -> result<std::vector<decoded<T>>> {
+  return json::detail::typed_entry<Codec>::template decode_batch<decoded<T>>(
       text, options, detail::typed_read<T, Codec>);
 }
 

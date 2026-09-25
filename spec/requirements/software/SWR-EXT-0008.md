@@ -2,7 +2,7 @@
 uid: SWR-EXT-0008
 title: decode_batch_as reads a batch and its typed payloads in one parse
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A batch multiplies the cost of a second parse by its length.
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp, code:include/cloudevents/format/json_format.hpp]
+verified_by: [test:test/typed_payload_test.cpp::decode-batch-as-reads-a-batch-in-one-parse]
 owner: filip.sajdak
 version: 2
 ---

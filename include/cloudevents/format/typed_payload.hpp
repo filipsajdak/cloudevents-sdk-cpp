@@ -64,11 +64,12 @@ template<described T, json::json_codec Codec>
   return detail::payload_from<T, Codec>(*document);
 }
 
+// spec: SWR-EXT-0011
 template<described T, json::json_codec Codec>
 void set_data(event& cloud_event, const T& value) {
   using namespace ce::literals;
-  const auto document = to_json_value<Codec>(value);
-  cloud_event.set_data(json_text{.raw = Codec::dump(document)}, "application/json"_mediatype);
+  cloud_event.set_data(json_document::make<Codec>(to_json_value<Codec>(value)),
+                       "application/json"_mediatype);
 }
 
 // spec: SWR-EXT-0004

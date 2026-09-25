@@ -99,9 +99,10 @@ void check_payload_roundtrip(std::string_view label) {
   if (subject.datacontenttype()) {
     expect(ce::is_json_content_type(subject.datacontenttype()->view())) << label;
   }
-  // Stored as json_text, not as an escaped string: the encoded event must carry
-  // one document rather than a JSON string holding a document.
-  expect(std::holds_alternative<ce::json_text>(subject.data())) << label;
+  // Stored as a document the codec built, not as an escaped string: the encoded
+  // event must carry one document rather than a JSON string holding a document.
+  const auto* stored = std::get_if<ce::json_document>(&subject.data());
+  expect(stored != nullptr && stored->built_by<C>()) << label;
 
   auto read = ce::data_as<reading, C>(subject);
   expect(read.has_value()) << label;
@@ -429,6 +430,66 @@ const boost::ut::suite<"data-as-reads-a-same-codec-document"> same_codec_documen
 
   "nlohmann_codec"_test = [] { check_same_codec_document_read<nlohmann_codec>("nlohmann_codec"); };
   "mini_codec"_test = [] { check_same_codec_document_read<mini_codec>("mini_codec"); };
+};
+
+// --- SWR-EXT-0011 -----------------------------------------------------------
+
+template<class Base>
+void check_set_data_stores_a_document(std::string_view label) {
+  using namespace boost::ut;
+  using counted = counting_codec<Base>;
+  using format = ce::json_format<counted>;
+
+  const reading sent = sample();
+  ce::event subject = minimal();
+  counted::reset();
+  ce::set_data<reading, counted>(subject, sent);
+  expect(counted::counts().dumps == 0U) << label << ": set_data serialised the payload";
+  expect(counted::counts().parses == 0U) << label;
+
+  const auto* stored = std::get_if<ce::json_document>(&subject.data());
+  expect(stored != nullptr) << label << ": set_data stores a json_document";
+  const auto* dom = stored != nullptr ? stored->get<counted>() : nullptr;
+  expect(dom != nullptr) << label << ": the document is the codec's own";
+  const auto expected = ce::to_json_value<counted>(sent);
+  expect(dom != nullptr && counted::equal(*dom, expected)) << label;
+  expect(subject.datacontenttype().has_value() &&
+         subject.datacontenttype()->view() == "application/json")
+      << label;
+
+  // The event equals the same payload held as a document, never as text: a
+  // json_text payload never equals a json_document one (D-JSON-4).
+  const ce::event as_document =
+      minimal({.datacontenttype = "application/json"_mediatype,
+               .data = ce::json_document::make<counted>(ce::to_json_value<counted>(sent))});
+  expect(bool{subject == as_document}) << label;
+  const ce::event as_text = minimal({.datacontenttype = "application/json"_mediatype,
+                                     .data = ce::json_text{.raw = Base::dump(expected)}});
+  expect(bool{subject != as_text}) << label;
+
+  // An encode with the same codec copies the DOM: the only dump is the output.
+  counted::reset();
+  const auto encoded = format::encode(subject);
+  expect(encoded.has_value()) << label;
+  expect(counted::counts().parses == 0U) << label << ": encode parsed the payload";
+  expect(counted::counts().dumps == 1U) << label << ": only the output document is serialised";
+
+  // Writing again replaces the document.
+  reading second = sent;
+  second.sensor = "s-2";
+  ce::set_data<reading, counted>(subject, second);
+  auto read = ce::data_as<reading, counted>(subject);
+  expect(read.has_value() && read->sensor == "s-2") << label;
+}
+
+// spec: SWR-EXT-0011
+const boost::ut::suite<"set-data-stores-a-document"> set_data_stores_a_document = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] {
+    check_set_data_stores_a_document<nlohmann_codec>("nlohmann_codec");
+  };
+  "mini_codec"_test = [] { check_set_data_stores_a_document<mini_codec>("mini_codec"); };
 };
 
 // --- SWR-EXT-0006 -----------------------------------------------------------

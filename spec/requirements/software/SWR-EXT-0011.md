@@ -2,7 +2,7 @@
 uid: SWR-EXT-0011
 title: set_data stores a typed payload as a json_document
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   set_data built a DOM from the described value and then serialised it to json_text.
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp]
+verified_by: [test:test/typed_payload_test.cpp::set-data-stores-a-document]
 owner: filip.sajdak
 version: 2
 ---

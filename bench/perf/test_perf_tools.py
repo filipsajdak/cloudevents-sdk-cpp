@@ -211,6 +211,85 @@ class AcceptedCost(unittest.TestCase):
         self.assertIn("over its budget", report.failures[0])
 
 
+# spec: SWR-PERF-0001
+# spec: SWR-PERF-0002
+# spec: SWR-PERF-0003
+class LabelAcceptedRegression(unittest.TestCase):
+    """The `perf: accepted` label accepts every growth over main, never a
+    budget breach."""
+
+    MAIN = {"op/c": {"instructions": 1000, "allocations": 10, "allocated_bytes": 100,
+                     "retained_bytes": 1000}}
+    # Each gated measure grows past its rule against main (+2%, any, any, +1%),
+    # and stays under BUDGET.
+    GROWN = {"op/c": {"instructions": 1500, "allocations": 11, "allocated_bytes": 140,
+                      "retained_bytes": 1200}}
+    BUDGET = {"op/c": {"instructions": 1600, "allocations": 12, "allocated_bytes": 150,
+                       "retained_bytes": 1300}}
+
+    def compare(self, head: dict, label: bool) -> compare.Report:
+        return compare.compare(results(self.MAIN, sha="main"), results(head),
+                               budgets(self.BUDGET), budgets(self.BUDGET),
+                               accept_regressions=label)
+
+    def test_with_the_label_a_growth_over_main_passes_and_is_listed(self):
+        report = self.compare(self.GROWN, label=True)
+        self.assertFalse(report.failed)
+        self.assertEqual(len(report.accepted_by_label), len(compare.GATES))
+        for measure, (requirement, _) in compare.GATES.items():
+            self.assertTrue(any(f"`op/c` {measure}:" in cost and requirement in cost
+                                for cost in report.accepted_by_label), measure)
+        self.assertEqual({r.verdict for r in report.rows}, {compare.ACCEPTED})
+
+    def test_with_the_label_a_budget_breach_still_fails(self):
+        over = {"op/c": {**self.GROWN["op/c"], "allocations": 13}}
+        report = self.compare(over, label=True)
+        self.assertTrue(report.failed)
+        self.assertEqual(len(report.failures), 1)
+        self.assertIn("over its budget", report.failures[0])
+        self.assertIn(compare.BUDGET_REQUIREMENT, report.failures[0])
+
+    def test_without_the_label_nothing_changes(self):
+        report = self.compare(self.GROWN, label=False)
+        self.assertTrue(report.failed)
+        self.assertEqual(len(report.failures), len(compare.GATES))
+        self.assertEqual(report.accepted_by_label, [])
+
+    def test_a_raised_budget_is_still_accepted_as_before(self):
+        report = compare.compare(results(self.MAIN, sha="main"), results(self.GROWN),
+                                 budgets(self.BUDGET), budgets(self.MAIN),
+                                 accept_regressions=True)
+        self.assertFalse(report.failed)
+        self.assertEqual(len(report.accepted), len(compare.GATES))
+        self.assertEqual(report.accepted_by_label, [])
+
+    def test_the_summary_says_it_ran_with_the_label_and_who_can_add_it(self):
+        report = self.compare(self.GROWN, label=True)
+        text = compare.render(report, results(self.MAIN, sha="main"), results(self.GROWN), [])
+        self.assertIn(f"carries the `{compare.ACCEPT_LABEL}` label", text)
+        self.assertIn("triage rights", text)
+        self.assertIn("### Accepted by label", text)
+        self.assertIn("regression(s) accepted by label", text)
+
+    def test_without_the_label_the_summary_does_not_mention_it(self):
+        report = self.compare(self.GROWN, label=False)
+        text = compare.render(report, results(self.MAIN, sha="main"), results(self.GROWN), [])
+        self.assertNotIn(compare.ACCEPT_LABEL, text)
+        self.assertNotIn("Accepted by label", text)
+
+    def test_the_command_line_flag_passes_the_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "base.json").write_text(json.dumps(results(self.MAIN, sha="main")))
+            (root / "head.json").write_text(json.dumps(results(self.GROWN)))
+            (root / "budgets.json").write_text(json.dumps(budgets(self.BUDGET)))
+            argv = ["--base", str(root / "base.json"), "--head", str(root / "head.json"),
+                    "--budgets", str(root / "budgets.json")]
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(compare.main(argv), 1)
+                self.assertEqual(compare.main([*argv, "--accept-regressions"]), 0)
+
+
 # spec: SWR-PERF-0004
 class SeedBudgets(unittest.TestCase):
     def test_ten_percent_headroom_rounded_up(self):

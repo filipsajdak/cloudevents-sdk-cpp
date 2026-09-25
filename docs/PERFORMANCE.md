@@ -44,16 +44,27 @@ When main cannot be measured at all, only the budgets gate, and the table says t
 
 A pull request from a fork gets the table in the job summary only: its token cannot comment.
 
-## When a cost is deliberate
+## Accepting a regression
 
-Raise the budget in `bench/budgets.json` in the same pull request, and say in the commit why the operation needs it.
+A pull request that makes an operation costlier on purpose accepts the cost in one of two ways.
+Either way, give the reason in the pull request description.
+
+**Raise the budget when the new level should be the standard.**
+Edit `bench/budgets.json` in the same pull request, and say in the commit why the operation needs it.
 The reviewer then sees the cost as a one-line diff next to the change that needs it.
-
-A raised budget accepts the growth over main in that id and measure.
 The job compares the pull request's budget with main's, and a growth whose budget went up is listed under "Costs accepted by a raised budget" instead of failing.
 The new budget still gates, so raise it to what the change needs plus some headroom, not further.
 
-A new operation needs budgets before it can merge.
+**Use the `perf: accepted` label when the change trades a measure deliberately within the budget.**
+A lower document-retention default, for example, sends large events back to the text path: more instructions and allocations than main, still under budgets that never assumed otherwise.
+Raising those budgets would only signal acceptance, not set a limit anyone chose.
+With the label, a growth over main in instructions, allocations or retained bytes (`SWR-PERF-0001` to `SWR-PERF-0003`) is listed under "Accepted by label" and does not fail the job.
+The budgets (`SWR-PERF-0004`) still fail it, and binary size still only warns.
+The comment says the pull request ran with the label.
+Anyone with triage rights on the repository can add or remove it, and doing so re-runs the job.
+The acceptance lives on the pull request, not in the repository history (ADR-0011).
+
+A new operation needs budgets before it can merge, label or not.
 The failure message proposes one: the measurement plus 10% headroom.
 
 ## Reproducing locally

@@ -21,6 +21,11 @@ A pull request that raises a budget accepts that cost: when `--base-budgets`
 that id and measure is reported as accepted instead of failing. The budget
 itself still gates.
 
+A pull request labelled `perf: accepted` accepts every growth over main:
+with `--accept-regressions` the three rules against main report their
+breaches as accepted by the label instead of failing. The budgets still
+gate, and the summary says the pull request ran with the label.
+
 When the pull request itself could not be measured, `--measure-failure`
 names the file measure.py wrote: the summary then reports which id and mode
 failed and what the probe said, with no table, and the exit is 1.
@@ -60,6 +65,9 @@ WARNINGS = {
 REPORTED = ("wall_ns", "cpu_ns")
 BUDGET_REQUIREMENT = "SWR-PERF-0004"
 SEED_HEADROOM = Fraction(1, 10)
+# The GitHub label that accepts a growth over main within budget (ADR-0011).
+ACCEPT_LABEL = "perf: accepted"
+ACCEPT_LABEL_WHO = "anyone with triage rights on the repository"
 
 MEASURE_ORDER = [*GATES, *WARNINGS, *REPORTED]
 
@@ -92,6 +100,8 @@ class Report:
     failures: list[str]
     warnings: list[str]
     accepted: list[str] = field(default_factory=list)
+    accepted_by_label: list[str] = field(default_factory=list)
+    label: bool = False
 
     @property
     def failed(self) -> bool:
@@ -128,11 +138,15 @@ def raised(op_id: str, measure: str, budget: float | None, base_limits: dict | N
 
 
 def compare(base: dict | None, head: dict, budgets: dict | None,
-            base_budgets: dict | None = None) -> Report:
+            base_budgets: dict | None = None, accept_regressions: bool = False) -> Report:
+    """Gate `head` against `base` and the budgets. `accept_regressions` is
+    the `perf: accepted` label: a growth over main is then accepted, never a
+    budget breach."""
     notes: list[str] = []
     failures: list[str] = []
     warnings: list[str] = []
     accepted: list[str] = []
+    accepted_by_label: list[str] = []
     rows: list[Row] = []
     base_limits = (base_budgets or {}).get("budgets") if base_budgets is not None else None
 
@@ -174,6 +188,11 @@ def compare(base: dict | None, head: dict, budgets: dict | None,
                         row.verdict = ACCEPTED
                         accepted.append(f"{growth}; this pull request raised its budget "
                                         f"to {fmt(budget)}, which accepts the cost")
+                    elif accept_regressions:
+                        row.verdict = ACCEPTED
+                        rule = ("fails on any increase" if percent == 0
+                                else f"fails above +{percent}%")
+                        accepted_by_label.append(f"{growth}; {requirement} {rule}")
                     else:
                         row.verdict = FAIL
                         row.reasons.append(f"{growth}; the limit is {allowance} ({requirement})")
@@ -215,7 +234,8 @@ def compare(base: dict | None, head: dict, budgets: dict | None,
     rows.sort(key=lambda r: (VERDICT_ORDER[r.verdict], r.op_id, MEASURE_ORDER.index(r.measure)
                              if r.measure in MEASURE_ORDER else 99))
     return Report(rows=rows, notes=notes, failures=failures, warnings=warnings,
-                  accepted=accepted)
+                  accepted=accepted, accepted_by_label=accepted_by_label,
+                  label=accept_regressions)
 
 
 def fmt(value: float | None) -> str:
@@ -257,7 +277,8 @@ def render(report: Report, base: dict | None, head: dict, extra_notes: list[str]
         verdict = f"**passed with {len(report.warnings)} warning(s)**"
     else:
         verdict = "**passed**"
-
+    if report.accepted_by_label:
+        verdict += f" with {len(report.accepted_by_label)} regression(s) accepted by label"
     lines = [
         MARKER,
         "## Performance",
@@ -266,6 +287,14 @@ def render(report: Report, base: dict | None, head: dict, extra_notes: list[str]
         f"on {toolchain.get('arch', '?')} with {toolchain.get('compiler', '?')}.",
         "",
     ]
+    if report.label:
+        lines += [
+            f"**This pull request carries the `{ACCEPT_LABEL}` label.** A growth over main "
+            "in instructions, allocations or retained bytes is accepted rather than failing; "
+            f"the budgets still gate. {ACCEPT_LABEL_WHO.capitalize()} can add or remove the "
+            "label, and the pull request description should say why the cost is deliberate.",
+            "",
+        ]
     for note in [*extra_notes, *report.notes]:
         lines.append(f"> {note}")
         lines.append(">")
@@ -283,6 +312,10 @@ def render(report: Report, base: dict | None, head: dict, extra_notes: list[str]
     if report.accepted:
         lines += ["### Costs accepted by a raised budget", ""]
         lines += [f"- {cost}" for cost in report.accepted]
+        lines.append("")
+    if report.accepted_by_label:
+        lines += ["### Accepted by label", ""]
+        lines += [f"- {cost}" for cost in report.accepted_by_label]
         lines.append("")
 
     flagged = [r for r in report.rows if r.verdict in (FAIL, WARN, ACCEPTED)]
@@ -355,6 +388,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-budgets", type=Path,
                         help="main's budgets.json; a budget this pull request raised accepts "
                              "the growth over main in that measure")
+    parser.add_argument("--accept-regressions", action="store_true",
+                        help=f"the pull request carries the `{ACCEPT_LABEL}` label: a growth "
+                             "over main is accepted, and the budgets still gate")
     parser.add_argument("--summary", type=Path, help="write the Markdown here as well as stdout")
     parser.add_argument("--note", action="append", default=[],
                         help="a line to show above the table, such as how main was built")
@@ -385,7 +421,7 @@ def main(argv: list[str] | None = None) -> int:
                          "measure fails for want of a budget.")
 
     base = load(args.base)
-    report = compare(base, head, budgets, load(args.base_budgets))
+    report = compare(base, head, budgets, load(args.base_budgets), args.accept_regressions)
     markdown = render(report, base, head, args.note)
     if args.summary:
         args.summary.write_text(markdown)

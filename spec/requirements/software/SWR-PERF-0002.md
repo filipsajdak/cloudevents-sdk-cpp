@@ -13,7 +13,7 @@ verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-PERF-0001]
 satisfied_by: [code:bench/perf/compare.py, code:bench/perf/counting_allocator.cpp, code:bench/perf/heap_counters.cpp, code:bench/perf/raw_malloc_wrapped.cpp, code:.github/workflows/perf.yml]
-verified_by: [test:bench/perf/test_perf_tools.py::AllocationGate, test:test/malloc_accounting_test.cpp::malloc-accounting-counts-requested-bytes]
+verified_by: [test:bench/perf/test_perf_tools.py::AllocationGate, test:bench/perf/test_perf_tools.py::LabelAcceptedRegression, test:test/malloc_accounting_test.cpp::malloc-accounting-counts-requested-bytes]
 owner: filip.sajdak
 version: 2
 ---

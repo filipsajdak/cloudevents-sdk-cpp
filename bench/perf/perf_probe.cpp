@@ -44,6 +44,7 @@
 #include "codecs/rapidjson_codec.hpp"
 #include "counting_allocator.hpp"
 #include "documents.hpp"
+#include "typed_documents.hpp"
 
 /// The measured loop. `extern "C"` so its symbol is its name and Callgrind's
 /// `--toggle-collect` can match it without a mangled signature, and never
@@ -209,36 +210,16 @@ auto nats_decode_binary() -> bool {
   return event.has_value();
 }
 
-struct order {
-  std::int32_t total;
-  std::string currency;
-  bool paid;
-  std::vector<std::string> tags;
-};
-
-// Inside the anonymous namespace: CE_DESCRIBE defines a function found by ADL.
-CE_DESCRIBE(order, total, currency, paid, tags);
-
-[[nodiscard]] auto typed_event() -> const ce::event& {
-  static const ce::event subject = [] {
-    using namespace ce::literals;
-    ce::event out{"A234"_id, "/orders"_source, "com.example.order"_type};
-    ce::set_data<order, nlohmann_codec>(
-        out, order{.total = 4299, .currency = "EUR", .paid = true, .tags = {"eu", "priority"}});
-    return out;
-  }();
-  return subject;
-}
-
-[[nodiscard]] auto typed_order() -> const order& {
-  static const order payload{
-      .total = 4299, .currency = "EUR", .paid = true, .tags = {"eu", "priority"}};
-  return payload;
+template<class C>
+auto typed_payload_read() -> bool {
+  auto payload = ce::data_as<ce::bench::order, C>(ce::bench::typed_event<C>());
+  escape(payload);
+  return payload.has_value();
 }
 
 template<class C>
-auto typed_payload_read() -> bool {
-  auto payload = ce::data_as<order, C>(typed_event());
+auto typed_payload_read_document() -> bool {
+  auto payload = ce::data_as<ce::bench::order, C>(ce::bench::typed_document_event<C>());
   escape(payload);
   return payload.has_value();
 }
@@ -247,9 +228,40 @@ template<class C>
 auto typed_payload_write() -> bool {
   using namespace ce::literals;
   ce::event subject{"A234"_id, "/orders"_source, "com.example.order"_type};
-  ce::set_data<order, C>(subject, typed_order());
+  ce::set_data<ce::bench::order, C>(subject, ce::bench::typed_order());
   escape(subject);
   return true;
+}
+
+// --- the typed entry points ---------------------------------------------------
+
+template<class C>
+auto decode_as_full() -> bool {
+  auto decoded = ce::decode_as<ce::bench::placed, C>(ce::bench::full_document);
+  escape(decoded);
+  return decoded.has_value();
+}
+
+template<class C>
+auto decode_as_large() -> bool {
+  auto decoded = ce::decode_as<ce::bench::report, C>(ce::bench::large_document());
+  escape(decoded);
+  return decoded.has_value();
+}
+
+template<class C>
+auto decode_batch_as_100() -> bool {
+  auto decoded = ce::decode_batch_as<ce::bench::tick, C>(ce::bench::batch_document());
+  escape(decoded);
+  return decoded.has_value() && !decoded->empty();
+}
+
+template<class C>
+auto encode_as_full() -> bool {
+  auto text =
+      ce::encode_as<ce::bench::placed, C>(ce::bench::full_event(), ce::bench::typed_placed());
+  escape(text);
+  return text.has_value();
 }
 
 // --- retained memory ---------------------------------------------------------
@@ -288,6 +300,8 @@ struct operation {
   std::int64_t (*retained)() = nullptr;
 };
 
+/// The table's size is deduced from its rows, so a row added or removed cannot
+/// leave an empty operation behind.
 template<class C>
 auto operations_for(std::string_view codec) {
   const auto id = [codec](std::string_view name) {
@@ -302,7 +316,12 @@ auto operations_for(std::string_view codec) {
       {.id = id("decode_batch_100"), .run = decode_batch_100<C>},
       {.id = id("encode_batch_100"), .run = encode_batch_100<C>},
       {.id = id("typed_payload_read"), .run = typed_payload_read<C>},
+      {.id = id("typed_payload_read_document"), .run = typed_payload_read_document<C>},
       {.id = id("typed_payload_write"), .run = typed_payload_write<C>},
+      {.id = id("decode_as_full"), .run = decode_as_full<C>},
+      {.id = id("decode_as_large"), .run = decode_as_large<C>},
+      {.id = id("decode_batch_as_100"), .run = decode_batch_as_100<C>},
+      {.id = id("encode_as_full"), .run = encode_as_full<C>},
       {.id = id("http_decode_binary"), .run = http_decode_binary<C>},
       {.id = id("http_encode_binary"), .run = http_encode_binary<C>},
       {.id = id("http_decode_structured"), .run = http_decode_structured<C>},
@@ -311,10 +330,13 @@ auto operations_for(std::string_view codec) {
   });
 }
 
-using codec_operations = decltype(operations_for<nlohmann_codec>(std::string_view{}));
+using codec_operations = decltype(operations_for<nlohmann_codec>(""));
 
-[[nodiscard]] auto all_operations() -> const std::array<codec_operations, 4>& {
-  static const std::array<codec_operations, 4> table{{
+/// One row per codec `all_operations` lists.
+constexpr std::size_t codec_count = 4;
+
+[[nodiscard]] auto all_operations() -> const std::array<codec_operations, codec_count>& {
+  static const std::array<codec_operations, codec_count> table{{
       operations_for<nlohmann_codec>("nlohmann"),
       operations_for<rapidjson_codec>("rapidjson"),
       operations_for<boost_codec>("boost.json"),

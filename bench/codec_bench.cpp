@@ -10,6 +10,15 @@
 /// Every codec here has already passed codec_check, which is the only reason
 /// the numbers are comparable.
 
+#include <benchmark/benchmark.h>
+#include <cstdint>
+#include <simdjson.h>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <yyjson.h>
+
 #include <cloudevents/codec/nlohmann.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_format.hpp>
@@ -19,17 +28,7 @@
 #include "codecs/glaze_codec.hpp"
 #include "codecs/rapidjson_codec.hpp"
 #include "documents.hpp"
-
-#include <benchmark/benchmark.h>
-
-#include <simdjson.h>
-#include <yyjson.h>
-
-#include <cstdint>
-#include <span>
-#include <string>
-#include <string_view>
-#include <vector>
+#include "typed_documents.hpp"
 
 namespace {
 
@@ -116,52 +115,66 @@ void encode_batch_100(benchmark::State& state) {
 
 // --- the typed payload path, which goes through describe_json ---------------
 
-struct order_line {
-  std::string sku;
-  std::int32_t qty;
-};
-
-struct order {
-  std::int32_t total;
-  std::string currency;
-  bool paid;
-  std::vector<std::string> tags;
-};
-
-// Inside the anonymous namespace, not after it: CE_DESCRIBE defines a function
-// found by ADL, and the associated namespace of a type declared here is this
-// one.
-CE_DESCRIBE(order_line, sku, qty);
-CE_DESCRIBE(order, total, currency, paid, tags);
-
-[[nodiscard]] auto typed_event() -> const ce::event& {
-  static const ce::event subject = [] {
-    using namespace ce::literals;
-    ce::event out{"A234"_id, "/orders"_source, "com.example.order"_type};
-    ce::set_data<order, nlohmann_codec>(
-        out, order{.total = 4299, .currency = "EUR", .paid = true, .tags = {"eu", "priority"}});
-    return out;
-  }();
-  return subject;
+template<class C>
+void typed_payload_read(benchmark::State& state) {
+  const ce::event& subject = ce::bench::typed_event<C>();
+  for (auto _ : state) {
+    auto payload = ce::data_as<ce::bench::order, C>(subject);
+    benchmark::DoNotOptimize(payload);
+  }
 }
 
-template <class C>
-void typed_payload_read(benchmark::State& state) {
-  const ce::event& subject = typed_event();
+template<class C>
+void typed_payload_read_document(benchmark::State& state) {
+  const ce::event& subject = ce::bench::typed_document_event<C>();
   for (auto _ : state) {
-    auto payload = ce::data_as<order, C>(subject);
+    auto payload = ce::data_as<ce::bench::order, C>(subject);
     benchmark::DoNotOptimize(payload);
   }
 }
 
 template <class C>
 void typed_payload_write(benchmark::State& state) {
-  const order payload{.total = 4299, .currency = "EUR", .paid = true, .tags = {"eu", "priority"}};
   using namespace ce::literals;
   for (auto _ : state) {
     ce::event subject{"A234"_id, "/orders"_source, "com.example.order"_type};
-    ce::set_data<order, C>(subject, payload);
+    ce::set_data<ce::bench::order, C>(subject, ce::bench::typed_order());
     benchmark::DoNotOptimize(subject);
+  }
+}
+
+// --- the typed entry points --------------------------------------------------
+
+template<class C>
+void decode_as_full(benchmark::State& state) {
+  for (auto _ : state) {
+    auto decoded = ce::decode_as<ce::bench::placed, C>(ce::bench::full_document);
+    benchmark::DoNotOptimize(decoded);
+  }
+}
+
+template<class C>
+void decode_as_large(benchmark::State& state) {
+  for (auto _ : state) {
+    auto decoded = ce::decode_as<ce::bench::report, C>(ce::bench::large_document());
+    benchmark::DoNotOptimize(decoded);
+  }
+}
+
+template<class C>
+void decode_batch_as_100(benchmark::State& state) {
+  for (auto _ : state) {
+    auto decoded = ce::decode_batch_as<ce::bench::tick, C>(ce::bench::batch_document());
+    benchmark::DoNotOptimize(decoded);
+  }
+}
+
+template<class C>
+void encode_as_full(benchmark::State& state) {
+  for (auto _ : state) {
+    auto text =
+        ce::encode_as<ce::bench::placed, C>(ce::bench::full_event(), ce::bench::typed_placed());
+    benchmark::DoNotOptimize(text);
   }
 }
 
@@ -245,7 +258,12 @@ CE_BENCH_ALL(roundtrip_full);
 CE_BENCH_ALL(decode_batch_100);
 CE_BENCH_ALL(encode_batch_100);
 CE_BENCH_ALL(typed_payload_read);
+CE_BENCH_ALL(typed_payload_read_document);
 CE_BENCH_ALL(typed_payload_write);
+CE_BENCH_ALL(decode_as_full);
+CE_BENCH_ALL(decode_as_large);
+CE_BENCH_ALL(decode_batch_as_100);
+CE_BENCH_ALL(encode_as_full);
 
 BENCHMARK(simdjson_parse_full)->Name("ceiling_parse_full/simdjson");
 BENCHMARK(yyjson_parse_full)->Name("ceiling_parse_full/yyjson");

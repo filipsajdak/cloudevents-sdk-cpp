@@ -697,6 +697,37 @@ std::printf("%s\n", underlying.id().str().c_str());
 
 `examples/described_payload.cpp` covers vectors, maps, optionals and the failure cases.
 
+`set_data` stores the payload as a `json_document` the codec built, so encoding with the same codec copies the DOM and `data_as` with it reads the DOM, neither going through text.
+A document another codec built is converted through its text.
+
+### Decoding and encoding in one step
+
+`ce::decode_as` parses a received event once and returns a `ce::decoded<T>`, which names the event and its payload.
+The event is what `decode` returns for the same text and options, and the payload is read from the parsed `data` member rather than parsed a second time.
+It fails as `data_as` would: `missing_required_attribute` when there is no payload, `type_mismatch` for `data_base64` or text under a non-JSON `datacontenttype`.
+`ce::decode_batch_as` does the same for a batch and fails the whole batch when any event's payload does not read as `T`.
+`ce::from_value_as` reads a document you have already parsed with the codec, and leaves it unchanged.
+
+`ce::encode_as` writes an event with a typed payload under `data`, with no text form of the payload in between, and does not change the event.
+It writes `application/json` when the event has no `datacontenttype`, keeps a JSON one, and refuses any other with `type_mismatch`.
+
+```cpp body
+const std::string wire =
+    R"({"specversion":"1.0","id":"15","source":"/cart","type":"com.example.cart.added",)"
+    R"("datacontenttype":"application/json","data":{"sku":"SKU-3","quantity":4}})";
+if (auto added = ce::decode_as<shop::line_item, codec>(wire); added) {
+  std::printf("%s x%d from %s\n", added->payload.sku.c_str(), added->payload.quantity,
+              added->event.source().str().c_str());
+}
+
+const ce::event announcement{"16"_id, "/cart"_source, "com.example.cart.added"_type};
+if (auto text = ce::encode_as<shop::line_item, codec>(
+        announcement, shop::line_item{.sku = "SKU-4", .quantity = 1});
+    text) {
+  std::printf("%s\n", text->c_str());
+}
+```
+
 ### C++26 reflection
 
 Under C++26 with static reflection (GCC 16 with `-freflection`), an annotated struct needs no macro:

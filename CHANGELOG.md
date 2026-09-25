@@ -5,7 +5,7 @@ Notable changes per release. Dates are the tag date.
 ## Unreleased
 
 A third API generation, `ce::v3`, is the inline namespace.
-It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in later stages.
+It carries the CR-0003 changes listed below.
 `ce::v2` keeps what v0.4.0 published, so v0.4.0 code has a way to keep compiling.
 
 ### Three generations
@@ -40,7 +40,17 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
   The decoder falls back to the codec's serialisation when a top-level member name carries an escape, when `data` appears twice, or when the input holds something strict JSON does not allow; a batch decides per element.
   The text keeps the sender's spelling, so the same JSON formatted differently no longer compares equal as `json_text` after decode.
 - **Encoding a `json_document` built by the encoding codec copies its DOM**, with no serialisation and no parse.
-  A document from another codec, and `data_as`, convert it through the building codec's text.
+  A document from another codec converts through the building codec's text.
+- **`data_as<T, Codec>` reads a document built by `Codec` directly**, through `get<Codec>()`, with no serialisation and no parse.
+  A document from another codec still converts through text.
+- **`set_data<T, Codec>` stores a `json_document`** built by `Codec`, where v2 stored `json_text`.
+  An event written by `set_data` therefore equals the same payload held as a document, never as text.
+- **Typed entry points parse and write once.**
+  `ce::decode_as<T, Codec>(text, options)` returns `ce::decoded<T>{.event, .payload}`: the event `decode` returns, and the payload read from the parsed `data` member.
+  `ce::decode_batch_as` does the same for a batch and fails the whole batch when one payload does not read as `T`; `ce::from_value_as` reads a document the caller parsed.
+  `ce::encode_as<T, Codec>(event, payload)` writes the payload's DOM under `data` without changing the event, writing `application/json` when `datacontenttype` is absent and refusing a non-JSON one with `type_mismatch`.
+  They fail as `data_as` does when the payload is absent (`missing_required_attribute`) or is not JSON (`type_mismatch`).
+  The optional module exports them, and `json::decode_options`.
 - The optional module exports `ce::v3` only.
 
 #### Moving to the v3 payload
@@ -49,6 +59,8 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
 - Code that read `std::get<ce::json_text>(event.data()).raw` after a structured decode now finds a `json_document`.
   Read it with `document.get<Codec>()` for the DOM, or `document.dump()` for text.
 - Code that compares a decoded event with one built from `json_text` now compares unequal; build the expected event with a `json_document`, or compare the payloads by value.
+- Code that read `std::get<ce::json_text>(event.data())` after `set_data` now finds a `json_document`; read the payload with `data_as`, or the text with `dump()`.
+- Replace `decode` followed by `data_as` with `decode_as`, and `set_data` on a copy followed by `encode` with `encode_as`, to save a parse or a serialisation.
 - Pass `{.retain_document_up_to = 0}` to keep the v2 behaviour of always decoding to text. The text is now the sender's own spelling of the payload, where v2 gave the codec's serialisation.
 
 CR-0003 and ADR-0010 record why: the v0.5.0 event model adds an alternative to `data_t`, and SPEC section 3 rule 4 sends a breaking change to a new generation.

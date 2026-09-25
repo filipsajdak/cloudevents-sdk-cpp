@@ -1,5 +1,45 @@
 {
   "budgets": {
+    "decode_as_full/boost.json": {
+      "allocated_bytes": 2118,
+      "allocations": 44,
+      "instructions": 45131
+    },
+    "decode_as_full/glaze": {
+      "allocated_bytes": 4669,
+      "allocations": 31,
+      "instructions": 58706
+    },
+    "decode_as_full/nlohmann": {
+      "allocated_bytes": 3957,
+      "allocations": 77,
+      "instructions": 104338
+    },
+    "decode_as_full/rapidjson": {
+      "allocated_bytes": 3040,
+      "allocations": 29,
+      "instructions": 48010
+    },
+    "decode_as_large/boost.json": {
+      "allocated_bytes": 262677,
+      "allocations": 3322,
+      "instructions": 3226685
+    },
+    "decode_as_large/glaze": {
+      "allocated_bytes": 299226,
+      "allocations": 1125,
+      "instructions": 3514024
+    },
+    "decode_as_large/nlohmann": {
+      "allocated_bytes": 373818,
+      "allocations": 4459,
+      "instructions": 9001723
+    },
+    "decode_as_large/rapidjson": {
+      "allocated_bytes": 206052,
+      "allocations": 1125,
+      "instructions": 3025006
+    },
     "decode_batch_100/boost.json": {
       "allocated_bytes": 209075,
       "allocations": 1990,
@@ -19,6 +59,26 @@
       "allocated_bytes": 269701,
       "allocations": 1447,
       "instructions": 2561522
+    },
+    "decode_batch_as_100/boost.json": {
+      "allocated_bytes": 211319,
+      "allocations": 1990,
+      "instructions": 2746890
+    },
+    "decode_batch_as_100/glaze": {
+      "allocated_bytes": 295605,
+      "allocations": 1119,
+      "instructions": 3017046
+    },
+    "decode_batch_as_100/nlohmann": {
+      "allocated_bytes": 276939,
+      "allocations": 2893,
+      "instructions": 5008237
+    },
+    "decode_batch_as_100/rapidjson": {
+      "allocated_bytes": 191645,
+      "allocations": 1117,
+      "instructions": 2563651
     },
     "decode_full/boost.json": {
       "allocated_bytes": 2177,
@@ -91,6 +151,26 @@
       "allocations": 9,
       "instructions": 9390,
       "retained_bytes": 25
+    },
+    "encode_as_full/boost.json": {
+      "allocated_bytes": 3090,
+      "allocations": 37,
+      "instructions": 30648
+    },
+    "encode_as_full/glaze": {
+      "allocated_bytes": 3657,
+      "allocations": 15,
+      "instructions": 27253
+    },
+    "encode_as_full/nlohmann": {
+      "allocated_bytes": 3920,
+      "allocations": 48,
+      "instructions": 52375
+    },
+    "encode_as_full/rapidjson": {
+      "allocated_bytes": 4776,
+      "allocations": 21,
+      "instructions": 26215
     },
     "encode_batch_100/boost.json": {
       "allocated_bytes": 224457,
@@ -271,6 +351,26 @@
       "allocated_bytes": 1692,
       "allocations": 9,
       "instructions": 6806
+    },
+    "typed_payload_read_document/boost.json": {
+      "allocated_bytes": 106,
+      "allocations": 3,
+      "instructions": 2340
+    },
+    "typed_payload_read_document/glaze": {
+      "allocated_bytes": 106,
+      "allocations": 3,
+      "instructions": 2161
+    },
+    "typed_payload_read_document/nlohmann": {
+      "allocated_bytes": 106,
+      "allocations": 3,
+      "instructions": 3165
+    },
+    "typed_payload_read_document/rapidjson": {
+      "allocated_bytes": 106,
+      "allocations": 3,
+      "instructions": 2499
     },
     "typed_payload_write/boost.json": {
       "allocated_bytes": 711,

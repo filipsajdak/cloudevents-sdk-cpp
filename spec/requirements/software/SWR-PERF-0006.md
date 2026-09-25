@@ -2,7 +2,8 @@
 uid: SWR-PERF-0006
 title: A binary that grows more than 5 percent is flagged
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: low
 rationale: >
   The SDK is header-only, so its code lands in every consumer binary.

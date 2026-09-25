@@ -2,7 +2,8 @@
 uid: SYS-PERF-0001
 title: Every pull request is measured against main and against budgets
 type: system
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   Shared CI runners vary by 10 to 20 percent in wall time between runs, so a gate on time alone would fail for noise.

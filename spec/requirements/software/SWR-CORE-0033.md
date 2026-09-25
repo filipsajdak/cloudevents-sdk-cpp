@@ -2,7 +2,8 @@
 uid: SWR-CORE-0033
 title: Two json_documents compare as JSON values
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   Event equality must not depend on how the payload was spelled on the wire, or on which codec parsed it.

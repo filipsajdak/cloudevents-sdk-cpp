@@ -2,7 +2,8 @@
 uid: SWR-EXT-0011
 title: set_data stores a typed payload as a json_document
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   set_data built a DOM from the described value and then serialised it to json_text.

@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0009
 title: CE_DESCRIBE is the only public macro the headers leave defined
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   SPEC 3 rule 7 permits a single public macro because every macro a header leaves

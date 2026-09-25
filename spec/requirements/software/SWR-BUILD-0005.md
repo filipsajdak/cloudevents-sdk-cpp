@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0005
 title: Public API published through the inline namespace of the current generation
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   SPEC 3 rule 4 places the public API in an inline versioned namespace so the

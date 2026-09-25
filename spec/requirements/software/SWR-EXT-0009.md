@@ -2,7 +2,8 @@
 uid: SWR-EXT-0009
 title: from_value_as reads a typed event from a document already parsed
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   A caller that parsed the document itself, to route on it or to read a transport envelope, already holds the DOM.

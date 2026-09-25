@@ -2,7 +2,8 @@
 uid: SWR-CORE-0031
 title: json_document holds a codec's DOM behind a codec-free type
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   CR-0003 lets an event keep the JSON document its decoder built.

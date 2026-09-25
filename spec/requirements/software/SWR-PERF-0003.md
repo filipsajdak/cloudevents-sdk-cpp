@@ -2,7 +2,8 @@
 uid: SWR-PERF-0003
 title: A pull request that makes a decoded event retain more than 1 percent more memory fails
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   An event kept in a queue or a cache holds its memory for as long as it lives.

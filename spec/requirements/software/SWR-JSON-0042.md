@@ -2,7 +2,8 @@
 uid: SWR-JSON-0042
 title: A json_document from another codec is converted through text
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   An event decoded with one codec may be encoded or read with another.

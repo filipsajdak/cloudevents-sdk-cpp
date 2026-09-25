@@ -2,7 +2,8 @@
 uid: SWR-CORE-0013
 title: A caller-supplied JSON payload is carried as text, and core names no codec type
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   SPEC 4 forbids core from depending on a format or codec header, which keeps the

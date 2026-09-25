@@ -2,7 +2,8 @@
 uid: SWR-JSON-0043
 title: A payload kept as text is the input's own text
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   Above the retention limit the decoder produced json_text by serialising the parsed data member with the codec.

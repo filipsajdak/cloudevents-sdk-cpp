@@ -35,6 +35,10 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
 - **`ce::json::decode_options{.retain_document_up_to = 16 * 1024}`** bounds what one event can pin: input longer than the limit keeps its payload as `json_text`, and 0 always does.
   The default is 16 KiB, named `decode_options::default_retention_limit`: a retained document measured up to 3.3 times the bytes of its text, so larger payloads stay text unless the caller raises the limit.
   `decode` and `decode_batch` take it. A batch keeps documents when its text is at most the limit times its number of events, and otherwise every event in it keeps text.
+- **A payload kept as text above the limit is the input's own text** of the `data` member, without the whitespace around it, rather than the codec's serialisation of it.
+  Copying the slice avoids the serialisation, which cost `decode_large` 25 to 49 percent more instructions and 58 to 210 percent more allocated bytes than main.
+  The decoder falls back to the codec's serialisation when a top-level member name carries an escape, when `data` appears twice, or when the input holds something strict JSON does not allow; a batch decides per element.
+  The text keeps the sender's spelling, so the same JSON formatted differently no longer compares equal as `json_text` after decode.
 - **Encoding a `json_document` built by the encoding codec copies its DOM**, with no serialisation and no parse.
   A document from another codec, and `data_as`, convert it through the building codec's text.
 - The optional module exports `ce::v3` only.
@@ -45,7 +49,7 @@ It carries the CR-0003 changes listed below, and the rest of CR-0003 lands in la
 - Code that read `std::get<ce::json_text>(event.data()).raw` after a structured decode now finds a `json_document`.
   Read it with `document.get<Codec>()` for the DOM, or `document.dump()` for text.
 - Code that compares a decoded event with one built from `json_text` now compares unequal; build the expected event with a `json_document`, or compare the payloads by value.
-- Pass `{.retain_document_up_to = 0}` to keep the v2 behaviour of always decoding to text.
+- Pass `{.retain_document_up_to = 0}` to keep the v2 behaviour of always decoding to text. The text is now the sender's own spelling of the payload, where v2 gave the codec's serialisation.
 
 CR-0003 and ADR-0010 record why: the v0.5.0 event model adds an alternative to `data_t`, and SPEC section 3 rule 4 sends a breaking change to a new generation.
 

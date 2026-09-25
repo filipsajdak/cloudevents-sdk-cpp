@@ -2,7 +2,7 @@
 uid: SWR-JSON-0043
 title: A payload kept as text is the input's own text
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Above the retention limit the decoder produced json_text by serialising the parsed data member with the codec.
@@ -18,8 +18,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/json_format.hpp, code:include/cloudevents/format/detail/json_slice.hpp]
+verified_by: [test:test/json_format_test.cpp::decode-keeps-the-payloads-own-text]
 owner: filip.sajdak
 version: 1
 ---

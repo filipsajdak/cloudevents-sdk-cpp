@@ -385,6 +385,9 @@ The media types are `json_format<Codec>::content_type` and `batch_content_type`.
   That includes a string when `datacontenttype` is absent, because the format says an absent content type means JSON.
   `decode` and `decode_batch` move the member out of the document they parsed, so the payload is neither serialised nor copied.
 - Input longer than the retention limit keeps that payload as `ce::json_text` instead.
+  The text is the `data` member's value exactly as the sender wrote it, without the whitespace around it, so no serialisation runs.
+  Where the decoder cannot be sure which bytes the codec read as `data` (a top-level member name written with an escape, `data` given twice, or anything strict JSON does not allow), it stores the codec's own serialisation instead.
+  Because the text keeps the sender's spelling, two events carrying the same JSON formatted differently compare unequal after such a decode; compare the payloads by value when that matters.
 
 A parsed document can take several times the memory of its text, and a retained one lives as long as the event.
 The retention limit bounds that: 16 KiB of input by default (`ce::json::decode_options::default_retention_limit`), set per call with `ce::json::decode_options`, and 0 always keeps text.

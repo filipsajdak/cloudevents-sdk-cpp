@@ -15,6 +15,7 @@
 
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/detail/json_slice.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
 
@@ -156,22 +157,27 @@ struct json_format {
 
   // spec: SWR-JSON-0031
   [[nodiscard]] static auto from_value(const value& document) -> result<event> {
-    return read_event(document, nullptr, payload_mode::copy);
+    return read_event(document, nullptr, payload_mode::copy, std::nullopt);
   }
 
   // spec: SWR-JSON-0040
+  // spec: SWR-JSON-0043
   [[nodiscard]] static auto decode(std::string_view text, json::decode_options options = {})
       -> result<event> {
     auto document = Codec::parse(text);
     if (!document) {
       return fail(document.error().code, document.error().detail);
     }
-    return read_event(*document, &*document,
-                      retains(text, options) ? payload_mode::move : payload_mode::text);
+    if (retains(text, options)) {
+      return read_event(*document, &*document, payload_mode::move, std::nullopt);
+    }
+    return read_event(*document, &*document, payload_mode::text,
+                      json::detail::data_member_text(text));
   }
 
   // spec: SWR-JSON-0039
   // spec: SWR-JSON-0040
+  // spec: SWR-JSON-0043
   [[nodiscard]] static auto decode_batch(std::string_view text, json::decode_options options = {})
       -> result<std::vector<event>> {
     auto document = Codec::parse(text);
@@ -188,11 +194,14 @@ struct json_format {
                                                                               : payload_mode::text;
     std::vector<event> events;
     result<void> element_error{};
+    json::detail::batch_data_slices own_texts{text};
     Codec::for_each_mutable_element(*document, [&](value& element) {
       if (!element_error) {
         return;
       }
-      auto cloud_event = read_event(element, &element, mode);
+      auto cloud_event =
+          read_event(element, &element, mode,
+                     mode == payload_mode::text ? own_texts.next() : std::nullopt);
       if (!cloud_event) {
         element_error =
             fail(cloud_event.error().code, cloud_event.error().detail, cloud_event.error().where);
@@ -227,7 +236,8 @@ struct json_format {
            text.size() <= limit * event_count;
   }
 
-  [[nodiscard]] static auto read_event(const value& document, value* owned, payload_mode mode)
+  [[nodiscard]] static auto read_event(const value& document, value* owned, payload_mode mode,
+                                       std::optional<std::string_view> own_text)
       -> result<event> {
     if (Codec::kind_of(document) != json::kind::object) {
       return fail(errc::parse_error, "a CloudEvent must be a JSON object");
@@ -246,7 +256,8 @@ struct json_format {
     if (auto read = read_context(found, under_construction); !read) {
       return fail(read.error().code, read.error().detail, read.error().where);
     }
-    if (auto stored = decode_data(found, owned, mode, under_construction.rest); !stored) {
+    if (auto stored = decode_data(found, owned, mode, own_text, under_construction.rest);
+        !stored) {
       return fail(stored.error().code, stored.error().detail, stored.error().where);
     }
     if (!extensions_read) {
@@ -527,6 +538,7 @@ struct json_format {
   // spec: SWR-JSON-0020
   // spec: SWR-JSON-0021
   [[nodiscard]] static auto decode_data(const members& found, value* owned, payload_mode mode,
+                                        std::optional<std::string_view> own_text,
                                         event::options& into) -> result<void> {
     const value* data = found.data;
     const value* data_base64 = found.data_base64;
@@ -563,16 +575,18 @@ struct json_format {
       return {};
     }
 
-    into.data = json_payload(*data, owned, mode);
+    into.data = json_payload(*data, owned, mode, own_text);
     return {};
   }
 
   // spec: SWR-JSON-0019
   // spec: SWR-JSON-0040
-  [[nodiscard]] static auto json_payload(const value& data, value* owned, payload_mode mode)
-      -> data_t {
+  // spec: SWR-JSON-0043
+  [[nodiscard]] static auto json_payload(const value& data, value* owned, payload_mode mode,
+                                         std::optional<std::string_view> own_text) -> data_t {
     switch (mode) {
-      case payload_mode::text: return json_text{.raw = Codec::dump(data)};
+      case payload_mode::text:
+        return json_text{.raw = own_text ? std::string{*own_text} : Codec::dump(data)};
       case payload_mode::copy: return json_document::make<Codec>(Codec::copy(data));
       case payload_mode::move: break;
     }

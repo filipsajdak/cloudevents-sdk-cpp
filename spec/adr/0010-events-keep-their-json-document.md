@@ -71,6 +71,11 @@ The default is 16 KiB so that typical events keep the document and its fast path
 A batch is measured per event by average size: it keeps documents when its text is at most the limit times its number of events, and otherwise every event in it keeps text.
 Measuring the whole batch text against the limit sent a batch of 100 typical events to text, which cost `decode_batch_100` up to 42 percent more allocated bytes than main in the CI perf job for PR #59.
 Retained memory stays proportional to the input, with a worst case around 3 times its text when one large event among tiny ones is retained because the average is small; the absolute per-event bound applies to single-event decode.
+Above the limit the text is the `data` member's own bytes from the input, without surrounding whitespace (`SWR-JSON-0043`).
+Serialising the parsed member instead cost `decode_large` 25 to 49 percent more instructions and 58 to 210 percent more allocated bytes than main in the CI perf job for PR #59, while the input already holds the payload.
+An SDK-side structural scanner finds the bytes after the codec has parsed the input, so it reads only well-formed JSON and works the same for every codec; nlohmann exposes positions only behind a build option, and neither Boost.JSON nor Glaze keeps them.
+When the scanner cannot be certain its slice is the member the codec decoded (a top-level member name with an escape, a duplicate `data`, anything a strict reader would not expect), the decoder falls back to the codec's serialisation, per event and per batch element.
+The text keeps the sender's spelling, so the same JSON formatted differently no longer compares equal as `json_text` after decode.
 
 **Typed payloads read and write the DOM.**
 `decode_as`, `decode_batch_as`, `from_value_as` and `encode_as` sit in `format/typed_payload.hpp`, returning `decoded<T>{.event, .payload}` where they return a payload.
@@ -111,5 +116,5 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 
 - `spec/requirements/change-request/CR-0003.md`
 - ADR-0004 (the codec concept), ADR-0008 (the v2 event model), ADR-0009 (two generations side by side)
-- `SWR-CORE-0031` to `SWR-CORE-0034`, `SWR-JSON-0039` to `SWR-JSON-0042`, `SWR-EXT-0007` to `SWR-EXT-0012`, `SWR-BUILD-0012`
+- `SWR-CORE-0031` to `SWR-CORE-0034`, `SWR-JSON-0039` to `SWR-JSON-0043`, `SWR-EXT-0007` to `SWR-EXT-0012`, `SWR-BUILD-0012`
 - `docs/SPEC.md` section 3 rule 4

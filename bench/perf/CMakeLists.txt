@@ -11,8 +11,10 @@
 set(ce_bench_dir "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/malloc_wrap.cmake")
+set(ce_perf_bindings ce::binding_http ce::binding_kafka ce::binding_nats)
 ce_add_bench(perf_probe
-  SOURCES perf_probe.cpp counting_allocator.cpp heap_counters.cpp ${CE_PERF_RAW_LAYER})
+  SOURCES perf_probe.cpp counting_allocator.cpp heap_counters.cpp ${CE_PERF_RAW_LAYER}
+  LIBS ${ce_perf_bindings})
 target_include_directories(perf_probe PRIVATE ${ce_bench_dir})
 ce_perf_wrap_malloc(perf_probe)
 
@@ -20,7 +22,8 @@ ce_perf_wrap_malloc(perf_probe)
 # the counting operator new nor the malloc wrap, so Callgrind sees only the SDK
 # and the codec. The counters it links stay at zero and are never read.
 ce_add_bench(perf_probe_instr
-  SOURCES perf_probe.cpp heap_counters.cpp raw_malloc_plain.cpp)
+  SOURCES perf_probe.cpp heap_counters.cpp raw_malloc_plain.cpp
+  LIBS ${ce_perf_bindings})
 target_include_directories(perf_probe_instr PRIVATE ${ce_bench_dir})
 
 set(ce_perf_consumers

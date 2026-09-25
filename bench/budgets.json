@@ -132,6 +132,106 @@
       "allocations": 29,
       "instructions": 34932
     },
+    "http_decode_binary/boost.json": {
+      "allocated_bytes": 743,
+      "allocations": 11,
+      "instructions": 41463
+    },
+    "http_decode_binary/glaze": {
+      "allocated_bytes": 743,
+      "allocations": 11,
+      "instructions": 41463
+    },
+    "http_decode_binary/nlohmann": {
+      "allocated_bytes": 743,
+      "allocations": 11,
+      "instructions": 41463
+    },
+    "http_decode_binary/rapidjson": {
+      "allocated_bytes": 743,
+      "allocations": 11,
+      "instructions": 41463
+    },
+    "http_decode_structured/boost.json": {
+      "allocated_bytes": 2118,
+      "allocations": 44,
+      "instructions": 43370
+    },
+    "http_decode_structured/glaze": {
+      "allocated_bytes": 4667,
+      "allocations": 31,
+      "instructions": 58064
+    },
+    "http_decode_structured/nlohmann": {
+      "allocated_bytes": 3957,
+      "allocations": 77,
+      "instructions": 101810
+    },
+    "http_decode_structured/rapidjson": {
+      "allocated_bytes": 3040,
+      "allocations": 29,
+      "instructions": 47330
+    },
+    "http_encode_binary/boost.json": {
+      "allocated_bytes": 2568,
+      "allocations": 15,
+      "instructions": 31106
+    },
+    "http_encode_binary/glaze": {
+      "allocated_bytes": 2568,
+      "allocations": 15,
+      "instructions": 31106
+    },
+    "http_encode_binary/nlohmann": {
+      "allocated_bytes": 2568,
+      "allocations": 15,
+      "instructions": 31104
+    },
+    "http_encode_binary/rapidjson": {
+      "allocated_bytes": 2568,
+      "allocations": 15,
+      "instructions": 31106
+    },
+    "kafka_decode_binary/boost.json": {
+      "allocated_bytes": 736,
+      "allocations": 11,
+      "instructions": 34358
+    },
+    "kafka_decode_binary/glaze": {
+      "allocated_bytes": 736,
+      "allocations": 11,
+      "instructions": 34358
+    },
+    "kafka_decode_binary/nlohmann": {
+      "allocated_bytes": 736,
+      "allocations": 11,
+      "instructions": 34358
+    },
+    "kafka_decode_binary/rapidjson": {
+      "allocated_bytes": 736,
+      "allocations": 11,
+      "instructions": 34358
+    },
+    "nats_decode_binary/boost.json": {
+      "allocated_bytes": 758,
+      "allocations": 11,
+      "instructions": 42070
+    },
+    "nats_decode_binary/glaze": {
+      "allocated_bytes": 758,
+      "allocations": 11,
+      "instructions": 42070
+    },
+    "nats_decode_binary/nlohmann": {
+      "allocated_bytes": 758,
+      "allocations": 11,
+      "instructions": 42070
+    },
+    "nats_decode_binary/rapidjson": {
+      "allocated_bytes": 758,
+      "allocations": 11,
+      "instructions": 42070
+    },
     "roundtrip_full/boost.json": {
       "allocated_bytes": 5505,
       "allocations": 87,

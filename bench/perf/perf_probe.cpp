@@ -28,8 +28,12 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include <cloudevents/binding/http.hpp>
+#include <cloudevents/binding/kafka.hpp>
+#include <cloudevents/binding/nats.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_format.hpp>
@@ -126,6 +130,85 @@ auto encode_batch_100() -> bool {
   return text.has_value();
 }
 
+// --- the bindings ------------------------------------------------------------
+//
+// The messages are laid out once, by the SDK itself, from the event the encode
+// operations start from. A binary-mode message does not depend on the codec,
+// and the structured one carries the same text whichever codec reads it.
+
+template<class Laid>
+[[nodiscard]] auto laid_out(Laid laid) -> ce::message {
+  auto message = laid();
+  return message ? std::move(*message) : ce::message{};
+}
+
+[[nodiscard]] auto http_binary_message() -> const ce::message& {
+  static const ce::message subject = laid_out([] {
+    return ce::http::to_message<nlohmann_codec>(ce::bench::full_event(),
+                                                ce::content_mode::binary_mode);
+  });
+  return subject;
+}
+
+[[nodiscard]] auto http_structured_message() -> const ce::message& {
+  static const ce::message subject = laid_out([] {
+    return ce::http::to_message<nlohmann_codec>(ce::bench::full_event(),
+                                                ce::content_mode::structured);
+  });
+  return subject;
+}
+
+[[nodiscard]] auto kafka_binary_message() -> const ce::message& {
+  static const ce::message subject = laid_out([] {
+    return ce::kafka::to_message<nlohmann_codec>(ce::bench::full_event(),
+                                                 ce::content_mode::binary_mode);
+  });
+  return subject;
+}
+
+[[nodiscard]] auto nats_binary_message() -> const ce::message& {
+  static const ce::message subject = laid_out([] {
+    return ce::nats::to_message<nlohmann_codec>(ce::bench::full_event(),
+                                                ce::content_mode::binary_mode);
+  });
+  return subject;
+}
+
+template<class C>
+auto http_decode_binary() -> bool {
+  auto event = ce::http::from_message<C>(http_binary_message());
+  escape(event);
+  return event.has_value();
+}
+
+template<class C>
+auto http_encode_binary() -> bool {
+  auto message = ce::http::to_message<C>(ce::bench::full_event(), ce::content_mode::binary_mode);
+  escape(message);
+  return message.has_value();
+}
+
+template<class C>
+auto http_decode_structured() -> bool {
+  auto event = ce::http::from_message<C>(http_structured_message());
+  escape(event);
+  return event.has_value();
+}
+
+template<class C>
+auto kafka_decode_binary() -> bool {
+  auto event = ce::kafka::from_message<C>(kafka_binary_message());
+  escape(event);
+  return event.has_value();
+}
+
+template<class C>
+auto nats_decode_binary() -> bool {
+  auto event = ce::nats::from_message<C>(nats_binary_message());
+  escape(event);
+  return event.has_value();
+}
+
 struct order {
   std::int32_t total;
   std::string currency;
@@ -206,11 +289,11 @@ struct operation {
 };
 
 template<class C>
-auto operations_for(std::string_view codec) -> std::array<operation, 9> {
+auto operations_for(std::string_view codec) {
   const auto id = [codec](std::string_view name) {
     return std::string{name} + "/" + std::string{codec};
   };
-  return {{
+  return std::to_array<operation>({
       {.id = id("decode_minimal"), .run = decode_minimal<C>, .retained = retained_minimal<C>},
       {.id = id("decode_full"), .run = decode_full<C>, .retained = retained_full<C>},
       {.id = id("decode_large"), .run = decode_large<C>, .retained = retained_large<C>},
@@ -220,11 +303,18 @@ auto operations_for(std::string_view codec) -> std::array<operation, 9> {
       {.id = id("encode_batch_100"), .run = encode_batch_100<C>},
       {.id = id("typed_payload_read"), .run = typed_payload_read<C>},
       {.id = id("typed_payload_write"), .run = typed_payload_write<C>},
-  }};
+      {.id = id("http_decode_binary"), .run = http_decode_binary<C>},
+      {.id = id("http_encode_binary"), .run = http_encode_binary<C>},
+      {.id = id("http_decode_structured"), .run = http_decode_structured<C>},
+      {.id = id("kafka_decode_binary"), .run = kafka_decode_binary<C>},
+      {.id = id("nats_decode_binary"), .run = nats_decode_binary<C>},
+  });
 }
 
-[[nodiscard]] auto all_operations() -> const std::array<std::array<operation, 9>, 4>& {
-  static const std::array<std::array<operation, 9>, 4> table{{
+using codec_operations = decltype(operations_for<nlohmann_codec>(std::string_view{}));
+
+[[nodiscard]] auto all_operations() -> const std::array<codec_operations, 4>& {
+  static const std::array<codec_operations, 4> table{{
       operations_for<nlohmann_codec>("nlohmann"),
       operations_for<rapidjson_codec>("rapidjson"),
       operations_for<boost_codec>("boost.json"),

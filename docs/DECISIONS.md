@@ -58,9 +58,19 @@ which keeps the source snake_case per the naming convention. `#if` on `CE_HAS_*`
 appears only in `detail/config.hpp` and the describe backends, which is exactly the
 allowance SPEC §10 already grants.
 
-`CE_FIELD` is a second public macro, since SPEC §5.2 specifies it by name. The rule
-is restated as: the public macros are `CE_DESCRIBE` and `CE_FIELD`; everything else
-is `CE_DETAIL_*` and is `#undef`-ed by the header that defines it.
+`CE_DESCRIBE` is the only public macro. The headers also define reserved names,
+which a user must not define and must not use outside what the guide shows:
+
+- `CE_HAS_EXPECTED`, `CE_HAS_REFLECTION`, `CE_HAS_EXPANSION_STATEMENTS` and
+  `CE_HAS_EXCEPTIONS`, for the reason above.
+- `CE_FIELD`, which is part of `CE_DESCRIBE`'s argument syntax: SPEC §5.2 and
+  SWR-DESC-0005 specify it by name, so it may appear as an entry in a
+  `CE_DESCRIBE` list and nowhere else.
+- Every `CE_DETAIL_*` name. These stay defined because `CE_DESCRIBE` expands into
+  them at the use site, in the user's translation unit, after the header that
+  defines them has ended; undefining them would break every `CE_DESCRIBE`.
+
+SWR-BUILD-0009 states the set.
 
 ## D-CONFIG-2: the dialect comes from `CMAKE_CXX_STANDARD`, the flag does not
 

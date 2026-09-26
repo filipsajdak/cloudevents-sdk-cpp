@@ -648,6 +648,8 @@ A field may be `bool`, `std::int32_t`, `std::string`, `ce::uri`, `ce::uri_ref` o
 Anything else is a compile error naming the struct.
 Each field name becomes an attribute name, so it must match `[a-z0-9]+`; `set` refuses one that does not.
 `CE_FIELD(member, "wirename")` gives a member a different attribute name.
+It is valid only as an entry in a `CE_DESCRIBE` list.
+`CE_DESCRIBE` is the only public macro. The headers also leave `CE_FIELD`, the `CE_HAS_*` capability macros and the `CE_DETAIL_*` helpers defined, because `CE_DESCRIBE` expands into the helpers where you write it; those names are reserved, so do not define them or use them anywhere else.
 
 ## 8. Typed payloads
 

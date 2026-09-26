@@ -2,7 +2,8 @@
 uid: SWR-PERF-0005
 title: Every pull request shows its measurements beside main and the budgets
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   A failed gate with no numbers sends the author off to reproduce the measurement.

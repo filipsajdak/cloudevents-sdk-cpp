@@ -2,7 +2,8 @@
 uid: SWR-PERF-0007
 title: Every change to main is recorded in the benchmark history
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   A comparison against main shows one step; a trend shows where a budget is heading and when a change began to cost.

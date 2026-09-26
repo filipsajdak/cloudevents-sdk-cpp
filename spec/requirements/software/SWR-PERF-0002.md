@@ -2,7 +2,8 @@
 uid: SWR-PERF-0002
 title: A pull request that adds a heap allocation fails
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   The number and size of allocations an operation makes are exact, so any increase is a real change in behaviour.

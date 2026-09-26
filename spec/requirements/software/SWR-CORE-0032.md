@@ -2,7 +2,8 @@
 uid: SWR-CORE-0032
 title: json_document can be shared across threads without a data race
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   Callers copy events into queues and hand them to other threads.

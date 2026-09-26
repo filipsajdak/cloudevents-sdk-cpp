@@ -2,11 +2,13 @@
 
 Notable changes per release. Dates are the tag date.
 
-## Unreleased
+## v0.5.0 - 2026-09-26
 
-A third API generation, `ce::v3`, is the inline namespace.
-It carries the CR-0003 changes listed below.
-`ce::v2` keeps what v0.4.0 published, so v0.4.0 code has a way to keep compiling.
+An event keeps the JSON document its decoder built, so a typed read or write
+parses the payload at most once and never serialises it to text in between.
+That changes `data_t`, so it ships as a third API generation, `ce::v3`, which is
+the inline namespace. `ce::v2` keeps what v0.4.0 published, so v0.4.0 code has a
+way to keep compiling.
 
 ### Three generations
 
@@ -36,7 +38,7 @@ It carries the CR-0003 changes listed below.
   The default is 16 KiB, named `decode_options::default_retention_limit`: a retained document measured up to 3.3 times the bytes of its text, so larger payloads stay text unless the caller raises the limit.
   `decode` and `decode_batch` take it. A batch keeps documents when its text is at most the limit times its number of events, and otherwise every event in it keeps text.
 - **A payload kept as text above the limit is the input's own text** of the `data` member, without the whitespace around it, rather than the codec's serialisation of it.
-  Copying the slice avoids the serialisation, which cost `decode_large` 25 to 49 percent more instructions and 58 to 210 percent more allocated bytes than main.
+  Copying the slice avoids the serialisation, which measured 25 to 49 percent more instructions and 58 to 210 percent more allocated bytes in `decode_large`.
   The decoder falls back to the codec's serialisation when a top-level member name carries an escape, when `data` appears twice, or when the input holds something strict JSON does not allow; a batch decides per element.
   The text keeps the sender's spelling, so the same JSON formatted differently no longer compares equal as `json_text` after decode.
 - **Encoding a `json_document` built by the encoding codec copies its DOM**, with no serialisation and no parse.
@@ -52,16 +54,6 @@ It carries the CR-0003 changes listed below.
   They fail as `data_as` does when the payload is absent (`missing_required_attribute`) or is not JSON (`type_mismatch`).
   The optional module exports them, and `json::decode_options`.
 - The optional module exports `ce::v3` only.
-
-#### Moving to the v3 payload
-
-- Add a `json_document` case wherever you visit `data_t`; `document.dump()` gives its compact text.
-- Code that read `std::get<ce::json_text>(event.data()).raw` after a structured decode now finds a `json_document`.
-  Read it with `document.get<Codec>()` for the DOM, or `document.dump()` for text.
-- Code that compares a decoded event with one built from `json_text` now compares unequal; build the expected event with a `json_document`, or compare the payloads by value.
-- Code that read `std::get<ce::json_text>(event.data())` after `set_data` now finds a `json_document`; read the payload with `data_as`, or the text with `dump()`.
-- Replace `decode` followed by `data_as` with `decode_as`, and `set_data` on a copy followed by `encode` with `encode_as`, to save a parse or a serialisation.
-- Pass `{.retain_document_up_to = 0}` to keep the v2 behaviour of always decoding to text. The text is now the sender's own spelling of the payload, where v2 gave the codec's serialisation.
 
 CR-0003 and ADR-0010 record why: the v0.5.0 event model adds an alternative to `data_t`, and SPEC section 3 rule 4 sends a breaking change to a new generation.
 
@@ -82,6 +74,22 @@ auto request = ce::v2::http::to_message<ce::v2::codec::nlohmann_codec>(
 
 Code that names only shared entities, such as an attribute type or a codec, needs no change.
 
+### Moving to `ce::v3`
+
+- **`data_t` has a fifth alternative.** Add a `json_document` case wherever you visit `data_t`; `document.dump()` gives its compact text.
+  Code that read `std::get<ce::json_text>(event.data()).raw` after a structured decode now finds a `json_document`: read it with `document.get<Codec>()` for the DOM, or `document.dump()` for text.
+  Code that compares a decoded event with one built from `json_text` now compares unequal; build the expected event with a `json_document`, or compare the payloads by value.
+- **A codec you wrote needs five more members to serve `ce::v3`**: `equal`, `copy`, `extract`, `for_each_mutable_element` and a `static constexpr std::string_view identity`, as listed above.
+  `static_assert(ce::json::json_codec<MyCodec>)` fails until all five are present.
+  Choose an identity under a domain you control; two codecs sharing one would hand each other's DOM to the wrong type.
+  Without the five members the codec still serves `ce::v1` and `ce::v2` unchanged.
+- **`decode_options` bounds what a decoded event pins, 16 KiB by default.**
+  `decode`, `decode_batch`, `decode_as` and `decode_batch_as` take `ce::json::decode_options` as a second argument; omitting it keeps a document for input up to `decode_options::default_retention_limit` (16 KiB) and text above it.
+  Pass `{.retain_document_up_to = 0}` to keep the v2 behaviour of always decoding to text. The text is now the sender's own spelling of the payload, where v2 gave the codec's serialisation.
+  Raise the limit when large payloads are read as typed values and memory allows it.
+- **`set_data<T, Codec>` stores a document.** Code that read `std::get<ce::json_text>(event.data())` after `set_data` now finds a `json_document`; read the payload with `data_as`, or the text with `dump()`.
+- **Use the typed entry points.** Replace `decode` followed by `data_as` with `decode_as`, `decode_batch` followed by a loop of `data_as` with `decode_batch_as`, and `set_data` on a copy followed by `encode` with `encode_as`, to save a parse or a serialisation.
+
 ### Tooling
 
 - **Every pull request is measured against main and against budgets.**
@@ -90,6 +98,53 @@ Code that names only shared entities, such as an attribute type or a codec, need
   Each merge to main is recorded on the `bench-data` branch.
   [docs/PERFORMANCE.md](docs/PERFORMANCE.md) explains the table and how to accept a deliberate cost.
 - The bench's Boost.JSON codec builds its values with parentheses, so it works with Boost before 1.84.
+
+### Faster, in every generation
+
+- **A decode reads a document in one pass over its members**, instead of one `find` per reserved attribute and a second walk for the extensions.
+  Measured with `bench/codec_bench` before the perf job existed: 7 to 20 percent less CPU time for an event-sized document on all four bench codecs, 7 to 14 percent for a batch of 100.
+- **The bindings stop copying bytes the SDK already holds.**
+  A structured decode parses the message body in place, a binary-mode decode checks header uniqueness without building a second header container, and `decode_batch` reserves its vector.
+  `nlohmann_codec::find` and `extract` look a key up without building a `std::string`, and `rapidjson_codec::dump` returns its buffer without copying it.
+  These are body-only changes that keep every declaration and every result, so the frozen generations take them as fixes (D-CODEC-3).
+
+### Measured by the perf job
+
+The perf job (x86_64, g++-14, Valgrind 3.22, `malloc` counted) records main on the `bench-data` branch.
+The figures compare its first record, `b8757ca`, where a decode still kept its payload as the codec's serialised text, with the release candidate, `de63b9e`.
+A retained figure is the heap a decoded event holds.
+
+- **Retained memory.** A 52,889-byte event retains 52,799 bytes on every codec, which is its payload's own text: down from 76,865 (nlohmann), 79,907 (Glaze) and 65,601 (Boost.JSON), and level on RapidJSON.
+  A 400-byte event under the 16 KiB limit keeps its document, which costs more than the text did: 652 to 1,507 bytes on nlohmann, 633 to 859 on RapidJSON, 633 to 1,045 on Boost.JSON and 1,044 to 1,539 on Glaze.
+- **Typed read.** `data_as` of a payload written by the same codec runs 63 to 83 percent fewer instructions (nlohmann 16,243 to 2,711; RapidJSON 6,215 to 2,272) with 2 allocations instead of 7 to 22.
+  The earlier probe read a payload nlohmann wrote for every codec, and this one reads a payload the reading codec wrote (D-PERF-1).
+- **Typed write.** `set_data` runs 23 to 52 percent fewer instructions (nlohmann 11,084 to 6,348; RapidJSON 4,964 to 2,382).
+  `encode_as` of the full event costs 30 to 31 percent fewer instructions than `encode` on nlohmann and Glaze and 16 to 21 percent fewer on RapidJSON and Boost.JSON, measured in the same run.
+- **Decode.** `decode_large` runs 5 to 19 percent fewer instructions and allocates 23 to 55 percent fewer bytes; `decode_full` 3 to 7 percent fewer instructions; `decode_batch_100` 0 to 12 percent fewer instructions and 34 to 57 percent fewer allocated bytes.
+- **Bindings**, measured when they entered the job, before the copies were removed and after: a binary-mode decode makes 10 allocations instead of 21 on HTTP and Kafka and 22 on NATS, and allocates 675 bytes instead of 2,866 on HTTP; HTTP binary decode runs 10.8 percent fewer instructions, Kafka 12.7 and NATS 11.0; an HTTP structured decode runs 9 to 18 percent fewer.
+- **Binary size.** The stripped minimal consumer grew 3.1 to 5.5 percent (nlohmann 297,264 to 313,648 bytes).
+
+### Fixed
+
+- **The macro contract matches the headers.** `CE_DESCRIBE` is the only public macro; `CE_FIELD`, `CE_HAS_*` and `CE_DETAIL_*` are reserved names the headers leave defined, which you must not define or use, except `CE_FIELD` inside a `CE_DESCRIBE` list.
+  The documentation had promised the helpers were undefined, which they cannot be: `CE_DESCRIBE` expands into them where you write it.
+  A suite now reads the preprocessor's own list after including every public header and fails on any other `CE_` macro, and on a documented one that is gone.
+- Regenerating the interop goldens no longer reorders a Go golden's extensions, which Go's randomised map iteration had shuffled on every run.
+
+### Measured on the release candidate
+
+- Line coverage 95.9% (3473 of 3621), function coverage 92.1% (1565 of 1699), branch coverage 59.8% (3982 of 6656), against a floor of 90% lines, from the `coverage floor` job.
+- CI: GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17, AppleClang at C++20 and C++23, MSVC 19, GCC 16 with C++26 static reflection, plus the forced polyfill, exceptions disabled, no default codec, every codec on Linux and macOS, ASan with UBSan, TSan, install-and-consume, and interop with the Go and Java SDKs.
+- Twenty-one fuzz targets ran on pull requests at one minute each.
+
+### Known limitations
+
+- libc++ 17 and 18 implement `std::format` without defining `__cpp_lib_format`; the SDK carves them out by version (D-CI-1).
+- Clang 16 cannot compile libstdc++ 13 or 14 in C++23 mode, so the C++23 Clang job uses libc++ (D-CI-1).
+- The module interface is usable, with constraints on what an importing translation unit may also include (D-MODULE-1), and it exports `ce::v3` only.
+- Given the same non-JSON payload, the Java SDK writes `data_base64` where Go and this SDK write a JSON string. Both are legal (D-INTEROP-1).
+- HTTP binary mode percent-encodes header values as the binding requires; the Go and Java SDKs do not, so talking to them needs `ce::http::literal_values` (D-HTTP-1).
+- A decoded document under the retention limit takes 1.4 to 3.3 times the memory of its text, measured above; lower the limit where many events are held at once.
 
 ## v0.4.0
 

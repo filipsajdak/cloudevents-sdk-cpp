@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0012
 title: The v0.5.0 API is ce::v3, and ce::v2 keeps what v0.4.0 published
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   CR-0003 adds an alternative to data_t, which v0.4.0 published in ce::v2.

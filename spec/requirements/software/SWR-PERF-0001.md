@@ -2,7 +2,8 @@
 uid: SWR-PERF-0001
 title: A pull request that adds more than 2 percent instructions fails
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   The instruction count of an operation under Valgrind varies by well under 1 percent between runs on the same binary, so a 2 percent threshold is signal rather than noise.

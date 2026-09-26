@@ -2,7 +2,8 @@
 uid: SWR-EXT-0012
 title: data_as reads a matching json_document without parsing
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   data_as parsed the payload text on every call.

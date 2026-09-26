@@ -2,7 +2,8 @@
 uid: SWR-CORE-0034
 title: A json_document yields its DOM only to the codec that built it
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   Reading a type-erased document as the wrong codec's value would be undefined behaviour.

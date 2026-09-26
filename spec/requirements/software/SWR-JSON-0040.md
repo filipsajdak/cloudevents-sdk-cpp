@@ -2,7 +2,8 @@
 uid: SWR-JSON-0040
 title: A document above the retention limit keeps its payload as text
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   A parsed DOM can occupy many times the bytes of its text, and a retained one lives as long as the event.

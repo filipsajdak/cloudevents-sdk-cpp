@@ -2,7 +2,8 @@
 uid: SWR-CORE-0012
 title: data_t variant covering absent, textual, binary and JSON payloads
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   SPEC 5.1 defines `data_t` so an event can carry no payload, text, opaque bytes

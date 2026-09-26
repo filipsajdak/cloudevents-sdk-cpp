@@ -2,7 +2,8 @@
 uid: SWR-EXT-0007
 title: decode_as reads an event and its typed payload in one parse
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   A consumer that wants a typed payload decodes the event and then calls data_as.

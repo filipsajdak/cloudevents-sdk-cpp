@@ -2,7 +2,8 @@
 uid: SWR-EXT-0010
 title: encode_as writes a typed payload without an intermediate text form
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   A producer that calls set_data and then encode serialises the payload to text, parses it, and serialises the document.

@@ -2,7 +2,8 @@
 uid: STK-PERF-0001
 title: A change that makes event handling costlier is caught before it merges
 type: stakeholder
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   The SDK sits on the hot path of every service that sends or receives an event.

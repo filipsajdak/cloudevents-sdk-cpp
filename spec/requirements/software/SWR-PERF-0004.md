@@ -2,7 +2,8 @@
 uid: SWR-PERF-0004
 title: A measurement above its committed budget fails
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   A threshold against main catches a large step but not a drift of many small ones.

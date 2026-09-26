@@ -2,7 +2,8 @@
 uid: SWR-JSON-0019
 title: data decodes to a json_document built by the decoding codec
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   SPEC 5.3 preserves the received JSON without committing the SDK to interpreting it.

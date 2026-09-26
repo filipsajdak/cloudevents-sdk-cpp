@@ -2,7 +2,8 @@
 uid: SWR-JSON-0039
 title: The v3 codec concept requires value equality, a deep copy, a member move, mutable element traversal and an identity
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   The encoder copies a retained DOM into its output document, and document equality needs the codec's own comparison.

@@ -2,7 +2,8 @@
 uid: SWR-JSON-0041
 title: A json_document from the encoding codec is copied, not re-parsed
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   Encoding a json_text payload parses it before splicing it under data.

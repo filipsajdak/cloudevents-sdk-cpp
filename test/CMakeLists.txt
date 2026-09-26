@@ -41,6 +41,35 @@ function(ce_add_codec_test name)
 endfunction()
 
 ce_add_test(config_test SOURCES config_test.cpp)
+
+# SWR-BUILD-0009: the macros every public header leaves defined, read from the
+# preprocessor itself. Each probe is an object library whose "object" is its
+# -dM -E dump, so it inherits this preset's compiler, standard, flags and include
+# paths exactly. MSVC has no -dM, so there config-macro-leakage is the only check.
+if(NOT MSVC)
+  ce_codec_targets(probe_codec_targets)
+  foreach(probe IN ITEMS headers baseline)
+    add_library(ce_macro_probe_${probe} OBJECT macro_probe/${probe}.cpp)
+    target_link_libraries(ce_macro_probe_${probe} PRIVATE
+      ce::core ce::warnings ce::binding_http ce::binding_kafka ce::binding_nats
+      ${probe_codec_targets})
+    # Clang warns that -E leaves the -c CMake adds unused, and -Werror makes that fatal.
+    target_compile_options(ce_macro_probe_${probe} PRIVATE -dM -E
+      $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Qunused-arguments>)
+    # A module scan would preprocess the probe with -dM too and misread the dump.
+    set_target_properties(ce_macro_probe_${probe} PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+  endforeach()
+  foreach(codec IN ITEMS NLOHMANN RAPIDJSON BOOST_JSON)
+    if(CE_CODEC_${codec})
+      target_compile_definitions(ce_macro_probe_headers PRIVATE MACRO_PROBE_CODEC_${codec})
+    endif()
+  endforeach()
+  ce_add_test(macro_leakage_test SOURCES macro_leakage_test.cpp)
+  add_dependencies(macro_leakage_test ce_macro_probe_headers ce_macro_probe_baseline)
+  target_compile_definitions(macro_leakage_test PRIVATE
+    "MACRO_PROBE_HEADERS_DUMP=\"$<TARGET_OBJECTS:ce_macro_probe_headers>\""
+    "MACRO_PROBE_BASELINE_DUMP=\"$<TARGET_OBJECTS:ce_macro_probe_baseline>\"")
+endif()
 ce_add_test(core_test SOURCES core_test.cpp)
 ce_add_test(build_test SOURCES build_test.cpp)
 ce_add_test(static_error_test SOURCES static_error_test.cpp)

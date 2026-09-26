@@ -17,7 +17,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
-verified_by: [test:test/config_test.cpp::config-macro-leakage]
+verified_by: [test:test/config_test.cpp::config-macro-leakage, test:test/macro_leakage_test.cpp::macro-reserved-set]
 owner: filip.sajdak
 version: 2
 ---

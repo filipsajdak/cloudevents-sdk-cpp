@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -440,6 +441,13 @@ class BinarySizeWarning(unittest.TestCase):
     def test_binary_size_needs_no_budget(self):
         report = gate(None, {"consumer/c": {"binary_bytes": 100000}}, budgets({}))
         self.assertFalse(report.failed)
+
+    def test_every_consumer_cmake_builds_is_measured(self):
+        cmake = (Path(__file__).resolve().parent / "CMakeLists.txt").read_text()
+        built = re.findall(r'^\s*"([^"|]+)\|', cmake, re.MULTILINE)
+        self.assertEqual(sorted(built), sorted(measure.CODECS))
+        self.assertIn("rapidjson.shipped", measure.CODECS)
+        self.assertIn("boost.json.shipped", measure.CODECS)
 
 
 # spec: SWR-PERF-0007

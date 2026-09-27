@@ -25,7 +25,13 @@ Its cost depends on the codec, so each measure is taken per codec, and its code 
 **What is measured, per operation and per codec.**
 The operations are the ones `bench/codec_bench.cpp` already covers: decode of a minimal, a full and a large event, encode, round trip, a batch of 100 each way, and a typed payload read and write.
 Later stages of CR-0003 add their own.
-The codecs are the four bench codecs: nlohmann, RapidJSON, Boost.JSON and Glaze.
+The codecs are the ones the SDK ships and the four bench codecs, each measured under its own id.
+The shipped codecs are nlohmann, RapidJSON and Boost.JSON: `ce::codec::nlohmann_codec` is also the bench's nlohmann codec, and the shipped RapidJSON and Boost.JSON codecs are measured as `<operation>/rapidjson.shipped` and `<operation>/boost.json.shipped`.
+The bench copies of RapidJSON and Boost.JSON in `bench/codecs/`, and Glaze, which has no shipped codec, keep the ids `<operation>/rapidjson`, `<operation>/boost.json` and `<operation>/glaze`.
+Both are measured because they answer different questions.
+The shipped codecs are what a consumer runs, so a regression in them is the one that reaches users.
+The bench copies are what every earlier run measured, so their ids stay comparable with the history on `bench-data` and with the codec comparison in `bench/README.md`.
+The owner decided on 2026-09-27 to measure both; until then only the bench copies of RapidJSON and Boost.JSON were measured.
 
 | measure | how | gates |
 |---|---|---|
@@ -34,7 +40,7 @@ The codecs are the four bench codecs: nlohmann, RapidJSON, Boost.JSON and Glaze.
 | bytes a decoded event retains | the counting allocator's live bytes while the event is held, per payload size | fails above +1% (`SWR-PERF-0003`) |
 | budgets | `bench/budgets.json`, seeded from main plus 10% headroom | fails when exceeded (`SWR-PERF-0004`) |
 | wall and CPU time | Google Benchmark, as today | reported only |
-| binary size | a stripped minimal consumer per codec | warns above +5% (`SWR-PERF-0006`) |
+| binary size | a stripped minimal consumer per codec, the shipped and the bench ones alike | warns above +5% (`SWR-PERF-0006`) |
 
 **Main and the pull request are measured in the same job.**
 The job builds the merge base and the head on one runner and measures both, so runner and toolchain differences cancel out.

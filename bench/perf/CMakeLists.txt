@@ -6,6 +6,9 @@
 #   perf_probe_instr       the same operations for Callgrind, with no counting
 #   perf_consumer_<codec>  a minimal consumer, whose stripped size is measured
 #
+# Each measures the codecs the SDK ships and the bench's own copies, the
+# shipped ones suffixed .shipped where a bench copy has the plain name.
+#
 # measure.py drives both; see docs/PERFORMANCE.md.
 
 set(ce_bench_dir "${CMAKE_CURRENT_SOURCE_DIR}/..")
@@ -28,6 +31,8 @@ target_include_directories(perf_probe_instr PRIVATE ${ce_bench_dir})
 
 set(ce_perf_consumers
   "nlohmann|<cloudevents/codec/nlohmann.hpp>|ce::codec::nlohmann_codec"
+  "rapidjson.shipped|<cloudevents/codec/rapidjson.hpp>|ce::codec::rapidjson_codec"
+  "boost.json.shipped|<cloudevents/codec/boost_json.hpp>|ce::codec::boost_json_codec"
   "rapidjson|\"codecs/rapidjson_codec.hpp\"|ce::bench::rapidjson_codec"
   "boost.json|\"codecs/boost_json_codec.hpp\"|ce::bench::boost_json_codec"
   "glaze|\"codecs/glaze_codec.hpp\"|ce::bench::glaze_codec")

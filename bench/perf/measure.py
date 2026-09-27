@@ -4,7 +4,7 @@
     measure.py --build-dir build/perf --out results.json
 
 The build directory must hold `bench/perf/perf_probe`, `perf_probe_instr` and
-the four `bench/perf/perf_consumer_<codec>` binaries (configure with
+the `bench/perf/perf_consumer_<codec>` binaries, one per codec in CODECS (configure with
 -DCE_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release). `bench/codec_bench` is
 optional: its wall and CPU times are recorded when it exists, and never gate.
 
@@ -58,7 +58,11 @@ INSTR_ITERATIONS = {
 }
 DEFAULT_ITERATIONS = 200
 
-CODECS = ("nlohmann", "rapidjson", "boost.json", "glaze")
+# The consumers bench/perf/CMakeLists.txt builds, one per codec: the ones the
+# SDK ships, suffixed .shipped where a bench copy has the plain name, and the
+# bench's own copies (ADR-0011).
+CODECS = ("nlohmann", "rapidjson.shipped", "boost.json.shipped", "rapidjson", "boost.json",
+          "glaze")
 
 
 class MeasureFailure(Exception):

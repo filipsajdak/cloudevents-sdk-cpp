@@ -20,6 +20,11 @@
 ///
 /// The operations are those `codec_bench.cpp` times, over the same
 /// documents, so a wall-time number and a count describe the same work.
+///
+/// Each runs with the codecs the SDK ships and with the bench's own copies
+/// in `bench/codecs/` (ADR-0011). A shipped codec whose bench copy has the
+/// plain name carries the suffix `.shipped`, so `decode_full/rapidjson` is
+/// the bench copy and `decode_full/rapidjson.shipped` is what consumers run.
 
 #include <array>
 #include <charconv>
@@ -34,7 +39,9 @@
 #include <cloudevents/binding/http.hpp>
 #include <cloudevents/binding/kafka.hpp>
 #include <cloudevents/binding/nats.hpp>
+#include <cloudevents/codec/boost_json.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
+#include <cloudevents/codec/rapidjson.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_format.hpp>
 #include <cloudevents/format/typed_payload.hpp>
@@ -67,6 +74,8 @@ void escape(const T& value) {
 }
 
 using nlohmann_codec = ce::codec::nlohmann_codec;
+using shipped_rapidjson_codec = ce::codec::rapidjson_codec;
+using shipped_boost_codec = ce::codec::boost_json_codec;
 using rapidjson_codec = ce::bench::rapidjson_codec;
 using boost_codec = ce::bench::boost_json_codec;
 using glaze_codec = ce::bench::glaze_codec;
@@ -332,16 +341,17 @@ auto operations_for(std::string_view codec) {
 
 using codec_operations = decltype(operations_for<nlohmann_codec>(""));
 
-/// One row per codec `all_operations` lists.
-constexpr std::size_t codec_count = 4;
-
-[[nodiscard]] auto all_operations() -> const std::array<codec_operations, codec_count>& {
-  static const std::array<codec_operations, codec_count> table{{
+/// One row per codec, its size deduced like the operations'. nlohmann has
+/// one row because the bench measures the shipped codec itself.
+[[nodiscard]] auto all_operations() -> const auto& {
+  static const auto table = std::to_array<codec_operations>({
       operations_for<nlohmann_codec>("nlohmann"),
+      operations_for<shipped_rapidjson_codec>("rapidjson.shipped"),
+      operations_for<shipped_boost_codec>("boost.json.shipped"),
       operations_for<rapidjson_codec>("rapidjson"),
       operations_for<boost_codec>("boost.json"),
       operations_for<glaze_codec>("glaze"),
-  }};
+  });
   return table;
 }
 

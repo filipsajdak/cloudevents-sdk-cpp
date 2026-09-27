@@ -489,6 +489,9 @@ A v3 codec also supplies `equal(left, right)`, JSON value equality with object m
 The decoder calls `extract` only for a member `find` has returned; for any other key it must return a null value and leave the object unchanged.
 Choose the identity as a reverse-DNS name under a domain you control, such as `com.example.json.my_codec`, and never give two codecs the same one: a document hands its DOM to any codec declaring the identity of the codec that built it.
 The SDK's own codecs use names under `io.cloudevents.cpp.`.
+A codec whose value can take over a `std::string` may also supply `adopt_string(std::string&&) -> value`.
+The encoder then moves in the strings it builds itself, the text of a timestamp and base64 data, instead of passing a view of each to `make_string`, and `ce::json::string_adopting_codec<C>` says whether a codec qualifies.
+It is optional: without it the encoder calls `make_string` as before. `nlohmann_codec` supplies it; the Boost.JSON and RapidJSON codecs cannot, since those values keep strings in their own storage.
 A codec written for v1 or v2 without them still serves `ce::v1` and `ce::v2`, and `ce::v1::json::json_codec` accepts it.
 Three rules keep codecs in agreement:
 

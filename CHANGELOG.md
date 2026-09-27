@@ -2,6 +2,12 @@
 
 Notable changes per release. Dates are the tag date.
 
+## Unreleased
+
+- **A codec may take over the strings the encoder builds.**
+  A codec that provides `adopt_string(std::string&&) -> value` receives the RFC 3339 text of timestamps and the base64 text of binary data by move instead of by view; `ce::json::string_adopting_codec<C>` detects it.
+  It is optional, so a v0.5.0 codec keeps compiling and keeps the copy. `nlohmann_codec` provides it.
+
 ## v0.5.0 - 2026-09-27
 
 An event keeps the JSON document its decoder built, so a typed read or write

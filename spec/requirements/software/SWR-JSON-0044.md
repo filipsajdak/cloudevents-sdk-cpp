@@ -2,7 +2,7 @@
 uid: SWR-JSON-0044
 title: The encoder hands a codec the strings it would otherwise discard
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The encoder builds some strings itself and drops each one as soon as the codec has made a value from it: the time attribute and a timestamp extension rendered as RFC 3339 text, and a binary extension or a data_base64 payload rendered as base64.
@@ -18,8 +18,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-JSON-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/json_codec.hpp, code:include/cloudevents/format/json_format.hpp, code:include/cloudevents/codec/nlohmann.hpp]
+verified_by: [test:test/json_format_test.cpp::encode-hands-built-strings-to-the-codec]
 owner: filip.sajdak
 version: 1
 ---

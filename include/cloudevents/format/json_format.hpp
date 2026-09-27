@@ -181,7 +181,7 @@ struct json_format {
       Codec::set(root, "subject", Codec::make_string(named->view()));
     }
     if (const auto& when = cloud_event.time(); when) {
-      Codec::set(root, "time", Codec::make_string(to_string(*when)));
+      Codec::set(root, "time", built_string(to_string(*when)));
     }
 
     for (const auto& [name, attribute] : cloud_event.extensions()) {
@@ -529,14 +529,25 @@ struct json_format {
           } else if constexpr (std::is_same_v<held_type, std::string>) {
             return Codec::make_string(held);
           } else if constexpr (std::is_same_v<held_type, binary>) {
-            return Codec::make_string(base64_encode(held));
+            return built_string(base64_encode(held));
           } else if constexpr (std::is_same_v<held_type, timestamp>) {
-            return Codec::make_string(to_string(held));
+            return built_string(to_string(held));
           } else {
             return Codec::make_string(held.view());
           }
         },
         attribute);
+  }
+
+  // spec: SWR-JSON-0044
+  [[nodiscard]] static auto built_string(std::string&& text) -> value
+    requires json::string_adopting_codec<Codec>
+  {
+    return Codec::adopt_string(std::move(text));
+  }
+
+  [[nodiscard]] static auto built_string(std::string_view text) -> value {
+    return Codec::make_string(text);
   }
 
   // spec: SWR-JSON-0012
@@ -589,7 +600,7 @@ struct json_format {
           if constexpr (std::is_same_v<held_type, std::monostate>) {
             return {};
           } else if constexpr (std::is_same_v<held_type, binary>) {
-            Codec::set(root, "data_base64", Codec::make_string(base64_encode(held)));
+            Codec::set(root, "data_base64", built_string(base64_encode(held)));
             return {};
           } else if constexpr (std::is_same_v<held_type, std::string>) {
             Codec::set(root, "data", Codec::make_string(held));

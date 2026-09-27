@@ -51,6 +51,10 @@ struct nlohmann_codec {
   [[nodiscard]] static auto make_string(std::string_view text) -> value {
     return value(std::string{text});
   }
+  // spec: SWR-JSON-0044
+  [[nodiscard]] static auto adopt_string(std::string&& text) -> value {
+    return value(std::move(text));
+  }
   // NOLINTEND(modernize-return-braced-init-list)
   [[nodiscard]] static auto make_array() -> value { return value::array(); }
   [[nodiscard]] static auto make_object() -> value { return value::object(); }
@@ -155,6 +159,7 @@ struct nlohmann_codec {
 
 static_assert(json::json_codec<nlohmann_codec>);
 static_assert(ce::v3::json::json_codec<nlohmann_codec>);
+static_assert(ce::v3::json::string_adopting_codec<nlohmann_codec>);
 
 }  // namespace ce::v1::codec
 

@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #include <cloudevents/result.hpp>
 
@@ -109,5 +110,11 @@ concept json_codec = ce::v1::json::json_codec<C> && requires(const C::value& val
   { C::identity } -> std::convertible_to<std::string_view>;
   typename std::integral_constant<std::size_t, std::string_view{C::identity}.size()>;
   requires(!std::string_view{C::identity}.empty());
+};
+
+// spec: SWR-JSON-0044
+template<class C>
+concept string_adopting_codec = json_codec<C> && requires(std::string owned) {
+  { C::adopt_string(std::move(owned)) } -> std::same_as<typename C::value>;
 };
 }  // namespace ce::inline v3::json

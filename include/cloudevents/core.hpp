@@ -68,11 +68,25 @@ class json_document_holder final : public json_document_model {
   const Codec::value value_;
 };
 
+// spec: SWR-CORE-0035
+class json_document_null_model final : public json_document_model {
+ public:
+  [[nodiscard]] auto identity() const noexcept -> std::string_view override { return {}; }
+  [[nodiscard]] auto dump() const -> std::string override { return "null"; }
+  [[nodiscard]] auto equal_value(const json_document_model& other) const -> bool override {
+    return &other == this;
+  }
+  [[nodiscard]] auto equal_text([[maybe_unused]] std::string_view text) const -> bool override {
+    return false;
+  }
+};
+
+inline constexpr json_document_null_model moved_from_model{};
+
 }  // namespace detail
 
 // spec: SWR-CORE-0031
 // spec: SWR-CORE-0032
-// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class json_document {
  public:
   template <json::json_codec Codec>
@@ -85,6 +99,14 @@ class json_document {
   json_document(const json_document&) = default;
   auto operator=(const json_document&) -> json_document& = default;
   ~json_document() = default;
+
+  // spec: SWR-CORE-0035
+  json_document(json_document&& other) noexcept
+      : model_{std::exchange(other.model_, moved_from())} {}
+  auto operator=(json_document&& other) noexcept -> json_document& {
+    model_ = std::exchange(other.model_, moved_from());
+    return *this;
+  }
 
   // spec: SWR-CORE-0034
   template <json::json_codec Codec>
@@ -108,6 +130,10 @@ class json_document {
     if (left.model_ == right.model_) {
       return true;
     }
+    // spec: SWR-CORE-0035
+    if (left.model_->identity().empty() || right.model_->identity().empty()) {
+      return false;
+    }
     if (left.model_->identity() == right.model_->identity()) {
       return left.model_->equal_value(*right.model_);
     }
@@ -117,6 +143,11 @@ class json_document {
  private:
   explicit json_document(std::shared_ptr<const detail::json_document_model> model)
       : model_{std::move(model)} {}
+
+  [[nodiscard]] static auto moved_from() noexcept
+      -> std::shared_ptr<const detail::json_document_model> {
+    return {std::shared_ptr<const detail::json_document_model>{}, &detail::moved_from_model};
+  }
 
   std::shared_ptr<const detail::json_document_model> model_;
 };
@@ -241,14 +272,14 @@ class event {
       }
       auto read = detail::read_attribute<field_type>(*stored, name);
       if (!read) {
-        mapping_error = fail(read.error().code, read.error().detail, read.error().where);
+        mapping_error = ce::v3::detail::forward_failure(std::move(read).error());
         return;
       }
       field = std::move(*read);
     });
 
     if (!mapping_error) {
-      return fail(mapping_error.error().code, mapping_error.error().detail, mapping_error.error().where);
+      return ce::v3::detail::forward_failure(std::move(mapping_error).error());
     }
     return out;
   }
@@ -273,8 +304,7 @@ class event {
       }
       auto attribute = extension_name::make(name);
       if (!attribute) {
-        mapping_error = fail(attribute.error().code, attribute.error().detail,
-                             attribute.error().where);
+        mapping_error = ce::v3::detail::forward_failure(std::move(attribute).error());
         return;
       }
       if constexpr (detail::is_optional_field<field_type>) {

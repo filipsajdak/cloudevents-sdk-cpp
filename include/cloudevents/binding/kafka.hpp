@@ -75,7 +75,7 @@ template <json::json_codec Codec>
   message out;
   if (auto written = binding::write_attributes<detail::kafka_traits>(cloud_event, out.header_fields);
       !written) {
-    return fail(written.error().code, written.error().detail, written.error().where);
+    return ce::v3::detail::forward_failure(std::move(written).error());
   }
   binding::write_body(cloud_event, out);
   return out;
@@ -100,15 +100,14 @@ template <json::json_codec Codec>
 
   auto under_construction = binding::read_attributes<detail::kafka_traits>(incoming.header_fields);
   if (!under_construction) {
-    return fail(under_construction.error().code, under_construction.error().detail,
-                under_construction.error().where);
+    return ce::v3::detail::forward_failure(std::move(under_construction).error());
   }
 
   if (const std::string* declared = incoming.header_fields.find_exact(detail::content_type_header);
       declared != nullptr) {
     auto media_type = datacontenttype::make(*declared);
     if (!media_type) {
-      return fail(media_type.error().code, media_type.error().detail, media_type.error().where);
+      return ce::v3::detail::forward_failure(std::move(media_type).error());
     }
     under_construction->rest.datacontenttype = std::move(*media_type);
   }
@@ -155,7 +154,7 @@ template <json::json_codec Codec, key_mapper Keys = no_key_mapper>
 [[nodiscard]] auto to_record(const event& cloud_event, content_mode mode) -> result<record> {
   auto laid_out = to_message<Codec>(cloud_event, mode);
   if (!laid_out) {
-    return fail(laid_out.error().code, laid_out.error().detail, laid_out.error().where);
+    return ce::v3::detail::forward_failure(std::move(laid_out).error());
   }
   return record{.value = std::move(*laid_out), .key = Keys::key_of(cloud_event)};
 }

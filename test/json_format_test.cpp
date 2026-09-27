@@ -1706,6 +1706,150 @@ const boost::ut::suite<"encode-copies-same-codec-document"> same_codec_document 
   };
 };
 
+/// mini_codec that takes over the strings the encoder hands it, and counts
+/// them apart from the views it is asked to copy.
+struct adopting_codec : mini_codec {
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.adopting";
+  static inline std::vector<std::string> adopted{};
+  static inline std::size_t viewed = 0;
+
+  [[nodiscard]] static auto make_string(std::string_view text) -> value {
+    ++viewed;
+    return mini_codec::make_string(text);
+  }
+  [[nodiscard]] static auto adopt_string(std::string&& text) -> value {
+    adopted.emplace_back(text);
+    return value{.tag = ce::json::kind::string, .text = std::move(text)};
+  }
+};
+static_assert(ce::json::json_codec<adopting_codec>);
+static_assert(ce::json::string_adopting_codec<adopting_codec>);
+static_assert(!ce::json::string_adopting_codec<mini_codec>);
+static_assert(ce::json::string_adopting_codec<nlohmann_codec>);
+
+/// mini_codec that only counts the views, so it shows the fallback path.
+struct viewing_codec : mini_codec {
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.viewing";
+  static inline std::size_t viewed = 0;
+
+  [[nodiscard]] static auto make_string(std::string_view text) -> value {
+    ++viewed;
+    return mini_codec::make_string(text);
+  }
+};
+static_assert(!ce::json::string_adopting_codec<viewing_codec>);
+
+/// An event whose encoding builds four strings of its own: the time, a
+/// timestamp extension and a binary extension as text, and data_base64.
+[[nodiscard]] auto event_with_built_strings() -> ce::result<ce::event> {
+  auto when = ce::parse_timestamp("2026-09-20T12:34:56.123456789+02:00");
+  if (!when) {
+    return ce::failure{std::move(when).error()};
+  }
+  return base_event({
+      .time = *when,
+      .extensions = {{"seen"_ext, *when},
+                     {"blob"_ext, ce::binary{std::byte{0x01}, std::byte{0xFE}}},
+                     {"tag"_ext, std::string{"x"}}},
+      .data = ce::binary{std::byte{0x00}, std::byte{0xFF}, std::byte{0x10}},
+  });
+}
+
+void check_encoder_hands_over_built_strings() {
+  using namespace boost::ut;
+
+  const auto subject = event_with_built_strings();
+  expect(subject.has_value());
+  if (!subject) {
+    return;
+  }
+  // specversion, id, source, type and the std::string extension are views of
+  // storage the event keeps.
+  constexpr std::size_t kept_strings = 5;
+
+  adopting_codec::adopted.clear();
+  adopting_codec::viewed = 0;
+  const auto adopted_text = ce::json_format<adopting_codec>::encode(*subject);
+  expect(adopted_text.has_value());
+  expect(adopting_codec::adopted == std::vector<std::string>{"2026-09-20T12:34:56.123456789+02:00",
+                                                             "Af4=",
+                                                             "2026-09-20T12:34:56.123456789+02:00",
+                                                             "AP8Q"})
+      << "the time, the blob and seen extensions and data_base64 are handed over";
+  expect(adopting_codec::viewed == kept_strings) << "only the event's own strings are viewed";
+
+  viewing_codec::viewed = 0;
+  const auto viewed_text = ce::json_format<viewing_codec>::encode(*subject);
+  expect(viewed_text.has_value());
+  expect(viewing_codec::viewed == kept_strings + adopting_codec::adopted.size())
+      << "a codec without adopt_string is given a view of every string";
+  expect(adopted_text.has_value() && viewed_text.has_value() && *adopted_text == *viewed_text)
+      << "both paths write the same document";
+
+  const auto nlohmann_text = ce::json_format<nlohmann_codec>::encode(*subject);
+  expect(nlohmann_text.has_value());
+  if (!nlohmann_text || !viewed_text) {
+    return;
+  }
+  const auto through_adoption = nlohmann_codec::parse(*nlohmann_text);
+  const auto through_views = nlohmann_codec::parse(*viewed_text);
+  expect(through_adoption.has_value() && through_views.has_value() &&
+         nlohmann_codec::equal(*through_adoption, *through_views))
+      << "nlohmann writes the same JSON through adopt_string";
+}
+
+/// A document payload is copied whole with its own strings, so none of them
+/// goes through adopt_string or make_string.
+template<class C>
+void check_document_strings_are_not_rebuilt(std::string_view label) {
+  using namespace boost::ut;
+
+  auto payload = C::parse(R"({"note":"a string the document already holds"})"sv);
+  expect(payload.has_value()) << label;
+  if (!payload) {
+    return;
+  }
+  const auto subject = base_event({.data = ce::json_document::make<C>(std::move(*payload))});
+  adopting_codec::adopted.clear();
+  adopting_codec::viewed = 0;
+  viewing_codec::viewed = 0;
+  expect(ce::json_format<C>::encode(subject).has_value()) << label;
+  // specversion, id, source and type.
+  constexpr std::size_t context_strings = 4;
+  expect(adopting_codec::adopted.empty()) << label;
+  expect(adopting_codec::viewed + viewing_codec::viewed == context_strings) << label;
+}
+
+void check_nlohmann_adopts_the_buffer() {
+  using namespace boost::ut;
+
+  // Longer than any standard library's small-string buffer, so the text lives
+  // on the heap and keeping the buffer is observable.
+  constexpr std::size_t heap_length = 64;
+  std::string text(heap_length, 'x');
+  const auto* const buffer = text.data();
+  const auto adopted = nlohmann_codec::adopt_string(std::move(text));
+  const auto held = nlohmann_codec::as_string(adopted);
+  expect(held.has_value() && held->size() == heap_length);
+  expect(held.has_value() && held->data() == buffer) << "the string's own buffer is kept";
+}
+
+// spec: SWR-JSON-0044
+const boost::ut::suite<"encode-hands-built-strings-to-the-codec"> hands_built_strings = [] {
+  using namespace boost::ut;
+
+  "the encoder moves the strings it built into adopt_string"_test = [] {
+    check_encoder_hands_over_built_strings();
+  };
+  "a document payload's strings are copied with it, not rebuilt"_test = [] {
+    check_document_strings_are_not_rebuilt<adopting_codec>("adopting_codec");
+    check_document_strings_are_not_rebuilt<viewing_codec>("viewing_codec");
+  };
+  "nlohmann's adopt_string keeps the string's buffer"_test = [] {
+    check_nlohmann_adopts_the_buffer();
+  };
+};
+
 // spec: SWR-JSON-0042
 const boost::ut::suite<"document-from-another-codec-converts"> document_converts = [] {
   using namespace boost::ut;

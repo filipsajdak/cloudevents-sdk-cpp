@@ -1196,7 +1196,9 @@ tidying the code would plausibly undo.
 | `codec/nlohmann.hpp`, `as_int` | `is_number_unsigned` is tested before `is_number_integer` | the latter is also true for an unsigned value, which would make the range check dead code (D-JSON-3) |
 | `codec/rapidjson.hpp`, `chars_of` | an empty view's pointer is replaced by `""` | RapidJSON asserts a non-null pointer, and the assertion is compiled out of a release build |
 | `detail/describe_reflection.hpp` | a wire name is interned with `define_static_string` | an extracted annotation is a prvalue whose array a `string_view` would outlive |
-| `core.hpp`, `json_document` | copy operations are declared `= default` and move operations are not declared | an rvalue then copies, which is one reference-count increment, so no moved-from document with an empty model can exist and every member may dereference it |
+| `core.hpp`, `json_document` | a move leaves the source pointing at `detail::moved_from_model` through an aliasing `std::shared_ptr` with no control block, never at nothing | every member dereferences the model without a check, so a moved-from document must still have one; without a control block, copying, moving and destroying it touch no reference count (D-CORE-9) |
+| `core.hpp`, `json_document` | move assignment is `std::exchange` of the model, not a swap | a swap would leave the source holding the target's old document, where SWR-CORE-0035 promises the moved-from state; the exchange also keeps a self-move harmless |
+| `result.hpp`, `detail::forward_failure` | an error passed on is moved through one function marked cold and not inlined, where `CE_DETAIL_COLD` supports it | moving the error inline at every failure site changed how GCC compiled the success paths beside them: `encode_full/rapidjson.shipped` ran 2.09% more instructions in the CI perf job for PR #66, although no failure path runs there |
 | `core.hpp`, `json_document` | codec identities are compared by value, never by the address of a tag | MSVC's default `/OPT:ICF` can give different read-only data one address, and a false match would make the downcast undefined behaviour (ADR-0010) |
 | `core.hpp`, `json_document_holder` | `value_` is initialised with parentheses | braces on `nlohmann::json` select its `initializer_list` constructor and wrap the document in a one-element array |
 
@@ -1341,6 +1343,68 @@ three scalar members and the large event's as a type whose one optional member
 is absent: that operation measures the event and the retention path, not
 payload fields.
 
+## D-CORE-9: Moving a `json_document` is an addition under rule 4
+
+v0.5.0 published `json_document` with copy operations only, and its guide said
+that moving a document copies it, so every document holds a DOM. The owner
+decided on 2026-09-27 to add move operations (SWR-CORE-0035). A moved-from
+document points at one static, immutable model: `dump()` returns `null`,
+`get<Codec>()` returns `nullptr` for every codec, and it compares equal only to
+another moved-from document.
+
+This is an addition, not a changed declaration. No declaration v0.5.0 published
+changes: the copy operations, `make`, `get`, `built_by`, `dump` and `==` keep
+their signatures, and a program that compiled against v0.5.0 still compiles.
+The promise the published text made is kept: a document is never empty, has no
+default constructor, and every member may be called on it, moved from or not.
+What changes is the value a moved-from document reads as. A moved-from object
+is valid but unspecified throughout the standard library, and the guide now
+states the null state instead of the copy.
+
+The model is reached through an aliasing `std::shared_ptr` with no control
+block, so a move, and any copy or destruction of a moved-from document, touches
+no reference count. A static `std::shared_ptr` that owned the model would have
+made every copy of a moved-from document, and every move assignment onto one,
+an atomic operation on its count.
+
+Measured on 2026-09-27 by compiling a move construction, a move assignment
+and a copy of `ce::json_document` at `-O2` for arm64 and counting the atomic
+read-modify-write instructions: main's move construction had one (`ldadd`,
+the increment of the copy it made) and its move assignment two; now the move
+construction has none, and the move assignment one, the decrement that
+releases the document it overwrites, which destroying that document would
+also cost. GCC 16 with libstdc++ and Clang 23 with libc++ agree.
+
+Equality: a moved-from document holds no codec's value, so no codec's `equal`
+can compare it. Treating it as JSON null would make an event whose payload was
+moved away equal an event that carries a null payload, so a use after move
+would pass a comparison. It therefore equals only another moved-from document.
+
+## D-CODEC-4: A codec takes over a string through `adopt_string`
+
+The encoder builds the RFC 3339 text of a timestamp and the base64 text of
+binary data itself, and drops each string once the codec has made a value from
+it (SWR-JSON-0044). A codec may provide `adopt_string(std::string&&) -> value`,
+and the encoder then moves those strings into it instead of passing a view to
+`make_string`. The owner asked for this on 2026-09-27 as an optional member, so
+the v3 concept does not change and a v0.5.0 codec keeps compiling.
+
+It is a new name, not a `make_string(std::string&&)` overload. With both
+overloads a string literal converts to either parameter by a user-defined
+conversion, so `C::make_string("text")`, which the codec suites and any caller
+of the published codecs write, would stop compiling as ambiguous. And a
+`std::string` rvalue converts to `std::string_view` too, so a `requires`
+expression that calls `make_string` with one is satisfied by every codec and
+cannot detect the overload.
+
+`nlohmann_codec` gains it: `nlohmann::json` constructs a string value from a
+`std::string&&` by moving it. It is a new static member of a struct declared in
+`ce::v1`, which rule 4 admits as an addition; no existing member changes, and
+the v1 and v2 encoders do not call it. Boost.JSON's `boost::json::string` and
+RapidJSON's `GenericValue` keep strings in their own storage, so those codecs
+cannot take one over and do not provide it. The Glaze bench codec's value holds
+a `std::string` and provides it.
+
 ## D-TIDY-5: The v2 copies are outside the clang-tidy gate
 
 `include/cloudevents/v2/` holds what v0.4.0 published, copied for ADR-0010.
@@ -1392,5 +1456,4 @@ than prose. Its reason is here.
 | `format/detail/json_slice.hpp`, `class_of` | pro-bounds-avoid-unchecked-container-access, pro-bounds-constant-array-index | the index is an `unsigned char`, and the table has one entry for every value it can hold |
 | `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
 | `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |
-| `core.hpp`, `json_document` | special-member-functions | see D-CODE-1: declaring no move operations is what keeps a document from ever being empty |
 | `core.hpp`, `json_document::get` and `json_document_holder::equal_value` | pro-type-static-cast-downcast | the declared codec identities have already compared equal, so the model is that codec's holder; the identity is the codec's declared contract (SWR-CORE-0034), and RTTI was declined by the owner (ADR-0010) |

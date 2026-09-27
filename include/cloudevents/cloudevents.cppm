@@ -100,6 +100,7 @@ using ce::v3::json::content_type;
 using ce::v3::json::decode_options;
 using ce::v3::json::json_codec;
 using ce::v3::json::kind;
+using ce::v3::json::string_adopting_codec;
 }  // namespace json
 
 namespace binding {

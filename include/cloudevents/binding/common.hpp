@@ -131,7 +131,7 @@ template <binding_traits T>
   }
   if (attribute == "specversion") {
     if (auto version = spec_version::make(value); !version) {
-      return fail(version.error().code, version.error().detail, version.error().where);
+      return ce::v3::detail::forward_failure(std::move(version).error());
     }
     return {};
   }
@@ -153,14 +153,14 @@ template <binding_traits T>
   if (attribute == "time") {
     auto parsed = parse_timestamp(value);
     if (!parsed) {
-      return fail(parsed.error().code, parsed.error().detail, "time");
+      return ce::v3::detail::forward_failure(std::move(parsed).error(), "time");
     }
     into.rest.time = *parsed;
     return {};
   }
   auto extension = extension_name::make(std::move(attribute));
   if (!extension) {
-    return fail(extension.error().code, extension.error().detail, extension.error().where);
+    return ce::v3::detail::forward_failure(std::move(extension).error());
   }
   into.rest.extensions.insert_or_assign(std::move(*extension), attribute_value{std::move(value)});
   return {};
@@ -200,7 +200,7 @@ template <binding_traits T>
     }
     auto encoded = T::encode_value(value);
     if (!encoded) {
-      failure = fail(encoded.error().code, encoded.error().detail, std::string{name});
+      failure = ce::v3::detail::forward_failure(std::move(encoded).error(), std::string{name});
       return;
     }
     detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
@@ -259,12 +259,12 @@ template <binding_traits T>
 
     auto decoded = T::decode_value(raw_value);
     if (!decoded) {
-      return fail(decoded.error().code, decoded.error().detail, attribute);
+      return ce::v3::detail::forward_failure(std::move(decoded).error(), attribute);
     }
     if (auto applied = detail::apply_attribute<T>(under_construction, std::move(attribute),
                                                   std::move(*decoded));
         !applied) {
-      return fail(applied.error().code, applied.error().detail, applied.error().where);
+      return ce::v3::detail::forward_failure(std::move(applied).error());
     }
   }
   return under_construction;
@@ -304,7 +304,7 @@ template <binding_traits T, json::json_codec Codec>
 [[nodiscard]] auto encode_structured(const event& cloud_event) -> result<message> {
   auto text = json_format<Codec>::encode(cloud_event);
   if (!text) {
-    return fail(text.error().code, text.error().detail, text.error().where);
+    return ce::v3::detail::forward_failure(std::move(text).error());
   }
   message out;
   detail::put<T>(out.header_fields, std::string{T::content_type_header},

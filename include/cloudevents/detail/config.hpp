@@ -47,6 +47,14 @@ header without std::format in it."
 #  define CE_HAS_EXCEPTIONS 0
 #endif
 
+#if __has_cpp_attribute(gnu::cold) && __has_cpp_attribute(gnu::noinline)
+#define CE_DETAIL_COLD [[gnu::cold, gnu::noinline]]
+#elif __has_cpp_attribute(msvc::noinline)
+#define CE_DETAIL_COLD [[msvc::noinline]]
+#else
+#define CE_DETAIL_COLD
+#endif
+
 namespace ce::v1::detail {
 
 // spec: SWR-BUILD-0003

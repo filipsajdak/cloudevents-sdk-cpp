@@ -464,14 +464,17 @@ if (parsed) {
 ```
 
 - **It is never empty.**
-  There is no default constructor, and moving a document copies it, so every `json_document` holds a DOM.
+  There is no default constructor, so every `json_document` starts with a DOM.
+  Moving one hands its DOM over without touching the reference count, and leaves the source as a moved-from document: `dump()` returns `null`, `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to another moved-from document, never to a document holding JSON null.
+  Every member may still be called on it, and assigning to it gives it a value again.
+  In v0.5.0 moving a document copied it; since then a moved-from document reads as null, so copy a document you still need to read.
 - **`get<Codec>()` returns the DOM only to the codec that built it.**
   It compares `Codec::identity` with the builder's identity, by value; any other codec gets `nullptr`, and `built_by<Codec>()` asks the same question as a `bool`.
 - **Two documents compare as JSON values.**
   Built by one codec, they compare with that codec's `equal`, so member order and whitespace do not count.
   Built by different codecs, the left-hand codec parses the right-hand document's `dump()` and compares with its own `equal`, which costs a serialisation and a parse.
 - **Copies share one immutable DOM.**
-  A copy costs a reference-count increment, and any number of threads may copy, compare and read one document at once.
+  A copy costs a reference-count increment, and any number of threads may copy, compare and read one document at once, and move their own copies.
   That holds only if the codec's `const` operations (`dump`, `equal`, `parse` and the readers) are free of data races on a shared value, which the three in-tree codecs are.
 
 ### Writing your own
@@ -489,6 +492,9 @@ A v3 codec also supplies `equal(left, right)`, JSON value equality with object m
 The decoder calls `extract` only for a member `find` has returned; for any other key it must return a null value and leave the object unchanged.
 Choose the identity as a reverse-DNS name under a domain you control, such as `com.example.json.my_codec`, and never give two codecs the same one: a document hands its DOM to any codec declaring the identity of the codec that built it.
 The SDK's own codecs use names under `io.cloudevents.cpp.`.
+A codec whose value can take over a `std::string` may also supply `adopt_string(std::string&&) -> value`.
+The encoder then moves in the strings it builds itself, the text of a timestamp and base64 data, instead of passing a view of each to `make_string`, and `ce::json::string_adopting_codec<C>` says whether a codec qualifies.
+It is optional: without it the encoder calls `make_string` as before. `nlohmann_codec` supplies it; the Boost.JSON and RapidJSON codecs cannot, since those values keep strings in their own storage.
 A codec written for v1 or v2 without them still serves `ce::v1` and `ce::v2`, and `ce::v1::json::json_codec` accepts it.
 Three rules keep codecs in agreement:
 

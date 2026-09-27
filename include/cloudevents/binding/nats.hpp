@@ -76,7 +76,7 @@ template <json::json_codec Codec>
   message out;
   if (auto written = binding::write_attributes<detail::nats_traits>(cloud_event, out.header_fields);
       !written) {
-    return fail(written.error().code, written.error().detail, written.error().where);
+    return ce::v3::detail::forward_failure(std::move(written).error());
   }
   binding::write_body(cloud_event, out);
   return out;
@@ -95,8 +95,7 @@ template <json::json_codec Codec>
 
   auto under_construction = binding::read_attributes<detail::nats_traits>(incoming.header_fields);
   if (!under_construction) {
-    return fail(under_construction.error().code, under_construction.error().detail,
-                under_construction.error().where);
+    return ce::v3::detail::forward_failure(std::move(under_construction).error());
   }
 
   under_construction->rest.data =

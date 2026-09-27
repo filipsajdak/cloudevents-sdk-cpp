@@ -7,6 +7,10 @@ Notable changes per release. Dates are the tag date.
 - **A codec may take over the strings the encoder builds.**
   A codec that provides `adopt_string(std::string&&) -> value` receives the RFC 3339 text of timestamps and the base64 text of binary data by move instead of by view; `ce::json::string_adopting_codec<C>` detects it.
   It is optional, so a v0.5.0 codec keeps compiling and keeps the copy. `nlohmann_codec` provides it.
+- **Moving a `json_document` no longer copies it.**
+  In v0.5.0 a move copied the document, so the source still held the same DOM.
+  Now a move hands the DOM over without touching the reference count, and the moved-from document reads as JSON null: `dump()` returns `null`, `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to another moved-from document.
+  It is still never empty, and every member may be called on it. Code that read a document after moving from it now sees null; copy it instead.
 
 ## v0.5.0 - 2026-09-27
 

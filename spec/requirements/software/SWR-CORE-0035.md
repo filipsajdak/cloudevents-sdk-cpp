@@ -2,7 +2,7 @@
 uid: SWR-CORE-0035
 title: A json_document moves without a reference-count operation
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   An event is moved more often than it is copied: decode moves the event it builds into its result, and a batch moves each event into its vector.
@@ -19,8 +19,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/core.hpp]
+verified_by: [test:test/json_document_test.cpp::json-document-moves-without-counting, test:test/json_document_test.cpp::threads move their copies while others copy the same document]
 owner: filip.sajdak
 version: 1
 ---

@@ -11,6 +11,7 @@
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "mini_codec.hpp"
@@ -81,9 +82,14 @@ const boost::ut::suite<"json-document-holds-any-codec"> holds_any_codec = [] {
 
     auto source = document_of<nlohmann_codec>(R"({"a":1})"sv);
     const auto taken = std::move(source);
-    // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
-    expect(source.dump() == taken.dump()) << "moving a document copies it";
-    expect(source.get<nlohmann_codec>() != nullptr);
+    expect(taken.dump() == R"({"a":1})"sv);
+    // Every member may still be called on the moved-from document (SWR-CORE-0035).
+    // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+    expect(source.dump() == "null"sv);
+    expect(source.get<nlohmann_codec>() == nullptr);
+    expect(!source.built_by<nlohmann_codec>());
+    expect(source != taken);
+    // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
   };
 
   "the core header builds a document over a codec it has never seen"_test = [] {
@@ -129,6 +135,136 @@ const boost::ut::suite<"json-document-shared-across-threads"> shared_across_thre
 
     expect(failures.load() == 0) << failures.load() << " reads disagreed";
     expect(shared.dump() == expected_text) << "the shared document is unchanged";
+  };
+
+  // spec: SWR-CORE-0035
+  "threads move their copies while others copy the same document"_test = [] {
+    constexpr std::size_t thread_count = 8;
+    constexpr int iterations = 2000;
+    const auto shared = document_of<nlohmann_codec>(R"({"a":1,"b":[1,2,3]})"sv);
+    const auto expected_text = shared.dump();
+
+    std::atomic<int> failures{0};
+    std::vector<std::thread> workers;
+    workers.reserve(thread_count);
+    for (std::size_t worker = 0; worker < thread_count; ++worker) {
+      workers.emplace_back([&shared, &expected_text, &failures] {
+        auto held = shared;
+        for (int round = 0; round < iterations; ++round) {
+          auto copy = shared;
+          auto moved = std::move(copy);
+          held = std::move(moved);
+          // Every thread reads and copies the one static null model.
+          // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+          const auto null_copy = copy;
+          const bool agrees = held == shared && held.dump() == expected_text &&
+                              null_copy == moved && moved.dump() == "null" &&
+                              moved.get<nlohmann_codec>() == nullptr && moved != shared;
+          // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+          if (!agrees) {
+            failures.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      });
+    }
+    for (auto& worker : workers) {
+      worker.join();
+    }
+
+    expect(failures.load() == 0) << failures.load() << " reads disagreed";
+    expect(shared.dump() == expected_text) << "the shared document is unchanged";
+  };
+};
+
+/// Builds a document and moves it away, returning what is left behind.
+template<class Codec>
+auto moved_from_document(std::string_view text) -> ce::json_document {
+  auto source = document_of<Codec>(text);
+  [[maybe_unused]] const auto taken = std::move(source);
+  return source;  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+}
+
+// spec: SWR-CORE-0035
+const boost::ut::suite<"json-document-moves-without-counting"> moves_without_counting = [] {
+  using namespace boost::ut;
+
+  "moving hands over the DOM and leaves the null model"_test = [] {
+    static_assert(std::is_nothrow_move_constructible_v<ce::json_document>);
+    static_assert(std::is_nothrow_move_assignable_v<ce::json_document>);
+
+    auto source = document_of<mini_codec>(R"({"a":[1,2]})"sv);
+    const auto* const dom = source.get<mini_codec>();
+    const auto taken = std::move(source);
+    expect(taken.get<mini_codec>() == dom) << "the DOM itself moves, and is not copied";
+    // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+    expect(source.dump() == "null"sv);
+    expect(source.get<mini_codec>() == nullptr);
+    expect(source.get<nlohmann_codec>() == nullptr);
+    expect(source.get<renamed_mini_codec>() == nullptr);
+    expect(!source.built_by<mini_codec>());
+    // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+  };
+
+  "move assignment hands over the DOM and leaves the null model"_test = [] {
+    auto target = document_of<nlohmann_codec>(R"([true])"sv);
+    auto source = document_of<mini_codec>(R"({"b":"c"})"sv);
+    const auto* const dom = source.get<mini_codec>();
+    target = std::move(source);
+    expect(target.get<mini_codec>() == dom);
+    expect(target.get<nlohmann_codec>() == nullptr);
+    // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+    expect(source.dump() == "null"sv);
+    expect(source.get<mini_codec>() == nullptr);
+
+    // A moved-from document takes a new value by copy and by move.
+    source = target;
+    expect(source.get<mini_codec>() == dom) << "a copy shares the DOM";
+    auto refilled = moved_from_document<nlohmann_codec>("[1]"sv);
+    refilled = std::move(source);
+    expect(refilled.get<mini_codec>() == dom);
+    expect(source.dump() == "null"sv);
+    // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+  };
+
+  "a self-move keeps the document"_test = [] {
+    auto document = document_of<nlohmann_codec>(R"({"k":1})"sv);
+    const auto* const dom = document.get<nlohmann_codec>();
+    auto& same = document;
+    document = std::move(same);
+    expect(document.get<nlohmann_codec>() == dom);
+    expect(document.dump() == R"({"k":1})"sv);
+
+    auto moved_from = moved_from_document<mini_codec>("{}"sv);
+    auto& same_moved_from = moved_from;
+    moved_from = std::move(same_moved_from);
+    expect(moved_from.dump() == "null"sv);
+  };
+
+  "a moved-from document equals only another moved-from document"_test = [] {
+    const auto from_nlohmann = moved_from_document<nlohmann_codec>(R"({"a":1})"sv);
+    const auto from_mini = moved_from_document<mini_codec>("[2]"sv);
+    expect(from_nlohmann == from_mini);
+    expect(from_mini == from_nlohmann);
+    const auto copied = from_nlohmann;
+    expect(copied == from_nlohmann) << "a copy of the null model is the null model";
+    expect(copied.dump() == "null"sv);
+
+    for (const auto& json_null :
+         {document_of<nlohmann_codec>("null"sv), document_of<mini_codec>("null"sv)}) {
+      expect(json_null.dump() == from_nlohmann.dump()) << "both serialise as null";
+      expect(from_nlohmann != json_null) << "but a moved-from document is not a null payload";
+      expect(json_null != from_nlohmann);
+    }
+  };
+
+  "an event moves its document with it"_test = [] {
+    auto payload = document_of<mini_codec>(R"({"n":1})"sv);
+    const auto* const dom = payload.get<mini_codec>();
+    using namespace ce::literals;
+    ce::event source{"1"_id, "/s"_source, "t"_type, {.data = std::move(payload)}};
+    const auto taken = std::move(source);
+    const auto* const kept = std::get_if<ce::json_document>(&taken.data());
+    expect(kept != nullptr && kept->get<mini_codec>() == dom);
   };
 };
 

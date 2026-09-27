@@ -1196,7 +1196,8 @@ tidying the code would plausibly undo.
 | `codec/nlohmann.hpp`, `as_int` | `is_number_unsigned` is tested before `is_number_integer` | the latter is also true for an unsigned value, which would make the range check dead code (D-JSON-3) |
 | `codec/rapidjson.hpp`, `chars_of` | an empty view's pointer is replaced by `""` | RapidJSON asserts a non-null pointer, and the assertion is compiled out of a release build |
 | `detail/describe_reflection.hpp` | a wire name is interned with `define_static_string` | an extracted annotation is a prvalue whose array a `string_view` would outlive |
-| `core.hpp`, `json_document` | copy operations are declared `= default` and move operations are not declared | an rvalue then copies, which is one reference-count increment, so no moved-from document with an empty model can exist and every member may dereference it |
+| `core.hpp`, `json_document` | a move leaves the source pointing at `detail::moved_from_model` through an aliasing `std::shared_ptr` with no control block, never at nothing | every member dereferences the model without a check, so a moved-from document must still have one; without a control block, copying, moving and destroying it touch no reference count (D-CORE-9) |
+| `core.hpp`, `json_document` | move assignment is `std::exchange` of the model, not a swap | a swap would leave the source holding the target's old document, where SWR-CORE-0035 promises the moved-from state; the exchange also keeps a self-move harmless |
 | `core.hpp`, `json_document` | codec identities are compared by value, never by the address of a tag | MSVC's default `/OPT:ICF` can give different read-only data one address, and a false match would make the downcast undefined behaviour (ADR-0010) |
 | `core.hpp`, `json_document_holder` | `value_` is initialised with parentheses | braces on `nlohmann::json` select its `initializer_list` constructor and wrap the document in a one-element array |
 
@@ -1365,6 +1366,14 @@ no reference count. A static `std::shared_ptr` that owned the model would have
 made every copy of a moved-from document, and every move assignment onto one,
 an atomic operation on its count.
 
+Measured on 2026-09-27 by compiling a move construction, a move assignment
+and a copy of `ce::json_document` at `-O2` for arm64 and counting the atomic
+read-modify-write instructions: main's move construction had one (`ldadd`,
+the increment of the copy it made) and its move assignment two; now the move
+construction has none, and the move assignment one, the decrement that
+releases the document it overwrites, which destroying that document would
+also cost. GCC 16 with libstdc++ and Clang 23 with libc++ agree.
+
 Equality: a moved-from document holds no codec's value, so no codec's `equal`
 can compare it. Treating it as JSON null would make an event whose payload was
 moved away equal an event that carries a null payload, so a use after move
@@ -1446,5 +1455,4 @@ than prose. Its reason is here.
 | `format/detail/json_slice.hpp`, `class_of` | pro-bounds-avoid-unchecked-container-access, pro-bounds-constant-array-index | the index is an `unsigned char`, and the table has one entry for every value it can hold |
 | `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
 | `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |
-| `core.hpp`, `json_document` | special-member-functions | see D-CODE-1: declaring no move operations is what keeps a document from ever being empty |
 | `core.hpp`, `json_document::get` and `json_document_holder::equal_value` | pro-type-static-cast-downcast | the declared codec identities have already compared equal, so the model is that codec's holder; the identity is the codec's declared contract (SWR-CORE-0034), and RTTI was declined by the owner (ADR-0010) |

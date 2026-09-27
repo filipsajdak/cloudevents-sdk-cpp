@@ -6,11 +6,16 @@ The design is ADR-0011; the rules are `SWR-PERF-0001` to `SWR-PERF-0007`.
 
 ## What is measured
 
-Nineteen operations, each with the four bench codecs (nlohmann, RapidJSON, Boost.JSON and Glaze):
-decode of a minimal, a full and a large event, encode of the full event, a round trip, a batch of 100 each way, and the typed payload paths.
+Nineteen operations, each with six codecs: the three the SDK ships (nlohmann, RapidJSON and Boost.JSON) and the bench's own copies of RapidJSON and Boost.JSON, plus Glaze, which the SDK does not ship.
+The operations are decode of a minimal, a full and a large event, encode of the full event, a round trip, a batch of 100 each way, and the typed payload paths.
 The typed paths are a read of a payload `set_data` wrote with the same codec, a read of a document that codec built, a write, and the typed entry points: `decode_as` of the full and the large event, `decode_batch_as` of the batch, and `encode_as` of the full event.
 Five more go through the bindings with the full event: HTTP binary-mode decode and encode, HTTP structured decode, and Kafka and NATS binary-mode decode.
 The first fourteen are the operations `bench/codec_bench.cpp` times, over the documents in `bench/documents.hpp` and the payload types in `bench/typed_documents.hpp`.
+
+The shipped codecs are measured because they are what a consumer runs.
+The bench copies in `bench/codecs/` stay because every earlier run measured them, so their ids remain comparable with the history of main and with the comparison in `bench/README.md`.
+The nlohmann codec is the shipped `ce::codec::nlohmann_codec` in both roles, so it has one id.
+ADR-0011 records the decision.
 
 | measure | how | on the pull request |
 |---|---|---|
@@ -39,6 +44,7 @@ The measurements within their limits are folded away below.
 When the pull request cannot be measured at all, the comment has no table: it names the id and mode that failed and quotes what the probe said, and the job fails.
 
 An id is `<operation>/<codec>`, such as `decode_full/rapidjson`; `consumer/<codec>` carries the binary size.
+The codecs are `nlohmann`, `rapidjson.shipped` and `boost.json.shipped` for the ones the SDK ships, and `rapidjson`, `boost.json` and `glaze` for the bench's own.
 
 Main is the merge base, built on the same runner and measured with the pull request's own probe, so both sides run the same harness.
 When main does not build with that probe, it is measured with its own, and the table says so.

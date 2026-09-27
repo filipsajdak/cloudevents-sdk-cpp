@@ -4,6 +4,8 @@
 
 Accepted 2026-09-23, on CR-0003.
 It applies ADR-0009's layout a second time and extends ADR-0004.
+Amended 2026-09-27, after v0.5.0: a document moves without a reference-count operation, and a codec may take over strings the encoder built (`SWR-CORE-0035`, `SWR-JSON-0044`).
+Both are additions under rule 4.
 
 ## Context
 
@@ -44,6 +46,16 @@ The identity is declared rather than derived because each derived form was worse
 - RTTI was declined as a design smell and an extra dependency; a `-fno-rtti` build would lose the fast path.
 - A hash of the name from `__PRETTY_FUNCTION__` gives false matches, because codecs of the same name in two anonymous namespaces spell the same.
 
+**A moved-from document points at one static null model.**
+v0.5.0 declared only copy operations, so moving a document copied its shared pointer: an atomic increment, and an atomic decrement when the source died.
+Events are moved on every decode and into every batch, so that cost was paid where no copy was asked for.
+Since 2026-09-27 a move takes the source's pointer and leaves the source pointing at a model that lives in static storage and is never modified.
+The source's pointer to it is an aliasing `std::shared_ptr` with no control block, so moving, copying and destroying a moved-from document touch no reference count.
+The model is not built by any codec, and its identity is empty, which no codec may declare, so `get<Codec>()` returns `nullptr` for every codec; `dump()` returns `null`.
+A moved-from document compares equal only to another moved-from document: it holds no codec's value, and comparing it as JSON null would make a payload moved away equal a null payload.
+The document is never empty, so every member may still be called on it, which is the promise v0.5.0 made by having no moves.
+A default constructor stays absent: the moved-from state is reached only by moving.
+
 **Equality goes through the codec.**
 Two documents with the same identity compare with `Codec::equal`.
 Two with different identities are compared by the left-hand codec: it parses the right-hand document's serialisation and applies its own `equal`.
@@ -62,6 +74,13 @@ The traversal has its own name because the const `for_each_element` accepts any 
 `from_value` still copies, since it reads a document the caller keeps.
 Requiring all five keeps a single code path.
 The in-tree codecs gain a static `equal`, `copy`, `extract`, `for_each_mutable_element` and `identity`; adding members keeps their v1 declarations.
+
+**A codec may take over a string the encoder built.**
+The encoder renders timestamps and base64 itself and drops each string once the codec has made a value from it.
+A codec may provide `adopt_string(std::string&&) -> value`, which the encoder detects with a `requires` expression and prefers for those strings; without it the encoder calls `make_string` with a view, as before.
+The member is optional, so the v3 concept is unchanged and a v0.5.0 codec keeps compiling.
+It is not a `make_string` overload: a string literal would be ambiguous between the two, and a `std::string` rvalue converts to `std::string_view`, so no call expression could detect the overload.
+nlohmann's value can take over a `std::string`; Boost.JSON's and RapidJSON's keep strings in their own storage and cannot, so those codecs keep the copy.
 
 **Decoding retains the document up to a limit.**
 The JSON format stores `json_document` when the input is at most `retain_document_up_to` bytes (16 KiB by default) and `json_text` above it.
@@ -100,6 +119,7 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 - A decode followed by a typed read with the same codec parses the payload once and never serialises it.
 - A typed write followed by an encode never produces intermediate payload text.
 - Copying an event copies a pointer, not a DOM, and needs no lock to read.
+- Moving an event holding a document touches no reference count.
 - The identity check makes a codec mismatch a slower path, never undefined behaviour.
 
 ### Negative
@@ -107,6 +127,7 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 - A third-party codec must add `equal`, `copy`, `extract`, `for_each_mutable_element` and an `identity` to move to v3.
 - An event holding a `json_document` uses more memory than one holding the same text.
 - Comparing documents from different codecs serialises one and parses it again.
+- A moved-from document reads as JSON null and no longer as the value it held, which v0.5.0 code reading a moved-from document would notice.
 
 ### Neutral
 - `json_text` stays for payload text a caller supplies, and for documents above the retention limit.
@@ -116,5 +137,5 @@ The v0.4.0 suites, examples and fuzzers are copied to `test/v2/`, `examples/v2/`
 
 - `spec/requirements/change-request/CR-0003.md`
 - ADR-0004 (the codec concept), ADR-0008 (the v2 event model), ADR-0009 (two generations side by side)
-- `SWR-CORE-0031` to `SWR-CORE-0034`, `SWR-JSON-0039` to `SWR-JSON-0043`, `SWR-EXT-0007` to `SWR-EXT-0012`, `SWR-BUILD-0012`
+- `SWR-CORE-0031` to `SWR-CORE-0035`, `SWR-JSON-0039` to `SWR-JSON-0044`, `SWR-EXT-0007` to `SWR-EXT-0012`, `SWR-BUILD-0012`
 - `docs/SPEC.md` section 3 rule 4

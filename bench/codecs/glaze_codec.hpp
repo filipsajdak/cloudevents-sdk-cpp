@@ -48,6 +48,9 @@ struct glaze_codec {
   static auto make_int(std::int64_t v) -> value { return hold(v); }
   static auto make_double(double v) -> value { return hold(v); }
   static auto make_string(std::string_view v) -> value { return hold(std::string{v}); }
+  /// The value holds a std::string, so a string the encoder built is moved in
+  /// (SWR-JSON-0044).
+  static auto adopt_string(std::string&& v) -> value { return hold(std::move(v)); }
   static auto make_array() -> value { return hold(value::array_t{}); }
   static auto make_object() -> value { return hold(value::object_t{}); }
 
@@ -180,5 +183,7 @@ struct glaze_codec {
     return found == map.end() ? make_null() : std::exchange(found->second, make_null());
   }
 };
+
+static_assert(ce::json::string_adopting_codec<glaze_codec>);
 
 }  // namespace ce::bench

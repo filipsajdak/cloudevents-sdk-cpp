@@ -76,18 +76,19 @@ constexpr std::string_view reserved_prefix = "CE_DETAIL_";
 // or removed without anyone looking at the macro surface.
 [[nodiscard]] auto detail_helpers() -> const name_set& {
   static const name_set names{
-      "CE_DETAIL_ARGN",      "CE_DETAIL_CAT",      "CE_DETAIL_CAT_IMPL",      "CE_DETAIL_ENTRY",
-      "CE_DETAIL_ENTRY_0",   "CE_DETAIL_ENTRY_1",  "CE_DETAIL_ENTRY_1A",      "CE_DETAIL_ENTRY_1B",
-      "CE_DETAIL_FE",        "CE_DETAIL_FE_1",     "CE_DETAIL_FE_2",          "CE_DETAIL_FE_3",
-      "CE_DETAIL_FE_4",      "CE_DETAIL_FE_5",     "CE_DETAIL_FE_6",          "CE_DETAIL_FE_7",
-      "CE_DETAIL_FE_8",      "CE_DETAIL_FE_9",     "CE_DETAIL_FE_10",         "CE_DETAIL_FE_11",
-      "CE_DETAIL_FE_12",     "CE_DETAIL_FE_13",    "CE_DETAIL_FE_14",         "CE_DETAIL_FE_15",
-      "CE_DETAIL_FE_16",     "CE_DETAIL_FE_17",    "CE_DETAIL_FE_18",         "CE_DETAIL_FE_19",
-      "CE_DETAIL_FE_20",     "CE_DETAIL_FE_21",    "CE_DETAIL_FE_22",         "CE_DETAIL_FE_23",
-      "CE_DETAIL_FE_24",     "CE_DETAIL_FE_25",    "CE_DETAIL_FE_26",         "CE_DETAIL_FE_27",
-      "CE_DETAIL_FE_28",     "CE_DETAIL_FE_29",    "CE_DETAIL_FE_30",         "CE_DETAIL_FE_31",
-      "CE_DETAIL_FE_32",     "CE_DETAIL_IS_PAREN", "CE_DETAIL_IS_PAREN_IMPL", "CE_DETAIL_NARG",
-      "CE_DETAIL_NARG_IMPL", "CE_DETAIL_PROBE",    "CE_DETAIL_SECOND",        "CE_DETAIL_UNPAREN",
+      "CE_DETAIL_ARGN",     "CE_DETAIL_CAT",       "CE_DETAIL_CAT_IMPL", "CE_DETAIL_COLD",
+      "CE_DETAIL_ENTRY",    "CE_DETAIL_ENTRY_0",   "CE_DETAIL_ENTRY_1",  "CE_DETAIL_ENTRY_1A",
+      "CE_DETAIL_ENTRY_1B", "CE_DETAIL_FE",        "CE_DETAIL_FE_1",     "CE_DETAIL_FE_2",
+      "CE_DETAIL_FE_3",     "CE_DETAIL_FE_4",      "CE_DETAIL_FE_5",     "CE_DETAIL_FE_6",
+      "CE_DETAIL_FE_7",     "CE_DETAIL_FE_8",      "CE_DETAIL_FE_9",     "CE_DETAIL_FE_10",
+      "CE_DETAIL_FE_11",    "CE_DETAIL_FE_12",     "CE_DETAIL_FE_13",    "CE_DETAIL_FE_14",
+      "CE_DETAIL_FE_15",    "CE_DETAIL_FE_16",     "CE_DETAIL_FE_17",    "CE_DETAIL_FE_18",
+      "CE_DETAIL_FE_19",    "CE_DETAIL_FE_20",     "CE_DETAIL_FE_21",    "CE_DETAIL_FE_22",
+      "CE_DETAIL_FE_23",    "CE_DETAIL_FE_24",     "CE_DETAIL_FE_25",    "CE_DETAIL_FE_26",
+      "CE_DETAIL_FE_27",    "CE_DETAIL_FE_28",     "CE_DETAIL_FE_29",    "CE_DETAIL_FE_30",
+      "CE_DETAIL_FE_31",    "CE_DETAIL_FE_32",     "CE_DETAIL_IS_PAREN", "CE_DETAIL_IS_PAREN_IMPL",
+      "CE_DETAIL_NARG",     "CE_DETAIL_NARG_IMPL", "CE_DETAIL_PROBE",    "CE_DETAIL_SECOND",
+      "CE_DETAIL_UNPAREN",
   };
   return names;
 }

@@ -135,4 +135,17 @@ using ce::v1::result;
 using ce::v1::static_error;
 using ce::v1::to_string_view;
 using ce::v1::widen;
+
+namespace detail {
+// spec: SWR-CORE-0004
+[[nodiscard]] CE_DETAIL_COLD inline auto forward_failure(error&& diagnosis) -> failure {
+  return failure{std::move(diagnosis)};
+}
+
+[[nodiscard]] CE_DETAIL_COLD inline auto forward_failure(error&& diagnosis, std::string where)
+    -> failure {
+  diagnosis.where = std::move(where);
+  return failure{std::move(diagnosis)};
+}
+}  // namespace detail
 }  // namespace ce::inline v3

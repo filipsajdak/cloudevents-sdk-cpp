@@ -272,14 +272,14 @@ class event {
       }
       auto read = detail::read_attribute<field_type>(*stored, name);
       if (!read) {
-        mapping_error = fail(read.error().code, read.error().detail, read.error().where);
+        mapping_error = ce::v3::detail::forward_failure(std::move(read).error());
         return;
       }
       field = std::move(*read);
     });
 
     if (!mapping_error) {
-      return fail(mapping_error.error().code, mapping_error.error().detail, mapping_error.error().where);
+      return ce::v3::detail::forward_failure(std::move(mapping_error).error());
     }
     return out;
   }
@@ -304,8 +304,7 @@ class event {
       }
       auto attribute = extension_name::make(name);
       if (!attribute) {
-        mapping_error = fail(attribute.error().code, attribute.error().detail,
-                             attribute.error().where);
+        mapping_error = ce::v3::detail::forward_failure(std::move(attribute).error());
         return;
       }
       if constexpr (detail::is_optional_field<field_type>) {

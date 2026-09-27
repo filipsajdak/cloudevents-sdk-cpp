@@ -21,9 +21,10 @@ template<described T, json::json_codec Codec>
 [[nodiscard]] auto payload_from(const typename Codec::value& document) -> result<T> {
   auto decoded = from_json_value<Codec, T>(document);
   if (!decoded) {
-    return fail(decoded.error().code,
-                decoded.error().detail,
-                decoded.error().where.empty() ? std::string{"data"} : decoded.error().where);
+    if (decoded.error().where.empty()) {
+      decoded.error().where = "data";
+    }
+    return ce::v3::detail::forward_failure(std::move(decoded).error());
   }
   return decoded;
 }
@@ -61,7 +62,7 @@ template<described T, json::json_codec Codec>
 
   auto document = Codec::parse(*text);
   if (!document) {
-    return fail(document.error().code, document.error().detail, "data");
+    return ce::v3::detail::forward_failure(std::move(document).error(), "data");
   }
 
   return detail::payload_from<T, Codec>(*document);
@@ -81,7 +82,7 @@ template<described T, json::json_codec Codec>
   auto payload = json_member != nullptr ? payload_from<T, Codec>(*json_member)
                                         : data_as<T, Codec>(cloud_event);
   if (!payload) {
-    return fail(payload.error().code, payload.error().detail, payload.error().where);
+    return ce::v3::detail::forward_failure(std::move(payload).error());
   }
   return decoded<T>{.event = std::move(cloud_event), .payload = std::move(*payload)};
 }
@@ -125,7 +126,7 @@ template<described T, json::json_codec Codec>
   auto document = json::detail::typed_entry<Codec>::to_value(
       cloud_event, media_type, to_json_value<Codec>(payload));
   if (!document) {
-    return fail(document.error().code, document.error().detail, document.error().where);
+    return ce::v3::detail::forward_failure(std::move(document).error());
   }
   return Codec::dump(*document);
 }

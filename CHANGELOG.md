@@ -2,7 +2,7 @@
 
 Notable changes per release. Dates are the tag date.
 
-## v0.5.0 - 2026-09-26
+## v0.5.0 - 2026-09-27
 
 An event keeps the JSON document its decoder built, so a typed read or write
 parses the payload at most once and never serialises it to text in between.

@@ -3,8 +3,8 @@
 /// codec. Its stripped size is the binary-size measure (SWR-PERF-0006).
 ///
 /// Built once per codec; CMake names the codec's header and type in
-/// CE_PERF_CODEC_HEADER and CE_PERF_CODEC_TYPE, so the one source serves all
-/// four without a preprocessor branch.
+/// CE_PERF_CODEC_HEADER and CE_PERF_CODEC_TYPE, so the one source serves every
+/// codec without a preprocessor branch.
 
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_format.hpp>

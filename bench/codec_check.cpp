@@ -5,7 +5,9 @@
 /// through the CloudEvents rules a codec is actually load-bearing for, and the
 /// benchmark refuses to report a codec that fails here.
 
+#include <cloudevents/codec/boost_json.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
+#include <cloudevents/codec/rapidjson.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_format.hpp>
 
@@ -140,6 +142,8 @@ void run(std::string_view name) {
 int main() {
   std::printf("codec correctness\n");
   run<ce::codec::nlohmann_codec>("nlohmann");
+  run<ce::codec::rapidjson_codec>("rapidjson.shipped");
+  run<ce::codec::boost_json_codec>("boost.json.shipped");
   run<ce::bench::rapidjson_codec>("rapidjson");
   run<ce::bench::boost_json_codec>("boost.json");
   run<ce::bench::glaze_codec>("glaze");

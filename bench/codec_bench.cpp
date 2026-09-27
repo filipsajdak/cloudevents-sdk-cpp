@@ -19,7 +19,9 @@
 #include <vector>
 #include <yyjson.h>
 
+#include <cloudevents/codec/boost_json.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
+#include <cloudevents/codec/rapidjson.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_format.hpp>
 #include <cloudevents/format/typed_payload.hpp>
@@ -33,6 +35,8 @@
 namespace {
 
 using nlohmann_codec = ce::codec::nlohmann_codec;
+using shipped_rapidjson_codec = ce::codec::rapidjson_codec;
+using shipped_boost_codec = ce::codec::boost_json_codec;
 using rapidjson_codec = ce::bench::rapidjson_codec;
 using boost_codec = ce::bench::boost_json_codec;
 using glaze_codec = ce::bench::glaze_codec;
@@ -244,10 +248,12 @@ void yyjson_parse_large(benchmark::State& state) {
 
 }  // namespace
 
-#define CE_BENCH_ALL(op)                             \
-  BENCHMARK(op<nlohmann_codec>)->Name(#op "/nlohmann");   \
-  BENCHMARK(op<rapidjson_codec>)->Name(#op "/rapidjson"); \
-  BENCHMARK(op<boost_codec>)->Name(#op "/boost.json");    \
+#define CE_BENCH_ALL(op)                                                  \
+  BENCHMARK(op<nlohmann_codec>)->Name(#op "/nlohmann");                   \
+  BENCHMARK(op<shipped_rapidjson_codec>)->Name(#op "/rapidjson.shipped"); \
+  BENCHMARK(op<shipped_boost_codec>)->Name(#op "/boost.json.shipped");    \
+  BENCHMARK(op<rapidjson_codec>)->Name(#op "/rapidjson");                 \
+  BENCHMARK(op<boost_codec>)->Name(#op "/boost.json");                    \
   BENCHMARK(op<glaze_codec>)->Name(#op "/glaze")
 
 CE_BENCH_ALL(decode_minimal);

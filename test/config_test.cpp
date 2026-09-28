@@ -65,7 +65,7 @@ namespace fs = std::filesystem;
 
   const auto from_file = fs::absolute(fs::path{__FILE__}, ec);
   if (!ec) {
-    const auto candidate = from_file.parent_path().parent_path() / "include" / "cloudevents";
+    auto candidate = from_file.parent_path().parent_path() / "include" / "cloudevents";
     if (fs::exists(candidate / "detail" / "config.hpp", ec)) {
       return candidate;
     }
@@ -76,7 +76,7 @@ namespace fs = std::filesystem;
     return {};
   }
   for (;;) {
-    const auto candidate = dir / "include" / "cloudevents";
+    auto candidate = dir / "include" / "cloudevents";
     if (fs::exists(candidate / "detail" / "config.hpp", ec)) {
       return candidate;
     }

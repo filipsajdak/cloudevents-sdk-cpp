@@ -1389,9 +1389,9 @@ const boost::ut::suite<"header-value-percent-encoding"> header_value_percent_enc
     expect(ce::http::detail::percent_encode(" ") == "%20"sv);
     expect(ce::http::detail::percent_encode("\"") == "%22"sv);
     expect(ce::http::detail::percent_encode("%") == "%25"sv);
-    expect(ce::http::detail::percent_encode(std::string{two_byte_utf8}) == "%C3%BC"sv);
-    expect(ce::http::detail::percent_encode(std::string{three_byte_utf8}) == "%E6%97%A5"sv);
-    expect(ce::http::detail::percent_encode(std::string{four_byte_utf8}) == "%F0%9F%98%80"sv);
+    expect(ce::http::detail::percent_encode(two_byte_utf8) == "%C3%BC"sv);
+    expect(ce::http::detail::percent_encode(three_byte_utf8) == "%E6%97%A5"sv);
+    expect(ce::http::detail::percent_encode(four_byte_utf8) == "%F0%9F%98%80"sv);
     // Control characters are outside printable ASCII and go the same way.
     expect(ce::http::detail::percent_encode("\n") == "%0A"sv);
     expect(ce::http::detail::percent_encode("\t") == "%09"sv);

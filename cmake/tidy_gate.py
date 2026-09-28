@@ -24,11 +24,20 @@ suites = sorted(pathlib.Path(path) for path in sys.argv[4:])
 if not suites:
     sys.exit("tidy_gate.py: no suites were registered, so nothing would be linted")
 header_root = str(source_dir / "include" / "cloudevents") + os.sep
+# The query-based checks in .clang-tidy run only behind this flag. A clang-tidy
+# too old to know it would reject every suite with an error the finding pattern
+# does not match, and the gate would pass having linted nothing, so it is
+# refused up front instead.
+custom_checks = ["--experimental-custom-checks"]
+probe = subprocess.run([clang_tidy, *custom_checks, "--version"], capture_output=True, text=True)
+if probe.returncode != 0:
+    sys.exit(f"tidy_gate.py: {clang_tidy} does not accept {custom_checks[0]}; "
+             "it predates the query-based checks .clang-tidy defines")
 finding = re.compile(r"^(/[^:]+):(\d+):(\d+): (?:warning|error): (.*) \[([\w.,-]+)\]$")
 
 
 def lint(suite: pathlib.Path) -> tuple[pathlib.Path, int, str]:
-    run = subprocess.run([clang_tidy, "-p", build_dir, "--quiet", str(suite)],
+    run = subprocess.run([clang_tidy, "-p", build_dir, "--quiet", *custom_checks, str(suite)],
                          capture_output=True, text=True, cwd=source_dir)
     return suite, run.returncode, run.stdout + run.stderr
 

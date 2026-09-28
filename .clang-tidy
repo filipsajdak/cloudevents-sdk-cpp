@@ -26,7 +26,19 @@ Checks: >
   -modernize-use-trailing-return-type,
   -portability-avoid-pragma-once,
   -readability-identifier-length,
-  -readability-redundant-member-init
+  -readability-redundant-member-init,
+  performance-for-range-copy,
+  performance-unnecessary-value-param,
+  performance-unnecessary-copy-initialization,
+  performance-move-const-arg,
+  performance-no-automatic-move,
+  performance-inefficient-string-concatenation,
+  performance-string-view-conversions,
+  modernize-pass-by-value,
+  readability-redundant-string-cstr,
+  bugprone-dangling-handle,
+  bugprone-return-const-ref-from-parameter,
+  custom-*
 
 # Why each of the above is disabled:
 #
@@ -59,6 +71,12 @@ Checks: >
 #
 #   misc-include-cleaner
 #     Too noisy across a header-only library whose headers include each other.
+#
+# The copy checks after the exclusions are already on through the globs. They
+# are named so the set that catches needless copies (D-TIDY-6) reads in one
+# place, and so narrowing a glob cannot switch one off unnoticed. custom-* is
+# the four query-based checks under CustomChecks below; clang-tidy runs them
+# only when given --experimental-custom-checks, which cmake/tidy_gate.py passes.
 
 WarningsAsErrors: '*'
 HeaderFilterRegex: 'include/cloudevents/.*'
@@ -83,3 +101,56 @@ CheckOptions:
     value: '_'
   - key: readability-identifier-naming.MacroDefinitionPrefix
     value: 'CE_'
+
+# Query-based checks for the copies the built-in checks do not see (D-TIDY-6).
+CustomChecks:
+  - Name: scudoai-copy-string-ref-param
+    Query: |
+      let str qualType(hasCanonicalType(hasDeclaration(classTemplateSpecializationDecl(hasName("::std::basic_string")))))
+      let use declRefExpr(to(parmVarDecl(equalsBoundNode("p"))))
+      match functionDecl(isDefinition(), unless(isImplicit()), unless(cxxMethodDecl(anyOf(isOverride(), isVirtual()))),
+        unless(isExpansionInSystemHeader()), unless(isInstantiated()), unless(isTemplateInstantiation()),
+        forEachDescendant(parmVarDecl(unless(isInstantiated()), unless(hasAncestor(lambdaExpr())), unless(hasAncestor(cxxMethodDecl(anyOf(isOverride(), isVirtual())))), hasType(lValueReferenceType(pointee(qualType(isConstQualified(), str))))).bind("p")),
+        unless(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasAnyName("c_str", "data"))), on(use)))),
+        unless(hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("="), hasArgument(1, ignoringImplicit(use))))),
+        unless(hasDescendant(callExpr(forEachArgumentWithParam(ignoringImplicit(use), parmVarDecl(hasType(lValueReferenceType(pointee(qualType(str))))))))),
+        unless(hasDescendant(cxxConstructExpr(forEachArgumentWithParam(ignoringImplicit(use), parmVarDecl(hasType(lValueReferenceType(pointee(qualType(str))))))))))
+    Diagnostic:
+      - BindName: p
+        Message: "const std::string& parameter only read: take std::string_view"
+        Level: Warning
+  - Name: scudoai-copy-string-substr
+    Query: |
+      let str qualType(hasCanonicalType(hasDeclaration(classTemplateSpecializationDecl(hasName("::std::basic_string")))))
+      let sub cxxMemberCallExpr(callee(cxxMethodDecl(hasName("substr"), ofClass(hasName("::std::basic_string")))))
+      match cxxMemberCallExpr(
+        callee(cxxMethodDecl(hasName("substr"), ofClass(hasName("::std::basic_string")))),
+        unless(isExpansionInSystemHeader()),
+        unless(hasAncestor(returnStmt(hasReturnValue(ignoringImplicit(sub))))),
+        unless(hasAncestor(varDecl(unless(hasType(autoType())), hasInitializer(ignoringImplicit(sub))))),
+        unless(hasAncestor(cxxOperatorCallExpr(hasAnyOverloadedOperatorName("=", "+", "+=")))),
+        unless(hasAncestor(callExpr(callee(functionDecl(hasAnyName("push_back", "emplace_back", "emplace", "insert", "append", "assign", "::std::stoi", "::std::stol", "::std::stoll", "::std::stoul", "::std::stoull", "::std::stod", "::std::stof")))))),
+        unless(hasAncestor(initListExpr()))
+      ).bind("c")
+    Diagnostic:
+      - BindName: c
+        Message: "substr on std::string allocates a copy that is only read: view it"
+        Level: Warning
+  - Name: scudoai-copy-function-param
+    Query: |
+      let fn qualType(hasCanonicalType(hasDeclaration(classTemplateSpecializationDecl(hasName("::std::function")))))
+      match functionDecl(isDefinition(), unless(cxxMethodDecl(anyOf(isOverride(), isVirtual()))), unless(isExpansionInSystemHeader()), unless(isInstantiated()), unless(isTemplateInstantiation()),
+        forEachDescendant(parmVarDecl(unless(isInstantiated()), unless(hasAncestor(lambdaExpr())), unless(hasAncestor(cxxMethodDecl(anyOf(isOverride(), isVirtual())))), anyOf(hasType(references(qualType(isConstQualified(), fn))), hasType(fn))).bind("p")),
+        unless(hasDescendant(callExpr(callee(functionDecl(hasName("::std::move"))), hasArgument(0, declRefExpr(to(parmVarDecl(equalsBoundNode("p")))))))))
+    Diagnostic:
+      - BindName: p
+        Message: "std::function parameter only invoked: take a template/auto&& callable or function_ref"
+        Level: Warning
+  - Name: scudoai-copy-view-member
+    Query: |
+      match fieldDecl(unless(isExpansionInSystemHeader()), unless(isImplicit()), unless(isInstantiated()),
+        hasType(qualType(hasCanonicalType(hasDeclaration(classTemplateSpecializationDecl(hasAnyName("::std::basic_string_view", "::std::span"))))))).bind("f")
+    Diagnostic:
+      - BindName: f
+        Message: "view data member: its owner must outlive this object"
+        Level: Warning

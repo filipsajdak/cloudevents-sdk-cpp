@@ -6,6 +6,7 @@ Accepted 2026-09-23, on CR-0003.
 It applies ADR-0009's layout a second time and extends ADR-0004.
 Amended 2026-09-27, after v0.5.0: a document moves without a reference-count operation, and a codec may take over strings the encoder built (`SWR-CORE-0035`, `SWR-JSON-0044`).
 Both are additions under rule 4.
+ADR-0012 corrects that for the move: a moved-from document that reads as null changes behaviour v0.5.0 documented, so the move belongs to `ce::v4`, and `ce::v3`'s document copies on move as v0.5.0 did (CR-0004).
 
 ## Context
 

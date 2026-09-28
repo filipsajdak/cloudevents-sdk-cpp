@@ -2,7 +2,8 @@
 uid: SWR-CORE-0035
 title: A json_document moves without a reference-count operation
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.1
 priority: medium
 rationale: >
   An event is moved more often than it is copied: decode moves the event it builds into its result, and a batch moves each event into its vector.

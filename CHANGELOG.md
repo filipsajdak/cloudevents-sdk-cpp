@@ -2,15 +2,71 @@
 
 Notable changes per release. Dates are the tag date.
 
-## Unreleased
+## v0.5.1 - 2026-09-28
+
+The encoder and `json_document` stop copying data the SDK already holds: the
+encoder hands the codec the strings it built itself, a `json_document` moves
+without touching its reference count, and an error passed up a call chain is
+moved rather than copied. Every change is an addition; no declaration v0.5.0
+published changes. One behaviour changes: a moved-from `json_document` now reads
+as JSON null, described below.
+
+### Changed
 
 - **A codec may take over the strings the encoder builds.**
-  A codec that provides `adopt_string(std::string&&) -> value` receives the RFC 3339 text of timestamps and the base64 text of binary data by move instead of by view; `ce::json::string_adopting_codec<C>` detects it.
-  It is optional, so a v0.5.0 codec keeps compiling and keeps the copy. `nlohmann_codec` provides it.
+  A codec that provides `adopt_string(std::string&&) -> value` receives by move instead of by view the strings the encoder built and would otherwise discard: the RFC 3339 text of the `time` attribute and of a timestamp extension, and the base64 text of a binary extension and of `data_base64`.
+  `ce::json::string_adopting_codec<C>` detects it, and the optional module exports it.
+  It is optional, so a v0.5.0 codec keeps compiling and keeps the copy. `nlohmann_codec` provides it; the Boost.JSON and RapidJSON codecs keep strings in their own storage and do not (D-CODEC-4).
 - **Moving a `json_document` no longer copies it.**
   In v0.5.0 a move copied the document, so the source still held the same DOM.
   Now a move hands the DOM over without touching the reference count, and the moved-from document reads as JSON null: `dump()` returns `null`, `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to another moved-from document.
   It is still never empty, and every member may be called on it. Code that read a document after moving from it now sees null; copy it instead.
+- **An error is passed on by move.** Where the format, the bindings and the typed entry points return an error they received, they move it through one out-of-line helper marked cold, instead of copying its detail and location. Every error keeps its code, detail and location.
+
+### Behaviour change: a moved-from `json_document` reads as null
+
+This is the one change a v0.5.0 program can observe. It still compiles, and a
+document is still never empty, but a document read after it was moved from now
+reads as JSON null instead of the value it held, and it no longer compares equal
+to the document it was moved into. D-CORE-9 records why this is an addition
+rather than a changed declaration.
+
+Migration: copy a document you still need to read, instead of moving it.
+
+### Tooling
+
+- **The perf job measures the codecs the SDK ships.** `ce::codec::rapidjson_codec` and `ce::codec::boost_json_codec` are measured on every operation as `<op>/rapidjson.shipped` and `<op>/boost.json.shipped`, beside the bench's own copies, whose ids and history are unchanged. Their budgets are seeded from their first CI measurement plus 10 percent.
+- **The clang-tidy gate fails on a needless copy.** Eleven built-in checks and four query-based checks report a copy of something the code already holds, in the headers and in the suites; the gate never applies their fixes (D-TIDY-6, D-TIDY-7).
+  The rest of the check set still gates the headers only.
+
+### Measured by the perf job
+
+The perf job (x86_64, g++-14) compared the change that made these additions with
+main before it, `c1d51ed`, and passed. No allocation count rose anywhere.
+
+- **Allocations.** `encode_full` makes 64 allocations instead of 65 on nlohmann and 18 instead of 19 on Glaze; `encode_batch_100` 2,724 instead of 2,824 on nlohmann and 615 instead of 715 on Glaze; `encode_as_full/nlohmann` 42 instead of 43, and `roundtrip_full/nlohmann` 134 instead of 135.
+- **Instructions.** `typed_payload_write/rapidjson.shipped` runs 3.67 percent fewer and `decode_batch_as_100/boost.json` 1.07 percent fewer. The largest rise is `http_encode_binary`, 1.40 percent, under the 2 percent gate.
+
+Moving a `json_document` is not in the perf job. Measured by compiling it at `-O2`
+for arm64 and counting atomic read-modify-write instructions, with GCC 16 and
+libstdc++ and with Clang 23 and libc++, which agree: a move construction goes
+from 1 to 0, and a move assignment from 2 to 1, the release of the document it
+overwrites (D-CORE-9).
+
+### Measured on the release candidate
+
+- Line coverage 95.9% (3491 of 3640), function coverage 91.6% (1602 of 1748), branch coverage 60.8% (3946 of 6487), against a floor of 90% lines, from the `coverage floor` job on `65c756e`.
+- CI: GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17, AppleClang at C++20 and C++23, MSVC 19, GCC 16 with C++26 static reflection, plus the forced polyfill, exceptions disabled, no default codec, every codec on Linux and macOS, ASan with UBSan, TSan, install-and-consume, and interop with the Go and Java SDKs.
+- Twenty-one fuzz targets ran on pull requests at one minute each.
+
+### Known limitations
+
+- libc++ 17 and 18 implement `std::format` without defining `__cpp_lib_format`; the SDK carves them out by version (D-CI-1).
+- Clang 16 cannot compile libstdc++ 13 or 14 in C++23 mode, so the C++23 Clang job uses libc++ (D-CI-1).
+- The module interface is usable, with constraints on what an importing translation unit may also include (D-MODULE-1), and it exports `ce::v3` only.
+- Given the same non-JSON payload, the Java SDK writes `data_base64` where Go and this SDK write a JSON string. Both are legal (D-INTEROP-1).
+- HTTP binary mode percent-encodes header values as the binding requires; the Go and Java SDKs do not, so talking to them needs `ce::http::literal_values` (D-HTTP-1).
+- A decoded document under the retention limit takes 1.4 to 3.3 times the memory of its text, as measured for v0.5.0; lower the limit where many events are held at once.
 
 ## v0.5.0 - 2026-09-27
 

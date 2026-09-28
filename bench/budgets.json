@@ -408,6 +408,36 @@
       "allocations": 15,
       "instructions": 30745
     },
+    "http_encode_structured/boost.json": {
+      "allocated_bytes": 3987,
+      "allocations": 47,
+      "instructions": 43921
+    },
+    "http_encode_structured/boost.json.shipped": {
+      "allocated_bytes": 3987,
+      "allocations": 47,
+      "instructions": 43839
+    },
+    "http_encode_structured/glaze": {
+      "allocated_bytes": 6615,
+      "allocations": 24,
+      "instructions": 46775
+    },
+    "http_encode_structured/nlohmann": {
+      "allocated_bytes": 6396,
+      "allocations": 74,
+      "instructions": 81950
+    },
+    "http_encode_structured/rapidjson": {
+      "allocated_bytes": 6662,
+      "allocations": 32,
+      "instructions": 40476
+    },
+    "http_encode_structured/rapidjson.shipped": {
+      "allocated_bytes": 4662,
+      "allocations": 28,
+      "instructions": 46679
+    },
     "kafka_decode_binary/boost.json": {
       "allocated_bytes": 736,
       "allocations": 11,

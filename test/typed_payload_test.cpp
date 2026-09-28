@@ -792,7 +792,8 @@ void check_encode_as(std::string_view label) {
   // No datacontenttype, and a payload encode_as replaces: the output is the
   // event set_data would write, with no payload text in between.
   const ce::event subject = written({.data = ce::binary{std::byte{0x01}}});
-  const ce::event untouched = subject;
+  // A snapshot to compare with afterwards, so it has to be a copy.
+  const ce::event untouched = subject;  // NOLINT(performance-unnecessary-copy-initialization)
   counted::reset();
   const auto text = ce::encode_as<reading, counted>(subject, sent);
   expect(text.has_value()) << label;

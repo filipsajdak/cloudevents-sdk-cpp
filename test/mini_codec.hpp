@@ -177,7 +177,8 @@ namespace mini_detail {
 inline constexpr int max_parse_depth = 100;
 
 struct reader {
-  std::string_view text;
+  // Borrows the input of one parse call, which outlives the reader.
+  std::string_view text;  // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
   std::size_t pos = 0;
   int depth = 0;
 

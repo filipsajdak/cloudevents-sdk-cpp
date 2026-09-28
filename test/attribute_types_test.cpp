@@ -116,7 +116,8 @@ const boost::ut::suite<"attribute-types-refuse-invalid-text"> attribute_types_re
     const ce::id borrowed = "A234-1234"_id;
     expect(borrowed.view() == "A234-1234"sv);
 
-    const ce::id copied{borrowed};
+    // The copy constructor is what is under test.
+    const ce::id copied{borrowed};  // NOLINT(performance-unnecessary-copy-initialization)
     expect(copied.view() == "A234-1234"sv);
 
     ce::id to_move = "A234-1234"_id;

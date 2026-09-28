@@ -100,7 +100,8 @@ auto probe() -> report {
   bool document_round_tripped = false;
   if (parsed) {
     const auto document = ce::json_document::make<ce::test::mini_codec>(std::move(*parsed));
-    const auto copy = document;
+    // The copy is under test.
+    const auto copy = document;  // NOLINT(performance-unnecessary-copy-initialization)
     const auto reordered = ce::test::mini_codec::parse(R"( { "k" : [1, 2] } )");
     document_round_tripped =
         reordered.has_value() && document.get<ce::test::mini_codec>() != nullptr &&

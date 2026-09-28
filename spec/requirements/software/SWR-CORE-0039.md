@@ -9,6 +9,7 @@ rationale: >
   The document model is declared once, in ce::v3::detail, and both generations' json_document point at it (ADR-0012), so a conversion can hand over the pointer instead of the DOM.
   The model is immutable once built (SWR-CORE-0032), so a v3 and a v4 document sharing it can be read from different threads without a data race.
   The owner decided on 2026-09-28 that a document converts in constant time.
+  The conversions are declared in include/cloudevents/v3_conversion.hpp (SWR-CORE-0037), which reaches both models through the one detail accessor ADR-0012 describes.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]

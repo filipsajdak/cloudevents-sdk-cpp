@@ -19,7 +19,8 @@ namespace ce_parity {
 /// \brief What a described type is expected to look like, whichever backend
 /// produced the description.
 struct expectation {
-  std::string_view label;
+  // Every expectation is written with string literals.
+  std::string_view label;  // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
   std::vector<std::string_view> wire_names;
 };
 

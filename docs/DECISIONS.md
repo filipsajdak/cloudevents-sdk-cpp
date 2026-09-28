@@ -1405,6 +1405,72 @@ RapidJSON's `GenericValue` keep strings in their own storage, so those codecs
 cannot take one over and do not provide it. The Glaze bench codec's value holds
 a `std::string` and provides it.
 
+## D-TIDY-7: The suites are gated on the copy checks only
+
+D-TIDY-2 gated the headers only: the suites are what clang-tidy is run over, but
+`tidy_gate.py` dropped every finding located in `test/`. The copy checks of
+D-TIDY-6 now apply to `test/` as well. A test copies events, documents and
+strings in every case, and a needless copy there is as easy to add as in a
+header and teaches the wrong shape to whoever copies the test.
+
+The rest of the check set stays off for the suites. Measured 2026-09-28 with
+Homebrew LLVM 23.1.1, the whole set reports **984 findings** across 30 files
+under `test/`, most of them from checks written for library code:
+`bugprone-throwing-static-initialization` and `cert-err58-cpp` (164 each), on
+every `boost::ut::suite` global; the two magic-number checks (133 each), on the
+expected values a test exists to state; and `readability-trailing-comma` (92).
+Clearing them would reshape every suite for no gain in what it checks, so the
+gate keeps only the findings of the D-TIDY-6 checks there. Of those there were
+16: four fixed, in two suites, and twelve marked as deliberate copies or views.
+
+`HeaderFilterRegex` now admits `test/`, so the shared test headers such as
+`mini_codec.hpp` are checked too. The copy checks are listed in `tidy_gate.py`
+as well as in `.clang-tidy`, and the gate fails if `.clang-tidy` stops naming
+one, so the suites cannot drift to being gated on nothing.
+
+## D-TIDY-6: The tidy gate catches needless copies, and never fixes them
+
+The owner decided on 2026-09-28 that clang-tidy detects needless copies in this
+repository, reports them, and fails the gate on them, and that nothing applies
+its fixes automatically.
+
+**The checks.** Eleven built-in checks find a copy of something the code already
+holds: `performance-for-range-copy`, `-unnecessary-value-param`,
+`-unnecessary-copy-initialization`, `-move-const-arg`, `-no-automatic-move`,
+`-inefficient-string-concatenation` and `-string-view-conversions`,
+`modernize-pass-by-value`, `readability-redundant-string-cstr`,
+`bugprone-dangling-handle` and `bugprone-return-const-ref-from-parameter`. The
+globs in `.clang-tidy` already switched them on; they are named as well so the
+set reads in one place. Four query-based checks under `CustomChecks` cover what
+those miss, with the same rule names the copy-smell scanner uses, prefixed
+`custom-`:
+
+| check | reports |
+|---|---|
+| `custom-scudoai-copy-string-ref-param` | a `const std::string&` parameter that is only read |
+| `custom-scudoai-copy-string-substr` | a `substr` on a `std::string` whose result is only read |
+| `custom-scudoai-copy-function-param` | a `std::function` parameter that is only invoked |
+| `custom-scudoai-copy-view-member` | a `string_view` or `span` data member, whose owner must outlive it |
+
+Query-based checks are experimental in clang-tidy and run only with
+`--experimental-custom-checks`, which `cmake/tidy_gate.py` passes. The gate
+refuses a clang-tidy that does not accept the flag rather than lint nothing.
+The CI job installs Homebrew LLVM, which was 23.1.0 on the last run before this
+change; `performance-string-view-conversions` is new in that release.
+
+Over the headers the checks found nothing new: the eight view members were
+already accepted by the scanner, for the reasons in D-TIDY-3, and their NOLINTs
+now name both checks.
+
+**Never `--fix`.** Measured on a copy of this repository on 2026-09-28, the
+fixes compiled cleanly, and they had hollowed out the tests that exist to
+exercise a copy or a move. "A copy equals its source" compared a reference
+with its own referent. The `untouched` snapshot in `typed_payload_test.cpp`
+became a reference to the event it was meant to preserve, so it could no
+longer see a change. The test that a document moves lost its `std::move`
+and copied instead. Each finding is therefore fixed by hand, or marked with a NOLINT when
+the copy is the point, with the reason in the commit that adds it.
+
 ## D-TIDY-5: The v2 copies are outside the clang-tidy gate
 
 `include/cloudevents/v2/` holds what v0.4.0 published, copied for ADR-0010.
@@ -1434,6 +1500,10 @@ carries the suppressions in D-TIDY-3.
 
 A NOLINT stays in the header, because it is an instruction to the tool rather
 than prose. Its reason is here.
+
+A view member is reported twice, by the copy-smell scanner as
+`scudoai-copy-view-member` and by clang-tidy's query-based check as
+`custom-scudoai-copy-view-member`, so each of those NOLINTs names both.
 
 | where | check suppressed | why |
 |---|---|---|

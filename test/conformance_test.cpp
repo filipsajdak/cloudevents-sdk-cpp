@@ -49,7 +49,8 @@ using mini_codec = ce::test::mini_codec;
 enum class shape { structured_json, batch_json, binary_headers, http_exchange, media_type_only };
 
 struct fixture {
-  std::string_view name;
+  // Every fixture names itself with a string literal.
+  std::string_view name;  // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
   shape form;
   bool elided;
 };

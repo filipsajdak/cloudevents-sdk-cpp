@@ -5,9 +5,10 @@
 # CMAKE_EXPORT_COMPILE_COMMANDS gives clang-tidy the real flags they are built
 # with - the same reason the warning-scope probe refuses try_compile.
 #
-# tidy_gate.py runs them in parallel and keeps only the findings located in
-# include/cloudevents: clang-tidy always reports the file it was given, so a
-# direct run would also enforce the whole check set on the tests (D-TIDY-2).
+# tidy_gate.py runs them in parallel and keeps every finding located in
+# include/cloudevents, and only the needless-copy findings located in test/:
+# clang-tidy always reports the file it was given, so a direct run would also
+# enforce the whole check set on the tests (D-TIDY-2, D-TIDY-7).
 
 find_program(CE_CLANG_TIDY NAMES clang-tidy)
 find_package(Python3 COMPONENTS Interpreter)
@@ -29,5 +30,5 @@ add_custom_target(tidy
           "${CE_CLANG_TIDY}" "${CMAKE_BINARY_DIR}" "${PROJECT_SOURCE_DIR}"
           ${CE_TIDY_SOURCES}
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-  COMMENT "Running clang-tidy over the public headers"
+  COMMENT "Running clang-tidy over the public headers and the suites"
   VERBATIM)

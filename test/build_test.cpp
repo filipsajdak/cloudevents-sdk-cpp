@@ -122,9 +122,10 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
     expect(!bad.has_value());
     expect(bad.error().code == ce::errc::invalid_base64);
 
-    const poly_void copied_bad{bad};
+    // The polyfill's copy constructor is what is under test, on both alternatives.
+    const poly_void copied_bad{bad};  // NOLINT(performance-unnecessary-copy-initialization)
     expect(!copied_bad.has_value() && copied_bad.error().where == "here");
-    const poly_void copied_ok{ok};
+    const poly_void copied_ok{ok};  // NOLINT(performance-unnecessary-copy-initialization)
     expect(copied_ok.has_value());
 
     poly_void moved_bad{bad};

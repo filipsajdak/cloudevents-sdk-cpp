@@ -397,6 +397,7 @@ void check_recovery_failures(std::string_view label) {
   };
 
   struct rate_probe {
+    // NOLINTNEXTLINE(scudoai-copy-view-member,custom-scudoai-copy-view-member): a literal
     std::string_view name = "sampledrate";
     static auto read(const ce::event& e) { return e.get<ce::ext::sampled_rate>(); }
   };

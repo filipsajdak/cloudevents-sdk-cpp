@@ -1,1 +1,1 @@
-{"copies": {"block": true}}
+{"copies": {"block": true}, "tidy": {"build_dir": "build/clang-cxx20", "custom_checks": true}}

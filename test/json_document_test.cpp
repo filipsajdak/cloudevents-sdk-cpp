@@ -118,7 +118,8 @@ const boost::ut::suite<"json-document-shared-across-threads"> shared_across_thre
       workers.emplace_back([&shared, &same_from_mini, &expected_text, &failures] {
         auto reassigned = same_from_mini;
         for (int round = 0; round < iterations; ++round) {
-          const auto copy = shared;
+          // Copying concurrently is what is under test.
+          const auto copy = shared;  // NOLINT(performance-unnecessary-copy-initialization)
           reassigned = copy;
           const bool agrees = copy == shared && reassigned == shared &&
                               copy.get<nlohmann_codec>() == shared.get<nlohmann_codec>() &&
@@ -245,7 +246,8 @@ const boost::ut::suite<"json-document-moves-without-counting"> moves_without_cou
     const auto from_mini = moved_from_document<mini_codec>("[2]"sv);
     expect(from_nlohmann == from_mini);
     expect(from_mini == from_nlohmann);
-    const auto copied = from_nlohmann;
+    // The copy is under test.
+    const auto copied = from_nlohmann;  // NOLINT(performance-unnecessary-copy-initialization)
     expect(copied == from_nlohmann) << "a copy of the null model is the null model";
     expect(copied.dump() == "null"sv);
 
@@ -303,7 +305,8 @@ const boost::ut::suite<"json-document-compares-as-json"> compares_as_json = [] {
 
   "a copy equals its source"_test = [] {
     const auto source = document_of<mini_codec>(R"({"a":[{"b":null}]})"sv);
-    const auto copy = source;
+    // The copy is under test.
+    const auto copy = source;  // NOLINT(performance-unnecessary-copy-initialization)
     expect(copy == source);
     expect(source == copy);
   };

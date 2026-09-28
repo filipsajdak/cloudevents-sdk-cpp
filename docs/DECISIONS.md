@@ -142,10 +142,19 @@ rescan.
 
 Emitting the `json_text` alternative under `data` means parsing it through the codec
 and splicing the resulting DOM, so the output is one well-formed document rather
-than an escaped blob. That costs a parse on the encode path. The alternative, an
-erased codec DOM stored in `core`, would put a codec dependency in `core` and break
-the downward dependency rule, so it is rejected. Callers who already own a DOM get a
-`to_value(event, Codec::value&&)` overload as the zero-copy path.
+than an escaped blob. That costs a parse on the encode path.
+
+This entry once promised callers who already own a DOM a
+`to_value(event, Codec::value&&)` overload as the zero-copy path. No generation
+declares one: `json_format::to_value` takes only the event in the v0.1.0 to v0.5.0
+tags and on `main`. The path such a caller has is the one CR-0003 added in `ce::v3`:
+`json_document::make<Codec>` takes the codec's value, and an encode with the same
+codec copies that document into the output without parsing it (SWR-JSON-0041).
+
+The reason given for not storing a DOM in an event, that it would put a codec
+dependency in `core`, held only for a DOM stored by its codec type. `json_document`
+stores it behind type erasure, so `core.hpp` still names no codec (SWR-CORE-0013,
+ADR-0010). `json_text` keeps the parse described above, since it holds text.
 
 This is also the one place the library validates `json_text`, reporting
 `errc::malformed_json` with a JSON pointer of `/data` -- which is where a caller's
@@ -756,9 +765,13 @@ The concept now states three rules the in-tree codecs disagreed about:
   forbidden is returning a value that is not the one on the wire, and that is what
   the suites assert - the error code is checked as a disjunction.
 
-`size_of` is documented rather than changed: the SDK never calls it, nlohmann
-returns 1 for a scalar where the others return 0, and narrowing that under a
-frozen `v1` would buy nothing.
+`size_of` is documented rather than changed: nlohmann returns 1 for a scalar where
+the others return 0, and narrowing that under a frozen `v1` would buy nothing. The
+SDK calls it in one place. Since v0.5.0 the v3 `decode_batch` takes the event count
+of a batch from `size_of`, to reserve its vector and to apply the retention limit
+per event (SWR-JSON-0040). It calls it only after `kind_of` has reported an array,
+and on an array the in-tree codecs agree: each returns the number of elements. The
+disagreement on scalars stays unobservable through the SDK.
 
 ## D-CODEC-1: RapidJSON ships with a stateless allocator and a stated hazard
 

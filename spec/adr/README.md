@@ -24,3 +24,4 @@ Neutral), `## References`. Start from `template.md`.
 | [0009](./0009-two-api-generations-side-by-side.md) | Two API generations side by side | Accepted |
 | [0010](./0010-events-keep-their-json-document.md) | An event keeps its JSON document, in a third generation | Accepted |
 | [0011](./0011-deterministic-performance-gates.md) | Performance is gated on deterministic measures, measured against main in the same job | Accepted |
+| [0012](./0012-a-fourth-generation-for-the-moving-document.md) | A fourth generation for the moving document | Accepted |

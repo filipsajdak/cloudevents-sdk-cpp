@@ -206,6 +206,13 @@ auto http_decode_structured() -> bool {
 }
 
 template<class C>
+auto http_encode_structured() -> bool {
+  auto message = ce::http::to_message<C>(ce::bench::full_event(), ce::content_mode::structured);
+  escape(message);
+  return message.has_value();
+}
+
+template<class C>
 auto kafka_decode_binary() -> bool {
   auto event = ce::kafka::from_message<C>(kafka_binary_message());
   escape(event);
@@ -334,6 +341,7 @@ auto operations_for(std::string_view codec) {
       {.id = id("http_decode_binary"), .run = http_decode_binary<C>},
       {.id = id("http_encode_binary"), .run = http_encode_binary<C>},
       {.id = id("http_decode_structured"), .run = http_decode_structured<C>},
+      {.id = id("http_encode_structured"), .run = http_encode_structured<C>},
       {.id = id("kafka_decode_binary"), .run = kafka_decode_binary<C>},
       {.id = id("nats_decode_binary"), .run = nats_decode_binary<C>},
   });

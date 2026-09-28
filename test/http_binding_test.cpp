@@ -9,6 +9,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -1377,6 +1378,17 @@ const boost::ut::suite<"binary-mode-body-is-raw-data"> binary_mode_body_is_raw_d
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_binary_mode_body<C>(codec); };
   });
+
+  "text and body bytes convert octet for octet"_test = [] {
+    constexpr auto octets = "a\0b\x7F\x80\xC5\xBC\xFFz"sv;
+    const ce::binary body = ce::http::detail::to_bytes(octets);
+    expect(body.size() == octets.size());
+    expect(std::ranges::equal(body, std::as_bytes(std::span{octets})));
+    expect(ce::http::detail::to_text(body) == octets);
+
+    expect(ce::http::detail::to_bytes(""sv).empty());
+    expect(ce::http::detail::to_text(ce::binary{}).empty());
+  };
 };
 
 // spec: SWR-HTTP-0010

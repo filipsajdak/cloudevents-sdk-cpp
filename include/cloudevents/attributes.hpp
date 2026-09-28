@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -498,20 +499,13 @@ template <extension_field F>
 }  // namespace detail
 
 [[nodiscard]] inline auto to_bytes(std::string_view text) -> binary {
-  binary out;
-  out.reserve(text.size());
-  for (const char character : text) {
-    out.push_back(static_cast<std::byte>(character));
-  }
-  return out;
+  const std::span<const std::byte> octets = std::as_bytes(std::span{text});
+  return binary{octets.begin(), octets.end()};
 }
 
 [[nodiscard]] inline auto to_text(const binary& bytes) -> std::string {
-  std::string out;
-  out.reserve(bytes.size());
-  for (const std::byte value : bytes) {
-    out.push_back(static_cast<char>(value));
-  }
+  std::string out(bytes.size(), '\0');
+  std::ranges::copy(bytes, std::as_writable_bytes(std::span{out}).begin());
   return out;
 }
 

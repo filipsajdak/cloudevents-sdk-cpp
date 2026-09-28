@@ -112,7 +112,7 @@ jobs:
 
   tidy:
     # .clang-tidy with WarningsAsErrors: '*', over every public header the suites
-    # include (D-TIDY-2). Homebrew's LLVM rather than Ubuntu's packaged
+    # include (D-TIDY-2), and its needless-copy checks over the suites (D-TIDY-7). Homebrew's LLVM rather than Ubuntu's packaged
     # clang-tidy, which is several releases older and reports a different set:
     # the gate has to agree with what a contributor sees locally.
     name: clang-tidy

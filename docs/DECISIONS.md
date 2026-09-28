@@ -1405,6 +1405,29 @@ RapidJSON's `GenericValue` keep strings in their own storage, so those codecs
 cannot take one over and do not provide it. The Glaze bench codec's value holds
 a `std::string` and provides it.
 
+## D-TIDY-7: The suites are gated on the copy checks only
+
+D-TIDY-2 gated the headers only: the suites are what clang-tidy is run over, but
+`tidy_gate.py` dropped every finding located in `test/`. The copy checks of
+D-TIDY-6 now apply to `test/` as well. A test copies events, documents and
+strings in every case, and a needless copy there is as easy to add as in a
+header and teaches the wrong shape to whoever copies the test.
+
+The rest of the check set stays off for the suites. Measured 2026-09-28 with
+Homebrew LLVM 23.1.1, the whole set reports **984 findings** across 30 files
+under `test/`, most of them from checks written for library code:
+`bugprone-throwing-static-initialization` and `cert-err58-cpp` (164 each), on
+every `boost::ut::suite` global; the two magic-number checks (133 each), on the
+expected values a test exists to state; and `readability-trailing-comma` (92).
+Clearing them would reshape every suite for no gain in what it checks, so the
+gate keeps only the findings of the D-TIDY-6 checks there. Of those there were
+16: four fixed, in two suites, and twelve marked as deliberate copies or views.
+
+`HeaderFilterRegex` now admits `test/`, so the shared test headers such as
+`mini_codec.hpp` are checked too. The copy checks are listed in `tidy_gate.py`
+as well as in `.clang-tidy`, and the gate fails if `.clang-tidy` stops naming
+one, so the suites cannot drift to being gated on nothing.
+
 ## D-TIDY-6: The tidy gate catches needless copies, and never fixes them
 
 The owner decided on 2026-09-28 that clang-tidy detects needless copies in this

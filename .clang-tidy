@@ -79,7 +79,7 @@ Checks: >
 # only when given --experimental-custom-checks, which cmake/tidy_gate.py passes.
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: 'include/cloudevents/.*'
+HeaderFilterRegex: '(include/cloudevents|test)/.*'
 FormatStyle: file
 
 CheckOptions:

@@ -175,12 +175,12 @@ class json_slicer {
 
  private:
   struct object_member {
-    std::string_view name;   // NOLINT(scudoai-copy-view-member)
-    std::string_view value;  // NOLINT(scudoai-copy-view-member)
+    std::string_view name;   // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
+    std::string_view value;  // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
     bool escaped_name;
   };
 
-  std::string_view text_;  // NOLINT(scudoai-copy-view-member)
+  std::string_view text_;  // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
   std::size_t pos_ = 0;
   bool lost_ = false;
 

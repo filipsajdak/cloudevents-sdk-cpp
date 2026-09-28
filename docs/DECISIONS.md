@@ -1435,6 +1435,10 @@ carries the suppressions in D-TIDY-3.
 A NOLINT stays in the header, because it is an instruction to the tool rather
 than prose. Its reason is here.
 
+A view member is reported twice, by the copy-smell scanner as
+`scudoai-copy-view-member` and by clang-tidy's query-based check as
+`custom-scudoai-copy-view-member`, so each of those NOLINTs names both.
+
 | where | check suppressed | why |
 |---|---|---|
 | `detail/validated_string.hpp`, `literal(const char*)` | explicit-constructor | the implicit conversion from a literal is the literal path; the constructor is `consteval`, so it cannot accept anything it has not checked |

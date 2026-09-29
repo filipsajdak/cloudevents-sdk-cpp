@@ -41,6 +41,7 @@ Everything else stays shared: `attributes.hpp`, `message.hpp`, `extensions.hpp`,
 Each is brought into `ce::inline v4` by using-declarations, as ADR-0009 and ADR-0010 bring shared entities forward, so `ce::v3::id` and `ce::v4::id` are one type and `json::decode_options` is one type.
 The v0.5.0 suites, examples and fuzzers are copied to `test/v3/`, `examples/v3/` and `fuzz/v3/`, without `// spec:` markers, and registered outside the clang-tidy gate as `D-TIDY-4` and `D-TIDY-5` describe for v1 and v2.
 The module exports `ce::v4` only, for the reason ADR-0009 gives.
+It does not export `from_v3` or `to_v3` either: exporting them would bring the v3 event model into every `import cloudevents;`, so the conversions are reachable only by including their header. The owner decided this on 2026-09-29.
 
 **The document model is declared once, in `ce::v3::detail`.**
 `json_document_model`, the per-codec holder and the static moved-from model are detail entities of `ce::v3` and are not copied.
@@ -52,18 +53,22 @@ Identity checks, `get`, `dump` and equality run through the shared model, so the
 `from_v3` and `to_v3` take an event by `const&` or `&&` and return the other generation's event.
 The context attributes, the extensions and every `data_t` alternative other than `json_document` are shared types, so they are copied or moved as they are.
 A `json_document` converts by copying or moving its model pointer, through one detail accessor both document classes befriend; for `ce::v3::json_document` that friend declaration is an addition.
+A moved-from v4 document becomes a v3 document on the same static moved-from model (`SWR-CORE-0040`).
 No conversion can fail, so none returns `result`.
-The conversions live in a header of their own rather than in `core.hpp`, so a translation unit using only v4 does not compile the v3 event model.
-Its name is for the implementing stage; CR-0004 lists the choice among its open questions.
+The conversions live in an opt-in header of their own, `include/cloudevents/v3_conversion.hpp`, which includes `v3/core.hpp` and `core.hpp` and which no other SDK header includes, so a translation unit using only v4 does not compile the v3 event model.
+The owner chose the name on 2026-09-29, and kept the header at the top level rather than under `include/cloudevents/v3/`, which holds only the frozen v0.5.0 copies, while the conversions are new v4 surface.
 
 **v4 `set_data` follows `encode_as`'s media-type rule.**
-It keeps a JSON media type, sets `application/json` when none is declared, and refuses any other with `type_mismatch`, leaving the event unchanged.
-`set_data`, `event_of::set_data` and `event_of::with_data` return `result`.
+It keeps a media type `is_json_content_type` accepts (`SWR-CORE-0024`, `text/json` included), sets `application/json` when none is declared, and refuses any other with `type_mismatch`, leaving the event unchanged.
+`set_data` and `event_of::set_data` return `result<void>`, and `event_of::with_data` returns `result<event_of>`.
 
 **v4 binary-mode receive parses a JSON body.**
 The binding core's body reader takes the codec and the decode options.
-Under a JSON media type it parses the body with the codec: within the retention limit it stores the parsed document, above it it stores the body's text as `json_text`, and a body that does not parse fails with `parse_error`, exactly as structured decode fails.
+An empty body carries no payload, whatever its media type, as in v3.
+Under a media type `is_json_content_type` accepts, it parses a non-empty body with the codec: within the retention limit it stores the parsed document, above it it stores the body's bytes exactly as received as `json_text`, and a body that does not parse fails with `parse_error`, exactly as structured decode fails.
 `from_message` of each binding takes `json::decode_options` and passes them to both the structured and the binary path, so one call site sets one limit for every mode.
+`http::from_batch_message` and `nats::from_payload` take the same `json::decode_options`, so no v4 binding entry point that decodes JSON is left on the default limit.
+`json_format::from_value` and `from_value_as` take no `json::decode_options`: they receive a DOM the caller already holds and parse no text, so the retention limit, which bounds the DOM an event pins from text it decoded, does not apply (`D-JSON-6`, confirmed by the owner on 2026-09-29).
 
 **v4 `json_format` drops seven public helpers** that nothing uses or tests: `required_text`, `optional_text`, `read_required`, `read_optional`, `read_time`, `read_context_attributes` and `read_extensions`.
 The private readers they wrapped stay.
@@ -96,11 +101,14 @@ Its `body` stays `std::vector<std::byte>`, and `message` stays one shared type f
 - **A v0.5.1 patch release carrying the move.** A patch cannot change documented behaviour; the owner withdrew v0.5.1 on 2026-09-28.
 - **Narrowing rule 4 to declarations.** It would let any behaviour change ship in place, which is the one thing a consumer pinning a namespace cannot detect. Declined by the owner.
 - **Reverting the move and staying on v3.** Honours the rule and discards the measured saving (`D-CORE-9`: no atomic operation on a move construction, one fewer on a move assignment). Declined by the owner in favour of a generation that also carries CR-0004's other items.
+- **Decode options on `json_format::from_value` and `from_value_as`, measuring the caller's DOM against the limit.** The DOM is already in memory and stays the caller's, so the limit would bound nothing an event pins from text. Declined by the owner on 2026-09-29 (`D-JSON-6`).
+- **Exporting `from_v3` and `to_v3` from the module.** Every module import would then carry the v3 event model. Declined by the owner on 2026-09-29.
+- **Declaring the conversions in `include/cloudevents/v3/conversion.hpp`.** `v3/` holds the frozen v0.5.0 copies, and the conversions are new v4 surface. Declined by the owner on 2026-09-29.
 - **A copy of the document model per generation.** Conversion would then have to copy or re-parse the DOM, since a v3 holder and a v4 holder would be unrelated types.
 
 ## References
 
 - `spec/requirements/change-request/CR-0004.md`
 - ADR-0009 (two generations side by side), ADR-0010 (the v3 generation and the document)
-- `SWR-BUILD-0013`, `SWR-CORE-0035` to `SWR-CORE-0040`, `SWR-EXT-0011`, `SWR-EXT-0013`, `SWR-JSON-0045`, `SWR-BIND-0006` to `SWR-BIND-0009`
-- `docs/SPEC.md` section 3 rule 4, `docs/DECISIONS.md` `D-CORE-9`, `D-CODEC-3`
+- `SWR-BUILD-0013`, `SWR-CORE-0035` to `SWR-CORE-0040`, `SWR-EXT-0011`, `SWR-EXT-0013`, `SWR-JSON-0045`, `SWR-BIND-0006` to `SWR-BIND-0010`, `SWR-HTTP-0005`, `SWR-NATS-0004`
+- `docs/SPEC.md` section 3 rule 4, `docs/DECISIONS.md` `D-CORE-9`, `D-CODEC-3`, `D-JSON-6`, `D-JSON-9`

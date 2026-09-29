@@ -1335,9 +1335,12 @@ construction.
 `text/plain` would describe the output wrongly, so it fails with
 `type_mismatch` at `datacontenttype`, and never rewrites an attribute the
 caller set. An absent `datacontenttype` becomes `application/json`, as
-`set_data` sets it, and any JSON media type (`application/json` or a `+json`
-suffix) is kept. Whatever payload the event carried is left out of the output.
-The owner decided this on 2026-09-24 (SWR-EXT-0010).
+`set_data` sets it, and any JSON media type is kept. A JSON media type is one
+`is_json_content_type` accepts (SWR-CORE-0024): a subtype of `json` or one
+ending in `+json`, in any letter case and with any parameters, so `text/json`
+is kept as well. Whatever payload the event carried is left out of the output.
+The owner decided this on 2026-09-24 (SWR-EXT-0010), and confirmed on
+2026-09-29 that the predicate, as shipped, is the rule.
 
 ## D-PERF-1: The typed read measures a payload its own codec wrote
 

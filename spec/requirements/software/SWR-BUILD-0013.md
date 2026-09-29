@@ -10,12 +10,14 @@ rationale: >
   The owner ruled on 2026-09-28 that such a change is a break, so SWR-BUILD-0006 and SPEC section 3 rule 4 put it in a new namespace and keep the old one.
   The v0.5.0 suites are the evidence that ce::v3 keeps its behaviour as well as its declarations, as the v0.3.0 and v0.4.0 suites are for ce::v1 and ce::v2.
   ADR-0012 applies the layout ADR-0009 set for v1 and ADR-0010 applied to v2.
+  The optional module exports ce::v4 only, as ADR-0009 set for earlier generations; the owner decided on 2026-09-29 that it does not export from_v3 or to_v3 either, since exporting them would bring the v3 event model into every module import, so the conversions are reachable only through include/cloudevents/v3_conversion.hpp.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
 verified_by: []
 owner: filip.sajdak
-version: 1
+version: 2
 ---
 The SDK shall declare its API in `ce::inline v4`, keep every entity that v0.5.0 published reachable as `ce::v3::X` with its v0.5.0 declaration, and run the v0.5.0 suites against `ce::v3`.
+The optional `cloudevents.cppm` module shall export neither `ce::v3` nor the conversions `from_v3` and `to_v3`, which are reachable only by including `include/cloudevents/v3_conversion.hpp`.

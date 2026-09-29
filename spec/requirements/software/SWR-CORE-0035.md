@@ -19,7 +19,7 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
-satisfied_by: [code:include/cloudevents/core.hpp]
+satisfied_by: [code:include/cloudevents/core.hpp, code:include/cloudevents/detail/json_document_model.hpp]
 verified_by: [test:test/json_document_test.cpp::json-document-moves-without-counting, test:test/json_document_test.cpp::threads move their copies while others copy the same document]
 owner: filip.sajdak
 version: 1

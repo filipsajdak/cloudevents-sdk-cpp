@@ -1213,7 +1213,7 @@ tidying the code would plausibly undo.
 | `core.hpp`, `json_document` | move assignment is `std::exchange` of the model, not a swap | a swap would leave the source holding the target's old document, where SWR-CORE-0035 promises the moved-from state; the exchange also keeps a self-move harmless |
 | `result.hpp`, `detail::forward_failure` | an error passed on is moved through one function marked cold and not inlined, where `CE_DETAIL_COLD` supports it | moving the error inline at every failure site changed how GCC compiled the success paths beside them: `encode_full/rapidjson.shipped` ran 2.09% more instructions in the CI perf job for PR #66, although no failure path runs there |
 | `core.hpp`, `json_document` | codec identities are compared by value, never by the address of a tag | MSVC's default `/OPT:ICF` can give different read-only data one address, and a false match would make the downcast undefined behaviour (ADR-0010) |
-| `core.hpp`, `json_document_holder` | `value_` is initialised with parentheses | braces on `nlohmann::json` select its `initializer_list` constructor and wrap the document in a one-element array |
+| `detail/json_document_model.hpp`, `json_document_holder` | `value_` is initialised with parentheses | braces on `nlohmann::json` select its `initializer_list` constructor and wrap the document in a one-element array |
 
 ## D-JSON-4: A `json_text` payload never equals a `json_document` payload
 
@@ -1542,4 +1542,4 @@ A view member is reported twice, by the copy-smell scanner as
 | `format/detail/json_slice.hpp`, `class_of` | pro-bounds-avoid-unchecked-container-access, pro-bounds-constant-array-index | the index is an `unsigned char`, and the table has one entry for every value it can hold |
 | `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
 | `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |
-| `core.hpp`, `json_document::get` and `json_document_holder::equal_value` | pro-type-static-cast-downcast | the declared codec identities have already compared equal, so the model is that codec's holder; the identity is the codec's declared contract (SWR-CORE-0034), and RTTI was declined by the owner (ADR-0010) |
+| `core.hpp`, `json_document::get`, and `detail/json_document_model.hpp`, `json_document_holder::equal_value` | pro-type-static-cast-downcast | the declared codec identities have already compared equal, so the model is that codec's holder; the identity is the codec's declared contract (SWR-CORE-0034), and RTTI was declined by the owner (ADR-0010) |

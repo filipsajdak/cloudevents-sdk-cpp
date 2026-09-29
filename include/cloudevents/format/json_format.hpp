@@ -16,24 +16,17 @@
 
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/detail/json_slice.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
 
 namespace ce::inline v3 {
 
-namespace json {
-// spec: SWR-JSON-0040
-struct decode_options {
-  static constexpr std::size_t default_retention_limit = std::size_t{16} * 1024;
-  std::size_t retain_document_up_to = default_retention_limit;
-};
-
-namespace detail {
+namespace json::detail {
 template<json_codec Codec>
 struct typed_entry;
-}  // namespace detail
-}  // namespace json
+}  // namespace json::detail
 
 // spec: SYS-JSON-0001
 // spec: SWR-JSON-0010

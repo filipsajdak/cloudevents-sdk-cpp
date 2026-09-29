@@ -9,6 +9,7 @@ module;
 #include <cloudevents/describe.hpp>
 #include <cloudevents/extensions.hpp>
 #include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/describe_json.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>

@@ -1213,7 +1213,7 @@ tidying the code would plausibly undo.
 | `core.hpp`, `json_document` | move assignment is `std::exchange` of the model, not a swap | a swap would leave the source holding the target's old document, where SWR-CORE-0035 promises the moved-from state; the exchange also keeps a self-move harmless |
 | `result.hpp`, `detail::forward_failure` | an error passed on is moved through one function marked cold and not inlined, where `CE_DETAIL_COLD` supports it | moving the error inline at every failure site changed how GCC compiled the success paths beside them: `encode_full/rapidjson.shipped` ran 2.09% more instructions in the CI perf job for PR #66, although no failure path runs there |
 | `core.hpp`, `json_document` | codec identities are compared by value, never by the address of a tag | MSVC's default `/OPT:ICF` can give different read-only data one address, and a false match would make the downcast undefined behaviour (ADR-0010) |
-| `core.hpp`, `json_document_holder` | `value_` is initialised with parentheses | braces on `nlohmann::json` select its `initializer_list` constructor and wrap the document in a one-element array |
+| `detail/json_document_model.hpp`, `json_document_holder` | `value_` is initialised with parentheses | braces on `nlohmann::json` select its `initializer_list` constructor and wrap the document in a one-element array |
 
 ## D-JSON-4: A `json_text` payload never equals a `json_document` payload
 
@@ -1236,7 +1236,8 @@ compare against the same event with its payload as a document.
 ## D-JSON-5: `decode_options` is a plain aggregate beside the content types
 
 `ce::json::decode_options{.retain_document_up_to = 16 * 1024}` sits in
-`ce::v3::json`, next to `content_type`, and `decode` and `decode_batch` take it
+`ce::json`, next to `content_type`, declared once in `ce::v3::json` and brought
+into `ce::v4::json` (D-CORE-10), and `decode` and `decode_batch` take it
 as a defaulted last parameter. A plain aggregate is written in one designated
 initializer at the call site, gains members without breaking a call, and keeps
 `json_format<Codec>` a set of static functions with no state to configure. A
@@ -1359,7 +1360,7 @@ three scalar members and the large event's as a type whose one optional member
 is absent: that operation measures the event and the retention path, not
 payload fields.
 
-## D-CORE-9: Moving a `json_document` is an addition under rule 4
+## D-CORE-9: Moving a `json_document` is a `ce::v4` feature
 
 v0.5.0 published `json_document` with copy operations only, and its guide said
 that moving a document copies it, so every document holds a DOM. The owner
@@ -1368,14 +1369,21 @@ document points at one static, immutable model: `dump()` returns `null`,
 `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to
 another moved-from document.
 
-This is an addition, not a changed declaration. No declaration v0.5.0 published
-changes: the copy operations, `make`, `get`, `built_by`, `dump` and `==` keep
-their signatures, and a program that compiled against v0.5.0 still compiles.
-The promise the published text made is kept: a document is never empty, has no
-default constructor, and every member may be called on it, moved from or not.
-What changes is the value a moved-from document reads as. A moved-from object
-is valid but unspecified throughout the standard library, and the guide now
-states the null state instead of the copy.
+This entry first classed the move as an addition under `docs/SPEC.md` section 3
+rule 4, because no declaration v0.5.0 published changed and a program that
+compiled against v0.5.0 still compiled. The owner ruled otherwise on 2026-09-28
+(CR-0004): the value a moved-from document reads as is behaviour the published
+guide stated, and a program that reads a document after moving it would read a
+different value with nothing in its build to say so. A change to documented
+behaviour breaks the API as a changed declaration does, so SWR-BUILD-0006 puts
+it in a new namespace. The move is therefore declared by `ce::v4::json_document`
+only. `ce::v3::json_document` declares copy operations only, as v0.5.0 did, so
+moving it copies it and the source keeps its DOM (SWR-CORE-0036), and the
+release candidate v0.5.1 that carried the move in `ce::v3` was withdrawn.
+
+Both documents hold a pointer to the one model declared in `ce::v3::detail`
+(ADR-0012), including the static moved-from model; they differ in their special
+members only.
 
 The model is reached through an aliasing `std::shared_ptr` with no control
 block, so a move, and any copy or destruction of a moved-from document, touches
@@ -1389,12 +1397,45 @@ read-modify-write instructions: main's move construction had one (`ldadd`,
 the increment of the copy it made) and its move assignment two; now the move
 construction has none, and the move assignment one, the decrement that
 releases the document it overwrites, which destroying that document would
-also cost. GCC 16 with libstdc++ and Clang 23 with libc++ agree.
+also cost. GCC 16 with libstdc++ and Clang 23 with libc++ agree. A `ce::v3`
+document still costs what v0.5.0 cost.
 
 Equality: a moved-from document holds no codec's value, so no codec's `equal`
 can compare it. Treating it as JSON null would make an event whose payload was
 moved away equal an event that carries a null payload, so a use after move
 would pass a comparison. It therefore equals only another moved-from document.
+
+## D-CORE-10: The v3 copies are v0.5.0 plus main's fixes, and share what v0.5.0 added outside them
+
+The seven headers under `include/cloudevents/v3/` were copied from `main` at the
+freeze, not from the v0.5.0 tag, as the v2 copies were copied from `main` for
+ADR-0010. Normalised for the namespace spelling and with the spec markers
+dropped, each is v0.5.0 plus the body-only changes made since, which keep every
+declaration and every result (D-CODEC-3): errors passed on through
+`detail::forward_failure`, strings the encoder built handed to a codec's
+`adopt_string` through a private `built_string`. Message bodies are copied in
+bulk by `to_bytes` and `to_text`, which are shared rather than copied. The one change they do not take
+is the move of `json_document` (D-CORE-9).
+
+Two things v0.5.0 declared inside a copied header are split out before the
+freeze and declared once, in `ce::v3`, for both generations to include: the
+`json_document` model with its per-codec holder and the moved-from model
+(`detail/json_document_model.hpp`, which ADR-0012 requires for conversions
+that copy no DOM), and `json::decode_options` (`format/decode_options.hpp`,
+which ADR-0012 names as one type). Declared in the copied headers, each would
+have become two unrelated types.
+
+The v0.5.0 suites under `test/v3/`, and the examples and fuzz targets under
+`examples/v3/` and `fuzz/v3/`, are copied from the v0.5.0 tag instead, because
+they are the evidence of what v0.5.0 was released against. Among them, the
+suite `json-document-holds-any-codec` pins the copy on move that SWR-CORE-0036
+states.
+
+SWR-BUILD-0005 returns to `approved` until v0.6.0 delivers it, because it names
+`ce::v4` now. SWR-BUILD-0006 now states the ruling on documented behaviour,
+which its v0.5.0 text did not, and still keeps `implemented` with
+`delivered_in: v0.5.0`: the owner ruled on 2026-09-29 that it follows CR-0003,
+which widened its statement without reopening it.
 
 ## D-CODEC-4: A codec takes over a string through `adopt_string`
 
@@ -1420,6 +1461,21 @@ the v1 and v2 encoders do not call it. Boost.JSON's `boost::json::string` and
 RapidJSON's `GenericValue` keep strings in their own storage, so those codecs
 cannot take one over and do not provide it. The Glaze bench codec's value holds
 a `std::string` and provides it.
+
+## D-TIDY-8: The v3 copies are outside the clang-tidy gate
+
+`include/cloudevents/v3/` holds what v0.5.0 published, copied for ADR-0012, and
+stays outside the gate for the reason D-TIDY-5 gives for `ce::v2`: a check
+added later could only be satisfied by reshaping a generation that exists to
+stay as it was published.
+
+The mechanism is the same. The copied v0.5.0 suites are registered by
+`ce_add_v3_test`, which does not record itself for the gate, and no gated suite
+includes a `v3/` header, so the check that `ce::v3::event` and `ce::event` are
+distinct types lives in `test/v3/v3_generation_test.cpp` and not in
+`test/build_test.cpp`. The headers `ce::v3` shares with `ce::v4`, including
+`detail/json_document_model.hpp` and `format/decode_options.hpp`, are included
+by gated suites and stay gated.
 
 ## D-TIDY-7: The suites are gated on the copy checks only
 
@@ -1542,4 +1598,4 @@ A view member is reported twice, by the copy-smell scanner as
 | `format/detail/json_slice.hpp`, `class_of` | pro-bounds-avoid-unchecked-container-access, pro-bounds-constant-array-index | the index is an `unsigned char`, and the table has one entry for every value it can hold |
 | `codec/nlohmann.hpp`, the value constructors | return-braced-init-list | `return {x};` on `nlohmann::json` selects its `initializer_list` constructor and builds a one-element array |
 | `codec/nlohmann.hpp`, `set` | pro-bounds-avoid-unchecked-container-access | on an object, `operator[]` inserts or replaces a member; there is no index to check |
-| `core.hpp`, `json_document::get` and `json_document_holder::equal_value` | pro-type-static-cast-downcast | the declared codec identities have already compared equal, so the model is that codec's holder; the identity is the codec's declared contract (SWR-CORE-0034), and RTTI was declined by the owner (ADR-0010) |
+| `core.hpp`, `json_document::get`, and `detail/json_document_model.hpp`, `json_document_holder::equal_value` | pro-type-static-cast-downcast | the declared codec identities have already compared equal, so the model is that codec's holder; the identity is the codec's declared contract (SWR-CORE-0034), and RTTI was declined by the owner (ADR-0010) |

@@ -1,0 +1,1917 @@
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include <boost/ut.hpp>
+
+#include <cloudevents/codec/nlohmann.hpp>
+#include <cloudevents/v3/core.hpp>
+#include <cloudevents/detail/timestamp.hpp>
+#include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/detail/json_slice.hpp>
+#include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/v3/format/json_format.hpp>
+#include <cloudevents/result.hpp>
+
+#include "codecs_under_test.hpp"
+#include "equality.hpp"
+#include "json_format_checks.hpp"
+#include "mini_codec.hpp"
+#include "payload.hpp"
+
+// json_format owns every CloudEvents JSON rule, over whatever codec it is given.
+// So every assertion below is written once, as a function template over the
+// codec, and every suite instantiates it for BOTH in-tree codecs. A suite that
+// exercised only nlohmann would be testing nlohmann rather than the abstraction,
+// and mini_codec would exist for nothing.
+
+namespace {
+
+using namespace std::string_view_literals;
+
+using nlohmann_codec = ce::v3::codec::nlohmann_codec;
+using mini_codec = ce::test::mini_codec;
+
+using namespace ce::v3::literals;
+
+/// A minimal event, built in one expression; the caller states the rest.
+[[nodiscard]] auto base_event(ce::v3::event::options rest = {}) -> ce::v3::event {
+  return ce::v3::event{"1"_id, "/spec/test"_source, "com.example.thing"_type, std::move(rest)};
+}
+
+/// Encode `subject` and parse the result back into the codec's own DOM, so a
+/// suite can assert the JSON shape without depending on how a codec spells it.
+template <class C>
+[[nodiscard]] auto encoded_document(const ce::v3::event& subject) -> ce::v3::result<typename C::value> {
+  auto text = ce::v3::json_format<C>::encode(subject);
+  if (!text) {
+    return ce::v3::fail(text.error().code, text.error().detail, text.error().where);
+  }
+  return C::parse(*text);
+}
+
+// --- SWR-JSON-0010: the four entry points ----------------------------------
+
+template <class C>
+void check_entry_points(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  const auto parsed_time = ce::v3::parse_timestamp("2018-04-05T17:31:00Z");
+  expect(parsed_time.has_value()) << label;
+  if (!parsed_time) {
+    return;
+  }
+  const ce::v3::event subject = base_event({
+      .datacontenttype = "application/json"_mediatype,
+      .dataschema = "https://example.com/schema"_dataschema,
+      .subject = "s"_subject,
+      .time = *parsed_time,
+      .extensions = {{"seq"_ext, std::int32_t{7}},
+                     {"flag"_ext, true},
+                     {"tag"_ext, std::string{"x"}}},
+      .data = ce::v3::json_text{.raw = R"({"k":1})"},
+  });
+
+  auto text = format::encode(subject);
+  expect(text.has_value()) << label << ": encode";
+  if (!text) {
+    return;
+  }
+
+  auto back = format::decode(*text);
+  expect(back.has_value()) << label << ": decode";
+  if (!back) {
+    expect(false) << label << ": " << back.error().detail;
+    return;
+  }
+  expect(back->id() == subject.id()) << label;
+  expect(back->type() == subject.type()) << label;
+  expect(bool{back->source() == subject.source()}) << label;
+  expect(back->specversion().view() == "1.0"sv) << label;
+  expect(ce_test::equal(back->subject(), subject.subject())) << label;
+  expect(ce_test::equal(back->datacontenttype(), subject.datacontenttype())) << label;
+  expect(ce_test::equal(back->dataschema(), subject.dataschema())) << label;
+  expect(back->time().has_value()) << label;
+  if (back->time()) {
+    expect(ce::v3::to_string(*back->time()) == "2018-04-05T17:31:00Z") << label;
+  }
+  expect(back->extensions().size() == 3U) << label;
+
+  const std::vector<ce::v3::event> many{subject, base_event()};
+  auto batch_text = format::encode_batch(std::span<const ce::v3::event>{many});
+  expect(batch_text.has_value()) << label << ": encode_batch";
+  if (!batch_text) {
+    return;
+  }
+  auto batch_back = format::decode_batch(*batch_text);
+  expect(batch_back.has_value()) << label << ": decode_batch";
+  if (batch_back) {
+    expect(batch_back->size() == 2U) << label;
+  }
+
+  // Both decoding operations report failure as a result rather than out of band.
+  auto malformed = format::decode("{");
+  expect(!malformed.has_value()) << label;
+  auto malformed_batch = format::decode_batch("[");
+  expect(!malformed_batch.has_value()) << label;
+  // A batch document that is not an array is rejected as such.
+  auto not_an_array = format::decode_batch("{}");
+  expect(!not_an_array.has_value()) << label;
+  // An invalid event never encodes, because none can be built: the empty id the
+  // encoder used to refuse is refused where an id is made.
+  expect(!ce::v3::id::make(""sv).has_value()) << label;
+}
+
+// --- SWR-JSON-0011: Integer attributes as JSON numbers ---------------------
+
+template <class C>
+void check_integer_attribute(std::string_view label) {
+  using namespace boost::ut;
+
+  constexpr auto lowest = std::numeric_limits<std::int32_t>::min();
+  constexpr auto highest = std::numeric_limits<std::int32_t>::max();
+
+  const ce::v3::event subject = base_event({.extensions = {{"seq"_ext, std::int32_t{7}},
+                                                       {"low"_ext, lowest},
+                                                       {"high"_ext, highest}}});
+
+  auto document = encoded_document<C>(subject);
+  expect(document.has_value()) << label;
+  if (!document) {
+    return;
+  }
+
+  const std::pair<std::string_view, std::int64_t> expected[] = {
+      {"seq"sv, 7}, {"low"sv, lowest}, {"high"sv, highest}};
+  for (const auto& [name, value] : expected) {
+    const auto* member = C::find(*document, name);
+    expect(member != nullptr) << label << ": " << name;
+    if (member == nullptr) {
+      continue;
+    }
+    // A JSON number, not a JSON string: a peer reading the wire must see a
+    // number or the CloudEvents Integer type has not been expressed.
+    expect(C::kind_of(*member) == ce::v3::json::kind::integer) << label << ": " << name;
+    const auto held = C::as_int(*member);
+    expect(held.has_value()) << label << ": " << name;
+    if (held) {
+      expect(*held == value) << label << ": " << name;
+    }
+  }
+
+  // The round trip keeps it an Integer rather than promoting it.
+  auto text = ce::v3::json_format<C>::encode(subject);
+  expect(text.has_value()) << label;
+  if (!text) {
+    return;
+  }
+  auto back = ce::v3::json_format<C>::decode(*text);
+  expect(back.has_value()) << label;
+  if (!back) {
+    return;
+  }
+  const auto* seq = back->extension("seq");
+  expect(seq != nullptr) << label;
+  if (seq != nullptr) {
+    expect(std::holds_alternative<std::int32_t>(*seq)) << label;
+    expect(std::get<std::int32_t>(*seq) == 7) << label;
+  }
+  const auto* high = back->extension("high");
+  if (high != nullptr && std::holds_alternative<std::int32_t>(*high)) {
+    expect(std::get<std::int32_t>(*high) == highest) << label;
+  }
+}
+
+// --- SWR-JSON-0012: out-of-range or fractional Integer ---------------------
+
+template <class C>
+void check_integer_rejections(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  constexpr auto prefix = R"({"specversion":"1.0","id":"1","source":"/s","type":"t",)"sv;
+
+  const std::pair<std::string_view, ce::v3::errc> cases[] = {
+      // Above int32 max, below int32 min: truncating either would hand the
+      // caller an event the peer never sent.
+      {R"("big":9999999999})"sv, ce::v3::errc::out_of_range},
+      {R"("small":-9999999999})"sv, ce::v3::errc::out_of_range},
+      {R"("edge":2147483648})"sv, ce::v3::errc::out_of_range},
+      {R"("edge":-2147483649})"sv, ce::v3::errc::out_of_range},
+      // A fractional number is not an Integer at all.
+      {R"("ratio":1.5})"sv, ce::v3::errc::type_mismatch},
+      {R"("ratio":-0.25})"sv, ce::v3::errc::type_mismatch},
+  };
+
+  for (const auto& [tail, code] : cases) {
+    const std::string document = std::string{prefix} + std::string{tail};
+    auto decoded = format::decode(document);
+    expect(!decoded.has_value()) << label << ": should reject " << document;
+    if (!decoded) {
+      expect(decoded.error().code == code) << label << ": " << document << " gave "
+                                           << ce::v3::to_string_view(decoded.error().code);
+    }
+  }
+
+  // The boundary values themselves are accepted, so the rejections above are
+  // about the range and not about large numbers generally.
+  for (const auto tail : {R"("edge":2147483647})"sv, R"("edge":-2147483648})"sv}) {
+    const std::string document = std::string{prefix} + std::string{tail};
+    auto decoded = format::decode(document);
+    expect(decoded.has_value()) << label << ": should accept " << document;
+  }
+}
+
+// --- SWR-JSON-0013: Binary attributes as base64 strings --------------------
+
+template <class C>
+void check_binary_attribute(std::string_view label) {
+  using namespace boost::ut;
+
+  const ce::v3::binary octets{std::byte{0x00}, std::byte{0x01}, std::byte{0xFF}, std::byte{0x10}};
+  const ce::v3::event subject = base_event({.extensions = {{"blob"_ext, octets}}});
+
+  auto document = encoded_document<C>(subject);
+  expect(document.has_value()) << label;
+  if (!document) {
+    return;
+  }
+  const auto* member = C::find(*document, "blob");
+  expect(member != nullptr) << label;
+  if (member == nullptr) {
+    return;
+  }
+  expect(C::kind_of(*member) == ce::v3::json::kind::string) << label;
+  const auto held = C::as_string(*member);
+  expect(held.has_value()) << label;
+  if (!held) {
+    return;
+  }
+  expect(*held == ce::v3::base64_encode(octets)) << label << ": " << *held;
+
+  // The octets are recoverable from the string on the wire. The attribute comes
+  // back as a std::string because JSON does not carry the CloudEvents type
+  // (SWR-JSON-0023); what matters here is that no octet was lost.
+  const auto recovered = ce::v3::base64_decode(*held);
+  expect(recovered.has_value()) << label;
+  if (recovered) {
+    expect(*recovered == octets) << label;
+  }
+}
+
+// --- SWR-JSON-0014: URI, URI-Reference and Timestamp as strings ------------
+
+template <class C>
+void check_textual_attributes(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto parsed_time = ce::v3::parse_timestamp("2018-04-05T17:31:00Z");
+  expect(parsed_time.has_value()) << label;
+  if (!parsed_time) {
+    return;
+  }
+
+  const ce::v3::event subject = base_event({
+      .dataschema = "https://example.com/schema"_dataschema,
+      .time = *parsed_time,
+      .extensions = {{"schemaurl"_ext, ce::v3::uri{"https://example.com/x"}},
+                     {"relref"_ext, ce::v3::uri_ref{"/relative/path"}},
+                     {"seen"_ext, *parsed_time}},
+  });
+
+  auto document = encoded_document<C>(subject);
+  expect(document.has_value()) << label;
+  if (!document) {
+    return;
+  }
+
+  const std::pair<std::string_view, std::string_view> expected[] = {
+      {"source"sv, "/spec/test"sv},
+      {"dataschema"sv, "https://example.com/schema"sv},
+      {"time"sv, "2018-04-05T17:31:00Z"sv},
+      {"schemaurl"sv, "https://example.com/x"sv},
+      {"relref"sv, "/relative/path"sv},
+      {"seen"sv, "2018-04-05T17:31:00Z"sv},
+  };
+  for (const auto& [name, rendered] : expected) {
+    const auto* member = C::find(*document, name);
+    expect(member != nullptr) << label << ": " << name;
+    if (member == nullptr) {
+      continue;
+    }
+    expect(C::kind_of(*member) == ce::v3::json::kind::string) << label << ": " << name;
+    const auto held = C::as_string(*member);
+    expect(held.has_value()) << label << ": " << name;
+    if (held) {
+      expect(*held == rendered) << label << ": " << name << " is " << *held;
+    }
+  }
+
+  // The timestamp survives the round trip in its canonical RFC 3339 form.
+  auto text = ce::v3::json_format<C>::encode(subject);
+  expect(text.has_value()) << label;
+  if (!text) {
+    return;
+  }
+  auto back = ce::v3::json_format<C>::decode(*text);
+  expect(back.has_value()) << label;
+  if (back && back->time()) {
+    expect(ce::v3::to_string(*back->time()) == "2018-04-05T17:31:00Z") << label;
+  }
+  if (back) {
+    expect(ce_test::equal(back->dataschema(), subject.dataschema())) << label;
+    expect(bool{back->source() == subject.source()}) << label;
+  }
+}
+
+// --- SWR-JSON-0015 / 0016 / 0017: the three payload shapes on encode -------
+
+template <class C>
+void check_json_text_data(std::string_view label) {
+  using namespace boost::ut;
+
+  const ce::v3::event subject =
+      base_event({.datacontenttype = "application/json"_mediatype,
+                  .data = ce::v3::json_text{.raw = R"({"k":1,"list":[1,2]})"}});
+
+  auto document = encoded_document<C>(subject);
+  expect(document.has_value()) << label;
+  if (!document) {
+    return;
+  }
+
+  const auto* data = C::find(*document, "data");
+  expect(data != nullptr) << label << ": data must be present";
+  expect(C::find(*document, "data_base64") == nullptr) << label;
+  if (data == nullptr) {
+    return;
+  }
+
+  // Spliced as parsed JSON, not escaped into a string: a consumer parses the
+  // event once and has the payload.
+  expect(C::kind_of(*data) == ce::v3::json::kind::object) << label;
+  const auto* inner = C::find(*data, "k");
+  expect(inner != nullptr) << label;
+  if (inner != nullptr) {
+    const auto held = C::as_int(*inner);
+    expect(held.has_value()) << label;
+    if (held) {
+      expect(*held == 1) << label;
+    }
+  }
+  const auto* list = C::find(*data, "list");
+  expect(list != nullptr) << label;
+  if (list != nullptr) {
+    expect(C::kind_of(*list) == ce::v3::json::kind::array) << label;
+    expect(C::size_of(*list) == 2U) << label;
+  }
+
+  // Malformed json_text is the one thing the SDK validates about a payload.
+  const ce::v3::event broken = base_event({.data = ce::v3::json_text{.raw = "{not json"}});
+  auto refused = ce::v3::json_format<C>::encode(broken);
+  expect(!refused.has_value()) << label;
+  if (!refused) {
+    expect(refused.error().code == ce::v3::errc::parse_error) << label;
+  }
+}
+
+template <class C>
+void check_binary_data(std::string_view label) {
+  using namespace boost::ut;
+
+  const ce::v3::binary octets{std::byte{1}, std::byte{2}, std::byte{0xFF}};
+  const ce::v3::event subject = base_event({.data = octets});
+
+  auto document = encoded_document<C>(subject);
+  expect(document.has_value()) << label;
+  if (!document) {
+    return;
+  }
+
+  expect(C::find(*document, "data") == nullptr) << label << ": data must be absent";
+  const auto* encoded = C::find(*document, "data_base64");
+  expect(encoded != nullptr) << label << ": data_base64 must be present";
+  if (encoded == nullptr) {
+    return;
+  }
+  expect(C::kind_of(*encoded) == ce::v3::json::kind::string) << label;
+  const auto held = C::as_string(*encoded);
+  expect(held.has_value()) << label;
+  if (held) {
+    expect(*held == ce::v3::base64_encode(octets)) << label << ": " << *held;
+  }
+
+  // An empty payload is still binary and still uses data_base64.
+  auto empty_document = encoded_document<C>(base_event({.data = ce::v3::binary{}}));
+  expect(empty_document.has_value()) << label;
+  if (empty_document) {
+    expect(C::find(*empty_document, "data_base64") != nullptr) << label;
+  }
+
+  // No payload at all writes neither member.
+  auto bare = encoded_document<C>(base_event());
+  expect(bare.has_value()) << label;
+  if (bare) {
+    expect(C::find(*bare, "data") == nullptr) << label;
+    expect(C::find(*bare, "data_base64") == nullptr) << label;
+  }
+}
+
+template <class C>
+void check_string_data(std::string_view label) {
+  using namespace boost::ut;
+
+  const ce::v3::event subject = base_event(
+      {.datacontenttype = "text/plain"_mediatype, .data = std::string{"hello \"world\""}});
+
+  auto document = encoded_document<C>(subject);
+  expect(document.has_value()) << label;
+  if (!document) {
+    return;
+  }
+
+  const auto* data = C::find(*document, "data");
+  expect(data != nullptr) << label;
+  expect(C::find(*document, "data_base64") == nullptr) << label;
+  if (data == nullptr) {
+    return;
+  }
+  expect(C::kind_of(*data) == ce::v3::json::kind::string) << label;
+  const auto held = C::as_string(*data);
+  expect(held.has_value()) << label;
+  if (held) {
+    // Carried verbatim, with the quoting handled by the codec rather than by
+    // the format layer escaping it by hand.
+    expect(*held == R"(hello "world")"sv) << label << ": " << *held;
+  }
+}
+
+// --- SWR-JSON-0018 / 0019 / 0020: the payload shapes on decode -------------
+
+template <class C>
+void check_decode_data_base64(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  const ce::v3::binary octets{std::byte{1}, std::byte{2}, std::byte{0xFF}};
+  const std::string document =
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":")" +
+      ce::v3::base64_encode(octets) + R"("})";
+
+  auto decoded = format::decode(document);
+  expect(decoded.has_value()) << label;
+  if (!decoded) {
+    return;
+  }
+  expect(std::holds_alternative<ce::v3::binary>(decoded->data())) << label;
+  if (std::holds_alternative<ce::v3::binary>(decoded->data())) {
+    expect(std::get<ce::v3::binary>(decoded->data()) == octets) << label;
+  }
+
+  // Unpadded base64 from a peer decodes to the same octets.
+  auto unpadded_source = ce::v3::base64_encode(ce::v3::binary{std::byte{0xAB}});
+  while (!unpadded_source.empty() && unpadded_source.back() == '=') {
+    unpadded_source.pop_back();
+  }
+  const std::string unpadded =
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":")" +
+      unpadded_source + R"("})";
+  auto from_unpadded = format::decode(unpadded);
+  expect(from_unpadded.has_value()) << label;
+  if (from_unpadded && std::holds_alternative<ce::v3::binary>(from_unpadded->data())) {
+    expect(std::get<ce::v3::binary>(from_unpadded->data()) == ce::v3::binary{std::byte{0xAB}}) << label;
+  }
+
+  // Invalid base64 arriving from a peer is a typed error, not a partial payload.
+  auto bad = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":"not!base64"})");
+  expect(!bad.has_value()) << label;
+  if (!bad) {
+    expect(bad.error().code == ce::v3::errc::invalid_base64) << label;
+  }
+
+  // A non-string data_base64 is rejected rather than coerced.
+  auto wrong_kind = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":5})");
+  expect(!wrong_kind.has_value()) << label;
+}
+
+/// A codec other than `C`, for asserting that a document yields only to its own.
+template <class C>
+using other_codec_t =
+    std::conditional_t<std::is_same_v<C, mini_codec>, nlohmann_codec, mini_codec>;
+
+template <class C>
+void check_decode_data_as_json_document(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  // No datacontenttype at all: a document built by the decoding codec is the
+  // default.
+  auto decoded = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1}})");
+  expect(decoded.has_value()) << label;
+  if (decoded) {
+    const auto* document = std::get_if<ce::v3::json_document>(&decoded->data());
+    expect(document != nullptr) << label;
+    if (document != nullptr) {
+      expect(document->template get<other_codec_t<C>>() == nullptr)
+          << label << ": the document yields only to the codec that built it";
+      const auto* held = document->template get<C>();
+      expect(held != nullptr) << label << ": built by the decoding codec";
+      const auto* inner = held == nullptr ? nullptr : C::find(*held, "k");
+      expect(inner != nullptr) << label;
+      if (inner != nullptr) {
+        const auto number = C::as_int(*inner);
+        expect(number.has_value() && *number == 1) << label;
+      }
+    }
+  }
+
+  // from_value leaves the caller's document as it was and still retains the
+  // payload as a document.
+  auto caller_owned =
+      C::parse(R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":[1,2]})");
+  expect(caller_owned.has_value()) << label;
+  if (caller_owned) {
+    const auto before = C::copy(*caller_owned);
+    auto from_value = format::from_value(*caller_owned);
+    expect(from_value.has_value() &&
+           std::holds_alternative<ce::v3::json_document>(from_value->data()))
+        << label << ": from_value retains";
+    expect(C::equal(*caller_owned, before)) << label << ": from_value leaves its input";
+  }
+
+  // Moving the payload out does not disturb what is read around it: attributes
+  // and extensions on either side of data survive, and so does the payload.
+  auto surrounded = format::decode(
+      R"({"specversion":"1.0","id":"1","alpha":"a","data":{"k":[1,2]},)"
+      R"("source":"/s","omega":7,"type":"t","subject":"s"})");
+  expect(surrounded.has_value()) << label;
+  if (surrounded) {
+    expect(surrounded->extensions().size() == 2U) << label;
+    expect(bool{surrounded->subject() == std::optional{"s"_subject}}) << label;
+    expect(ce_test::same_json_payload<C>(surrounded->data(), R"({"k":[1,2]})"sv)) << label;
+  }
+
+  // An error found after the payload is taken is still the error reported.
+  auto late_error = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1},"Bad-Name":1})");
+  expect(!late_error.has_value()) << label;
+  if (!late_error) {
+    expect(late_error.error().code == ce::v3::errc::invalid_attribute_name) << label;
+  }
+
+  // A JSON content type keeps a JSON string payload as JSON rather than
+  // unwrapping it, because the producer said the payload is JSON.
+  const std::pair<std::string_view, std::string_view> json_typed[] = {
+      {R"("application/json")"sv, R"([1,2])"sv},
+      {R"("application/vnd.example+json")"sv, R"({"a":true})"sv},
+      {R"("application/json")"sv, R"("a string")"sv},
+  };
+  for (const auto& [content_type, payload] : json_typed) {
+    const std::string document =
+        std::string{R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":)"} +
+        std::string{content_type} + R"(,"data":)" + std::string{payload} + "}";
+    auto typed = format::decode(document);
+    expect(typed.has_value()) << label << ": " << document;
+    if (typed) {
+      expect(std::holds_alternative<ce::v3::json_document>(typed->data()))
+          << label << ": " << document;
+    }
+  }
+
+  // A non-string payload under a non-JSON content type is still JSON: the
+  // string rule is about a JSON string, not about the content type alone.
+  auto numeric = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":"text/plain","data":5})");
+  expect(numeric.has_value()) << label;
+  if (numeric) {
+    expect(std::holds_alternative<ce::v3::json_document>(numeric->data())) << label;
+  }
+}
+
+template <class C>
+void check_retention_limit(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  constexpr auto text =
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1}})"sv;
+  const auto holds_document = [](const ce::v3::result<ce::v3::event>& decoded) {
+    return decoded.has_value() && std::holds_alternative<ce::v3::json_document>(decoded->data());
+  };
+  const auto holds_text = [](const ce::v3::result<ce::v3::event>& decoded) {
+    return decoded.has_value() && std::holds_alternative<ce::v3::json_text>(decoded->data());
+  };
+
+  expect(holds_document(format::decode(text, {.retain_document_up_to = text.size()})))
+      << label << ": at the limit";
+  expect(holds_text(format::decode(text, {.retain_document_up_to = text.size() - 1})))
+      << label << ": one byte over the limit";
+  expect(holds_text(format::decode(text, {.retain_document_up_to = 0}))) << label << ": 0";
+  expect(holds_document(format::decode(text))) << label << ": the default";
+
+  const auto over = format::decode(text, {.retain_document_up_to = text.size() - 1});
+  expect(over && ce_test::same_json_payload<C>(over->data(), R"({"k":1})"sv))
+      << label << ": the text carries the same value";
+
+  // The default is measured on the whole input.
+  constexpr auto default_limit = ce::v3::json::decode_options::default_retention_limit;
+  const std::string at_default = std::string{text} + std::string(default_limit - text.size(), ' ');
+  expect(holds_document(format::decode(at_default))) << label << ": exactly the default";
+  expect(holds_text(format::decode(at_default + ' '))) << label << ": one byte over the default";
+
+  // A batch is measured per event, by average size. The trailing space makes
+  // the batch text an exact multiple of its event count.
+  constexpr std::size_t events_in_batch = 2;
+  const std::string batch = "[" + std::string{text} + "," + std::string{text} + "] ";
+  const auto per_event = batch.size() / events_in_batch;
+  expect(per_event * events_in_batch == batch.size()) << label << ": the batch divides evenly";
+  const auto batch_of = [&](std::size_t limit) {
+    return format::decode_batch(batch, {.retain_document_up_to = limit});
+  };
+  const auto documents_in =
+      [](const ce::v3::result<std::vector<ce::v3::event>>& events) -> std::optional<std::size_t> {
+    if (!events || events->size() != events_in_batch) {
+      return std::nullopt;
+    }
+    return static_cast<std::size_t>(std::ranges::count_if(*events, [](const ce::v3::event& decoded) {
+      return std::holds_alternative<ce::v3::json_document>(decoded.data());
+    }));
+  };
+  constexpr std::optional<std::size_t> every_event{events_in_batch};
+  constexpr std::optional<std::size_t> no_event{0};
+  expect(documents_in(batch_of(per_event)) == every_event)
+      << label << ": a batch at the limit per event";
+  expect(documents_in(batch_of(per_event - 1)) == no_event)
+      << label << ": a batch over the limit per event, though each element is under it";
+  expect(documents_in(batch_of(0)) == no_event) << label << ": a batch with a limit of 0";
+
+  // A limit whose product with the event count wraps to 0 still retains.
+  constexpr auto wraps_to_zero = std::numeric_limits<std::size_t>::max() / events_in_batch + 1;
+  expect(documents_in(batch_of(wraps_to_zero)) == every_event)
+      << label << ": a limit whose product with the event count overflows";
+}
+
+// --- SWR-JSON-0043: a payload kept as text is the input's own text ----------
+
+// The scanner is constexpr, so its answers are pinned at compile time too.
+static_assert(ce::v3::json::detail::data_member_text(R"({"id":"1", "data" : [1, 2] })") ==
+              std::optional<std::string_view>{"[1, 2]"});
+static_assert(ce::v3::json::detail::data_member_text(R"({"x":{"data":1},"data":"}{"})") ==
+              std::optional<std::string_view>{R"("}{")"});
+static_assert(!ce::v3::json::detail::data_member_text(R"({"d\u0061ta":1})").has_value());
+static_assert(!ce::v3::json::detail::data_member_text(R"({"data":1,"data":2})").has_value());
+
+/// Whether data_member_text accepts `Text`; it must refuse a temporary string,
+/// whose buffer the returned view would outlive.
+template <class Text>
+concept slices_text = requires(Text&& text) {
+  ce::v3::json::detail::data_member_text(std::forward<Text>(text));
+};
+
+/// The header every event in these checks shares; the caller appends members
+/// and the closing brace.
+constexpr auto event_head = R"({"specversion":"1.0","id":"1","source":"/s","type":"t")"sv;
+
+[[nodiscard]] auto event_with(std::string_view members) -> std::string {
+  return std::string{event_head} + std::string{members} + "}";
+}
+
+constexpr ce::v3::json::decode_options always_text{.retain_document_up_to = 0};
+
+/// The json_text a decode kept, or nothing when it kept something else.
+template <class C>
+[[nodiscard]] auto kept_text(std::string_view input,
+                             ce::v3::json::decode_options options = always_text)
+    -> std::optional<std::string> {
+  const auto decoded = ce::v3::json_format<C>::decode(input, options);
+  if (!decoded) {
+    return std::nullopt;
+  }
+  if (const auto* text = std::get_if<ce::v3::json_text>(&decoded->data())) {
+    return text->raw;
+  }
+  return std::nullopt;
+}
+
+/// What the codec serialises for the data member it decoded from `input`.
+template <class C>
+[[nodiscard]] auto codec_dump_of_data(std::string_view input) -> std::optional<std::string> {
+  const auto parsed = C::parse(input);
+  if (!parsed) {
+    return std::nullopt;
+  }
+  const auto* data = C::find(*parsed, "data");
+  if (data == nullptr) {
+    return std::nullopt;
+  }
+  return C::dump(*data);
+}
+
+template <class C>
+void check_own_text_slices(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto own = [](std::string_view payload) -> std::optional<std::string> {
+    return std::string{payload};
+  };
+
+  expect(kept_text<C>(event_with(",\"data\" : \n\t {\"k\" : 1} \r\n")) == own(R"({"k" : 1})"))
+      << label << ": the whitespace around the value is trimmed";
+
+  for (const auto payload : {R"({ "a" : [1, 2] })"sv, R"([ 1, "x", null ])"sv,
+                             R"("a \"quoted\" string")"sv, "-12.5e+3"sv, "0"sv, "true"sv,
+                             "false"sv, "null"sv}) {
+    expect(kept_text<C>(event_with(std::string{",\"data\": "} + std::string{payload})) ==
+           own(payload))
+        << label << ": " << payload;
+  }
+
+  constexpr auto tricky = R"({"s":"}{][,:\"\\","t":"\\","u":"\u007b"})"sv;
+  expect(kept_text<C>(event_with(std::string{",\"data\":"} + std::string{tricky})) == own(tricky))
+      << label << ": strings holding braces, brackets, commas, escaped quotes and backslashes";
+
+  constexpr auto nesting = R"({ "data" : [ "inner" ], "k" : { "data" : 2 } })"sv;
+  expect(kept_text<C>(event_with(std::string{",\"data\":"} + std::string{nesting} +
+                                 R"(,"subject":"s")")) == own(nesting))
+      << label << ": a data member nested in the payload is not the payload";
+
+  expect(kept_text<C>(event_with(R"(,"subject":"\"data\":1","ext":"data","data": 7 )")) ==
+         own("7"))
+      << label << ": data inside a string value is not a member";
+}
+
+template <class C>
+void check_own_text_fallbacks(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto escaped = event_with(R"(,"d\u0061ta":{ "k" : 1 })");
+  expect(kept_text<C>(escaped).has_value()) << label << ": an escaped name still decodes";
+  expect(kept_text<C>(escaped) == codec_dump_of_data<C>(escaped))
+      << label << ": an escaped name that spells data falls back to the codec";
+
+  const auto escaped_other = event_with(R"(,"\u0065xt":"x","data":{ "k" : 1 })");
+  expect(kept_text<C>(escaped_other) == codec_dump_of_data<C>(escaped_other))
+      << label << ": any escaped top-level name falls back to the codec";
+
+  const auto duplicate = event_with(R"(,"data":[1, 2],"data":[3, 4])");
+  expect(kept_text<C>(duplicate).has_value()) << label << ": a duplicate data still decodes";
+  expect(kept_text<C>(duplicate) == codec_dump_of_data<C>(duplicate))
+      << label << ": a duplicate data member falls back to the codec";
+
+  // A lenient codec may accept a number JSON does not allow. Its own
+  // serialisation is then stored, never the sender's non-JSON spelling.
+  const auto lenient = event_with(R"(,"data":[.5])");
+  if (C::parse(lenient)) {
+    expect(kept_text<C>(lenient) == codec_dump_of_data<C>(lenient))
+        << label << ": a number JSON does not allow falls back to the codec";
+  }
+}
+
+template <class C>
+void check_own_text_in_a_batch(std::string_view label) {
+  using namespace boost::ut;
+
+  const std::string batch = "[ " + event_with(R"(,"data" : [1, 2] )") + " , " +
+                            event_with(R"(,"d\u0061ta":[3, 4])") + "," +
+                            event_with(R"(,"data":"five","subject":"data")") + " ]";
+  const auto events = ce::v3::json_format<C>::decode_batch(batch, always_text);
+  constexpr std::size_t events_in_batch = 3;
+  expect(events.has_value() && events->size() == events_in_batch) << label;
+  if (!events || events->size() != events_in_batch) {
+    return;
+  }
+  const auto text_of = [&](std::size_t index) -> std::optional<std::string> {
+    if (const auto* text = std::get_if<ce::v3::json_text>(&events->at(index).data())) {
+      return text->raw;
+    }
+    return std::nullopt;
+  };
+  constexpr std::size_t second = 1;
+  constexpr std::size_t third = 2;
+  expect(text_of(0) == std::optional<std::string>{"[1, 2]"})
+      << label << ": the first element keeps its own text";
+  expect(text_of(second) == codec_dump_of_data<C>(event_with(R"(,"data":[3, 4])")))
+      << label << ": an escaped name falls back for its element only";
+  expect(text_of(third) == std::optional<std::string>{R"("five")"})
+      << label << ": the element after a fallback keeps its own text";
+}
+
+template <class C>
+void check_own_text_at_the_limit(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  constexpr auto default_limit = ce::v3::json::decode_options::default_retention_limit;
+  const auto payload_of = [](std::size_t filler) {
+    return std::string{R"({ "pad" : ")"} + std::string(filler, 'x') + R"(" })";
+  };
+  const auto event_of = [&](std::size_t filler) {
+    return event_with(",\"data\": " + payload_of(filler));
+  };
+  const auto framing = event_of(0).size();
+  expect(framing < default_limit) << label;
+  if (framing >= default_limit) {
+    return;
+  }
+  const auto at_limit = event_of(default_limit - framing);
+  expect(at_limit.size() == default_limit) << label;
+
+  const auto kept = format::decode(at_limit);
+  expect(kept.has_value() && std::holds_alternative<ce::v3::json_document>(kept->data()))
+      << label << ": an event of exactly the limit keeps its document";
+
+  const auto over = default_limit - framing + 1;
+  expect(kept_text<C>(event_of(over), {}) == std::optional<std::string>{payload_of(over)})
+      << label << ": one byte over the limit keeps the payload's own text";
+}
+
+template <class C>
+void check_own_text_equality(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  const auto compact = event_with(R"(,"data":{"k":[1,2]})");
+  const auto spaced = event_with(R"(,"data":{ "k" : [ 1, 2 ] })");
+
+  const auto compact_text = format::decode(compact, always_text);
+  const auto spaced_text = format::decode(spaced, always_text);
+  expect(compact_text.has_value() && spaced_text.has_value()) << label;
+  if (compact_text && spaced_text) {
+    expect(bool{*compact_text != *spaced_text})
+        << label << ": the same JSON spelled differently is unequal as json_text";
+    expect(ce_test::same_json_payload<C>(spaced_text->data(), R"({"k":[1,2]})"sv))
+        << label << ": both still hold the same JSON value";
+  }
+
+  const auto compact_document = format::decode(compact);
+  const auto spaced_document = format::decode(spaced);
+  expect(compact_document.has_value() && spaced_document.has_value()) << label;
+  if (compact_document && spaced_document) {
+    expect(bool{*compact_document == *spaced_document})
+        << label << ": within the limit the documents compare by value";
+  }
+}
+
+template <class C>
+void check_decode_string_data(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  for (const auto content_type : {"text/plain"sv, "text/csv"sv, "application/xml"sv,
+                                  "TEXT/PLAIN; charset=utf-8"sv}) {
+    const std::string document =
+        std::string{R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":")"} +
+        std::string{content_type} + R"(","data":"hello"})";
+    auto decoded = format::decode(document);
+    expect(decoded.has_value()) << label << ": " << document;
+    if (!decoded) {
+      continue;
+    }
+    expect(std::holds_alternative<std::string>(decoded->data())) << label << ": " << content_type;
+    if (std::holds_alternative<std::string>(decoded->data())) {
+      expect(std::get<std::string>(decoded->data()) == "hello") << label;
+    }
+  }
+
+  // The same payload round-trips: encode writes a JSON string, decode reads the
+  // string back, and the content type is what decides.
+  const ce::v3::event subject =
+      base_event({.datacontenttype = "text/plain"_mediatype, .data = std::string{"hello"}});
+  auto text = format::encode(subject);
+  expect(text.has_value()) << label;
+  if (text) {
+    auto back = format::decode(*text);
+    expect(back.has_value()) << label;
+    if (back && std::holds_alternative<std::string>(back->data())) {
+      expect(std::get<std::string>(back->data()) == "hello") << label;
+    }
+  }
+}
+
+// --- SWR-JSON-0021: both payload members ------------------------------------
+
+template <class C>
+void check_data_conflict(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  for (const auto document : {
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":1,"data_base64":"AA=="})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":"AA==","data":"x"})"sv,
+           // Even when one of them is null, both members are present and the
+           // peer has carried the payload twice.
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":null,"data_base64":"AA=="})"sv,
+       }) {
+    auto decoded = format::decode(document);
+    expect(!decoded.has_value()) << label << ": should reject " << document;
+    if (!decoded) {
+      expect(decoded.error().code == ce::v3::errc::data_conflict) << label << ": " << document;
+    }
+  }
+
+  // Either one alone is fine, so the rejection is about the pair.
+  expect(format::decode(
+             R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":1})")
+             .has_value())
+      << label;
+  expect(bool{format::decode(
+             R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":"AA=="})")
+             .has_value()})
+      << label;
+}
+
+// --- SWR-JSON-0022 / 0023 / 0024: extensions --------------------------------
+
+template <class C>
+void check_unknown_members_are_extensions(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  auto decoded = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":"application/json",)"
+      R"("dataschema":"https://example.com/s","subject":"sub","time":"2018-04-05T17:31:00Z",)"
+      R"("data":{"k":1},"seq":7,"flag":true,"tag":"x"})");
+  expect(decoded.has_value()) << label;
+  if (!decoded) {
+    expect(false) << label << ": " << decoded.error().detail;
+    return;
+  }
+
+  // Exactly the three unknown members, and none of the context attributes or
+  // payload members alongside them.
+  expect(decoded->extensions().size() == 3U) << label;
+  expect(decoded->extension("seq") != nullptr) << label;
+  expect(decoded->extension("flag") != nullptr) << label;
+  expect(decoded->extension("tag") != nullptr) << label;
+  for (const auto reserved : {"id"sv, "source"sv, "type"sv, "specversion"sv, "datacontenttype"sv,
+                              "dataschema"sv, "subject"sv, "time"sv, "data"sv, "data_base64"sv}) {
+    expect(decoded->extension(reserved) == nullptr) << label << ": " << reserved;
+  }
+
+  // data_base64 is a payload member rather than an extension too.
+  auto with_binary = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_base64":"AA==","extra":1})");
+  expect(with_binary.has_value()) << label;
+  if (with_binary) {
+    expect(with_binary->extensions().size() == 1U) << label;
+    expect(with_binary->extension("extra") != nullptr) << label;
+  }
+}
+
+template <class C>
+void check_extension_type_mapping(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  auto decoded = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t",)"
+      R"("flag":true,"off":false,"seq":7,"neg":-7,"tag":"x","empty":""})");
+  expect(decoded.has_value()) << label;
+  if (!decoded) {
+    return;
+  }
+
+  const auto* flag = decoded->extension("flag");
+  expect(flag != nullptr) << label;
+  if (flag != nullptr) {
+    expect(std::holds_alternative<bool>(*flag)) << label;
+    if (std::holds_alternative<bool>(*flag)) {
+      expect(std::get<bool>(*flag) == true) << label;
+    }
+  }
+  const auto* off = decoded->extension("off");
+  if (off != nullptr && std::holds_alternative<bool>(*off)) {
+    expect(std::get<bool>(*off) == false) << label;
+  }
+
+  const auto* seq = decoded->extension("seq");
+  expect(seq != nullptr) << label;
+  if (seq != nullptr) {
+    // std::int32_t specifically: the CloudEvents Integer type is 32-bit signed.
+    expect(std::holds_alternative<std::int32_t>(*seq)) << label;
+    if (std::holds_alternative<std::int32_t>(*seq)) {
+      expect(std::get<std::int32_t>(*seq) == 7) << label;
+    }
+  }
+  const auto* neg = decoded->extension("neg");
+  if (neg != nullptr && std::holds_alternative<std::int32_t>(*neg)) {
+    expect(std::get<std::int32_t>(*neg) == -7) << label;
+  }
+
+  const auto* tag_value = decoded->extension("tag");
+  expect(tag_value != nullptr) << label;
+  if (tag_value != nullptr) {
+    expect(std::holds_alternative<std::string>(*tag_value)) << label;
+    if (std::holds_alternative<std::string>(*tag_value)) {
+      expect(std::get<std::string>(*tag_value) == "x") << label;
+    }
+  }
+
+  // The documented loss: a URI, a URI-reference, a Timestamp and a Binary
+  // attribute all come back as std::string, because JSON carries only the text.
+  // Recovering the richer type is what the typed extension structs are for.
+  const ce::v3::event subject =
+      base_event({.extensions = {{"schemaurl"_ext, ce::v3::uri{"https://example.com/x"}}}});
+  auto text = format::encode(subject);
+  expect(text.has_value()) << label;
+  if (text) {
+    auto back = format::decode(*text);
+    expect(back.has_value()) << label;
+    if (back) {
+      const auto* recovered = back->extension("schemaurl");
+      expect(recovered != nullptr) << label;
+      if (recovered != nullptr) {
+        expect(std::holds_alternative<std::string>(*recovered)) << label;
+      }
+    }
+  }
+
+  // A kind with no CloudEvents attribute type is a type mismatch, not a silent
+  // drop: an object or an array under an unknown name is not an event.
+  //
+  // null is NOT in this list. JSON format section 2.2 requires a null attribute
+  // to decode as unset, which null-attribute-decodes-as-unset covers.
+  for (const auto document : {
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","obj":{"a":1}})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","arr":[1]})"sv,
+       }) {
+    auto rejected = format::decode(document);
+    expect(!rejected.has_value()) << label << ": should reject " << document;
+    if (!rejected) {
+      expect(rejected.error().code == ce::v3::errc::type_mismatch) << label << ": " << document;
+    }
+  }
+}
+
+template <class C>
+void check_floating_extension_rejected(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  for (const auto document : {
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","ratio":1.5})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","ratio":-0.5})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","ratio":1.0})"sv,
+       }) {
+    auto decoded = format::decode(document);
+    expect(!decoded.has_value()) << label << ": should reject " << document;
+    if (!decoded) {
+      expect(decoded.error().code == ce::v3::errc::type_mismatch)
+          << label << ": " << document << " gave " << ce::v3::to_string_view(decoded.error().code);
+      // The error names the member, so a caller can say which one was wrong.
+      expect(decoded.error().where == "ratio") << label << ": " << decoded.error().where;
+    }
+  }
+
+  // Rounding is never the answer: the integral-looking 1.0 above is rejected
+  // rather than decoded as the Integer 1.
+  auto integral = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","ratio":1})");
+  expect(integral.has_value()) << label << ": a real Integer is still accepted";
+}
+
+// --- SWR-JSON-0026: the empty batch -----------------------------------------
+
+template <class C>
+void check_empty_batch(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  for (const auto document : {"[]"sv, " [ ] "sv}) {
+    auto decoded = format::decode_batch(document);
+    expect(decoded.has_value()) << label << ": " << document;
+    if (decoded) {
+      expect(decoded->empty()) << label << ": " << document;
+    }
+  }
+
+  // Encoding no events produces the document that decodes back to no events.
+  const std::vector<ce::v3::event> none;
+  auto text = format::encode_batch(std::span<const ce::v3::event>{none});
+  expect(text.has_value()) << label;
+  if (!text) {
+    return;
+  }
+  auto back = format::decode_batch(*text);
+  expect(back.has_value()) << label << ": " << *text;
+  if (back) {
+    expect(back->empty()) << label;
+  }
+}
+
+// --- SYS-JSON-0001: the spec's own examples ---------------------------------
+
+/// The example event from the CloudEvents core specification, in the JSON event
+/// format: a non-JSON payload carried as a JSON string, one string extension and
+/// one integer extension.
+constexpr auto spec_example = R"({
+    "specversion" : "1.0",
+    "type" : "com.github.pull_request.opened",
+    "source" : "https://github.com/cloudevents/spec/pull",
+    "subject" : "123",
+    "id" : "A234-1234-1234",
+    "time" : "2018-04-05T17:31:00Z",
+    "comexampleextension1" : "value",
+    "comexampleothervalue" : 5,
+    "datacontenttype" : "text/xml",
+    "data" : "<much wow=\"xml\"/>"
+})"sv;
+
+template <class C>
+void check_spec_examples(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  auto decoded = format::decode(spec_example);
+  expect(decoded.has_value()) << label;
+  if (!decoded) {
+    expect(false) << label << ": " << decoded.error().detail;
+    return;
+  }
+  expect(decoded->specversion().view() == "1.0"sv) << label;
+  expect(decoded->id().view() == "A234-1234-1234"sv) << label;
+  expect(decoded->type().view() == "com.github.pull_request.opened"sv) << label;
+  expect(decoded->source().view() == "https://github.com/cloudevents/spec/pull"sv) << label;
+  expect(decoded->subject().has_value() && decoded->subject()->view() == "123"sv) << label;
+  expect(decoded->datacontenttype().has_value() &&
+         decoded->datacontenttype()->view() == "text/xml"sv)
+      << label;
+  expect(decoded->time().has_value()) << label;
+  if (decoded->time()) {
+    expect(ce::v3::to_string(*decoded->time()) == "2018-04-05T17:31:00Z") << label;
+  }
+  expect(decoded->extensions().size() == 2U) << label;
+  const auto* other = decoded->extension("comexampleothervalue");
+  expect(other != nullptr) << label;
+  if (other != nullptr && std::holds_alternative<std::int32_t>(*other)) {
+    expect(std::get<std::int32_t>(*other) == 5) << label;
+  }
+  expect(std::holds_alternative<std::string>(decoded->data())) << label;
+  if (std::holds_alternative<std::string>(decoded->data())) {
+    expect(std::get<std::string>(decoded->data()) == R"(<much wow="xml"/>)") << label;
+  }
+
+  // Re-encoding and decoding again must land on the same event: whitespace and
+  // member order are the codec's business, the event is not.
+  auto re_encoded = format::encode(*decoded);
+  expect(re_encoded.has_value()) << label;
+  if (!re_encoded) {
+    return;
+  }
+  auto again = format::decode(*re_encoded);
+  expect(again.has_value()) << label;
+  if (again) {
+    // Wrapped in bool: ut would otherwise try to print a ce::v3::event on failure.
+    expect(bool{*again == *decoded}) << label << ": re-encoding changed the event";
+  }
+
+  // The batch representation of the same document, twice over.
+  const std::string batch = "[" + std::string{spec_example} + "," + std::string{spec_example} + "]";
+  auto batch_decoded = format::decode_batch(batch);
+  expect(batch_decoded.has_value()) << label;
+  if (!batch_decoded) {
+    return;
+  }
+  expect(batch_decoded->size() == 2U) << label;
+  for (const auto& element : *batch_decoded) {
+    expect(bool{element == *decoded}) << label << ": batch element differs from the single event";
+  }
+  auto batch_re_encoded = format::encode_batch(std::span<const ce::v3::event>{*batch_decoded});
+  expect(batch_re_encoded.has_value()) << label;
+  if (batch_re_encoded) {
+    auto batch_again = format::decode_batch(*batch_re_encoded);
+    expect(batch_again.has_value()) << label;
+    if (batch_again) {
+      expect(bool{*batch_again == *batch_decoded}) << label;
+    }
+  }
+
+  // A malformed element fails the whole batch rather than being skipped.
+  const std::string bad_batch = "[" + std::string{spec_example} +
+                                R"(,{"specversion":"1.0","source":"/s","type":"t"}])";
+  auto rejected_batch = format::decode_batch(bad_batch);
+  expect(!rejected_batch.has_value()) << label;
+  if (!rejected_batch) {
+    expect(rejected_batch.error().code == ce::v3::errc::missing_required_attribute) << label;
+  }
+}
+
+// --- suites ------------------------------------------------------------------
+//
+// Each one runs the shared checks against both codecs.
+
+// The entry points are also what SYS-JSON-0001 names, so the spec's own example
+// document -- single and batched -- is exercised through them here.
+const boost::ut::suite<"json-format-entry-points"> format_entry_points = [] {
+  using namespace boost::ut;
+
+  "the four operations have the declared signatures"_test = [] {
+    using format = ce::v3::json_format<nlohmann_codec>;
+    static_assert(std::is_same_v<decltype(format::encode(std::declval<const ce::v3::event&>())),
+                                 ce::v3::result<std::string>>);
+    static_assert(std::is_same_v<decltype(format::decode(""sv)), ce::v3::result<ce::v3::event>>);
+    static_assert(
+        std::is_same_v<decltype(format::encode_batch(std::declval<std::span<const ce::v3::event>>())),
+                       ce::v3::result<std::string>>);
+    static_assert(
+        std::is_same_v<decltype(format::decode_batch(""sv)), ce::v3::result<std::vector<ce::v3::event>>>);
+    static_assert(std::is_same_v<decltype(ce::v3::json_format<mini_codec>::decode(""sv)),
+                                 ce::v3::result<ce::v3::event>>);
+    expect(true);
+  };
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_entry_points<C>(codec); };
+  });
+
+  // The version is read first: a document claiming a version this SDK cannot
+  // read is not reported in terms of rules that belong to another version, even
+  // when every one of those rules is broken too (SWR-CORE-0018).
+  "an unsupported version is reported before any other rule"_test = [] {
+    const auto decoded = ce::v3::json_format<nlohmann_codec>::decode(
+        R"({"specversion":"0.3","id":"","source":"","type":""})"sv);
+    expect(!decoded.has_value());
+    expect(!decoded.has_value() && decoded.error().code == ce::v3::errc::unsupported_spec_version);
+  };
+
+  // The decoder reads the document in one pass, so it meets a bad extension
+  // placed first before anything else. The report must not depend on where the
+  // member sits: context attributes, then the payload, then the extensions.
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec} + ": a context attribute is reported before the rest") = [codec] {
+      const auto decoded = ce::v3::json_format<C>::decode(
+          R"({"Bad":1,"data":1,"data_base64":"AA==","specversion":"1.0","source":"/s","type":"t"})"sv);
+      expect(!decoded.has_value()) << codec;
+      if (!decoded) {
+        expect(decoded.error().code == ce::v3::errc::missing_required_attribute) << codec;
+        expect(decoded.error().where == "id"sv) << codec;
+      }
+    };
+    test(std::string{codec} + ": the payload is reported before the extensions") = [codec] {
+      const auto decoded = ce::v3::json_format<C>::decode(
+          R"({"Bad":1,"specversion":"1.0","id":"1","source":"/s","type":"t","data":1,"data_base64":"AA=="})"sv);
+      expect(!decoded.has_value()) << codec;
+      if (!decoded) {
+        expect(decoded.error().code == ce::v3::errc::data_conflict) << codec;
+      }
+    };
+  });
+
+  // mini_codec keeps a repeated member where nlohmann keeps one, and its find
+  // returns the first. The single pass must read the same occurrence find does.
+  "a repeated context attribute is read from its first occurrence"_test = [] {
+    const auto decoded = ce::v3::json_format<mini_codec>::decode(
+        R"({"specversion":"1.0","id":"first","id":"second","source":"/s","type":"t"})"sv);
+    expect(decoded.has_value());
+    if (decoded) {
+      expect(decoded->id().view() == "first"sv);
+    }
+  };
+
+  "the spec's example event, single and batched, with nlohmann_codec"_test = [] {
+    check_spec_examples<nlohmann_codec>("nlohmann_codec");
+  };
+  "the spec's example event, single and batched, with mini_codec"_test = [] {
+    check_spec_examples<mini_codec>("mini_codec");
+  };
+};
+
+const boost::ut::suite<"integer-attribute-as-json-number"> integer_attribute_as_number = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_integer_attribute<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"integer-attribute-out-of-range-or-fractional-is-error">
+    integer_attribute_rejections = [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] { check_integer_rejections<C>(codec); };
+      });
+    };
+
+const boost::ut::suite<"binary-attribute-as-base64-string"> binary_attribute_as_base64 = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_binary_attribute<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"uri-uriref-timestamp-as-json-string"> textual_attributes = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_textual_attributes<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"json-text-data-under-data-member"> json_text_data = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_json_text_data<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"binary-data-under-data-base64-member"> binary_data = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_binary_data<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"string-data-under-data-member-as-json-string"> string_data = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_string_data<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"decode-data-base64-yields-binary"> decode_data_base64 = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_decode_data_base64<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"decode-data-yields-json-document"> decode_data_json_document = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_decode_data_as_json_document<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"decode-retains-document-up-to-limit"> retention_limit = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_retention_limit<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"decode-keeps-the-payloads-own-text"> payloads_own_text = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec} + ": the slice of each payload kind") = [codec] {
+      check_own_text_slices<C>(codec);
+    };
+    test(std::string{codec} + ": the fallbacks to the codec") = [codec] {
+      check_own_text_fallbacks<C>(codec);
+    };
+    test(std::string{codec} + ": each batch element on its own") = [codec] {
+      check_own_text_in_a_batch<C>(codec);
+    };
+    test(std::string{codec} + ": the retention limit") = [codec] {
+      check_own_text_at_the_limit<C>(codec);
+    };
+    test(std::string{codec} + ": equality keeps the spelling") = [codec] {
+      check_own_text_equality<C>(codec);
+    };
+  });
+
+  "the scanner declines what a strict JSON reader would not expect"_test = [] {
+    using ce::v3::json::detail::data_member_text;
+    expect(!data_member_text(R"({"data":[1,],"id":"1"})").has_value()) << "a trailing comma";
+    expect(!data_member_text(R"({"data":1,})").has_value()) << "a trailing member comma";
+    expect(!data_member_text(R"({"data":.5})").has_value()) << "a number JSON does not allow";
+    expect(!data_member_text(R"({"data":01})").has_value()) << "a leading zero";
+    expect(!data_member_text(R"({"data":tru})").has_value()) << "a misspelt literal";
+    expect(!data_member_text("{\"data\":\"a\tb\"}").has_value()) << "a raw control character";
+    expect(!data_member_text(R"({"data":"\x"})").has_value()) << "an unknown escape";
+    expect(!data_member_text(R"({"data":"\u12G4"})").has_value()) << "a bad unicode escape";
+    expect(!data_member_text("\xEF\xBB\xBF{\"data\":1}").has_value()) << "a byte order mark";
+    expect(!data_member_text(R"({"data":1} x)").has_value()) << "trailing content";
+    expect(!data_member_text(R"([{"data":1}])").has_value()) << "not an object";
+    expect(!data_member_text(R"({"data":{"a":1})").has_value()) << "an unclosed object";
+    expect(!data_member_text(R"({"data":"open)").has_value()) << "an unclosed string";
+    expect(!data_member_text(R"({"id":"1"})").has_value()) << "no data member";
+    expect(data_member_text(R"({"data":"\u00e9\n"})") ==
+           std::optional<std::string_view>{R"("\u00e9\n")"})
+        << "valid escapes stay as written";
+  };
+
+  "the scanner refuses a temporary string it would outlive"_test = [] {
+    using ce::v3::json::detail::batch_data_slices;
+    using ce::v3::json::detail::json_slicer;
+    static_assert(!std::is_constructible_v<json_slicer, std::string>);
+    static_assert(!std::is_constructible_v<batch_data_slices, std::string>);
+    static_assert(!slices_text<std::string>);
+    static_assert(std::is_constructible_v<json_slicer, const std::string&>);
+    static_assert(std::is_constructible_v<batch_data_slices, const std::string&>);
+    static_assert(slices_text<const std::string&>);
+    static_assert(std::is_constructible_v<json_slicer, const char*>);
+    static_assert(slices_text<std::string_view>);
+    expect(true);
+  };
+
+  "the scanner finds a string's end at every offset in a long string"_test = [] {
+    using ce::v3::json::detail::data_member_text;
+    // Longer than two machine words, so every special character lands at each
+    // position within a word and across a word boundary.
+    constexpr std::size_t words_spanned = 3;
+    constexpr std::size_t body_length = (words_spanned * sizeof(std::uint64_t)) + 1;
+    const std::string plain(body_length, 'x');
+    for (std::size_t offset = 0; offset <= body_length; ++offset) {
+      const auto with = [&](std::string_view inserted) {
+        return "\"" + plain.substr(0, offset) + std::string{inserted} + plain.substr(offset) + "\"";
+      };
+      for (const auto special : {R"(\")"sv, R"(\\)"sv, R"(\u00e9)"sv, "]}"sv, "\x7f"sv, "\xc3\xa9"sv}) {
+        const auto payload = with(special);
+        const auto event = R"({"data":)" + payload + "}";
+        expect(data_member_text(event) == std::optional<std::string_view>{payload})
+            << "a string holding " << special << " at " << offset;
+      }
+      for (const auto refused : {"\n"sv, "\x1f"sv, std::string_view{"\0", 1}, R"(\q)"sv}) {
+        const auto event = R"({"data":)" + with(refused) + "}";
+        expect(!data_member_text(event).has_value())
+            << "a string refused at " << offset;
+      }
+      const auto unterminated = R"({"data":")" + plain.substr(0, offset);
+      expect(!data_member_text(unterminated).has_value())
+          << "an unterminated string of " << offset;
+    }
+  };
+
+  "the batch scanner loses its place only for the rest of the batch"_test = [] {
+    ce::v3::json::detail::batch_data_slices slices{R"([{"data":1},{"data":[2,]},{"data":3}])"};
+    expect(slices.next() == std::optional<std::string_view>{"1"});
+    expect(!slices.next().has_value()) << "the element it cannot read";
+    expect(!slices.next().has_value()) << "every element after it";
+
+    ce::v3::json::detail::batch_data_slices not_a_batch{R"({"data":1})"};
+    expect(!not_a_batch.next().has_value());
+  };
+};
+
+/// mini_codec that counts the deep copies and member moves the decoder asks for.
+struct move_counting_codec : mini_codec {
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.move-counting";
+  static inline std::size_t copies = 0;
+  static inline std::size_t extracts = 0;
+
+  [[nodiscard]] static auto copy(const value& held) -> value {
+    ++copies;
+    return mini_codec::copy(held);
+  }
+  [[nodiscard]] static auto extract(value& object, std::string_view key) -> value {
+    ++extracts;
+    return mini_codec::extract(object, key);
+  }
+};
+static_assert(ce::v3::json::json_codec<move_counting_codec>);
+
+void check_decode_batch_moves_payloads() {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<move_counting_codec>;
+
+  constexpr auto batch =
+      R"([{"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":[1,2]}},)"
+      R"({"specversion":"1.0","id":"2","source":"/s","type":"t","data":"text"},)"
+      R"({"specversion":"1.0","id":"3","source":"/s","type":"t","data":[true]}])"sv;
+
+  move_counting_codec::copies = 0;
+  move_counting_codec::extracts = 0;
+  const auto events = format::decode_batch(batch);
+  expect(events.has_value() && events->size() == 3U);
+  expect(move_counting_codec::copies == 0U) << "a batch element's payload was copied";
+  expect(move_counting_codec::extracts == 3U) << "each element's payload is moved once";
+  if (events && events->size() == 3U) {
+    expect(ce_test::same_json_payload<move_counting_codec>(events->at(0).data(),
+                                                          R"({"k":[1,2]})"sv));
+    expect(ce_test::same_json_payload<move_counting_codec>(events->at(1).data(), R"("text")"sv));
+    expect(ce_test::same_json_payload<move_counting_codec>(events->at(2).data(), "[true]"sv));
+  }
+
+  // A batch over the retention limit keeps text, and neither copies nor moves.
+  move_counting_codec::extracts = 0;
+  expect(format::decode_batch(batch, {.retain_document_up_to = 1}).has_value());
+  expect(move_counting_codec::copies == 0U);
+  expect(move_counting_codec::extracts == 0U);
+
+  // from_value reads a document its caller keeps, so it still copies.
+  const auto kept = move_counting_codec::parse(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":{"k":1}})"sv);
+  expect(kept.has_value());
+  if (kept) {
+    expect(format::from_value(*kept).has_value());
+    expect(move_counting_codec::copies == 1U) << "from_value copies the caller's payload";
+  }
+}
+
+const boost::ut::suite<"decode-batch-moves-each-payload"> batch_moves = [] {
+  using namespace boost::ut;
+
+  "decode_batch moves every element's payload and copies none"_test = [] {
+    check_decode_batch_moves_payloads();
+  };
+};
+
+/// The JSON payload of `subject` as a value of codec `C`, whether the event
+/// holds it as text or as a document.
+template <class C>
+[[nodiscard]] auto payload_of(const ce::v3::event& subject) -> ce::v3::result<typename C::value> {
+  if (const auto* text = std::get_if<ce::v3::json_text>(&subject.data())) {
+    return C::parse(text->raw);
+  }
+  if (const auto* document = std::get_if<ce::v3::json_document>(&subject.data())) {
+    return C::parse(document->dump());
+  }
+  return ce::v3::fail(ce::v3::errc::type_mismatch, "the event carries no JSON payload", "data");
+}
+
+constexpr auto converted_payload = R"({"b":[1,2],"a":{"x":"y","n":null},"t":true})"sv;
+
+template <class From, class To>
+void check_document_converts(std::string_view label) {
+  using namespace boost::ut;
+
+  const auto payload = From::parse(converted_payload);
+  const auto expected = To::parse(converted_payload);
+  expect(payload.has_value() && expected.has_value()) << label << ": parse";
+  if (!payload || !expected) {
+    return;
+  }
+  const ce::v3::event subject =
+      base_event({.datacontenttype = "application/json"_mediatype,
+                  .data = ce::v3::json_document::make<From>(From::copy(*payload))});
+
+  auto document = encoded_document<To>(subject);
+  expect(document.has_value()) << label << ": encode";
+  if (!document) {
+    return;
+  }
+  const auto* data = To::find(*document, "data");
+  expect(data != nullptr && To::equal(*data, *expected))
+      << label << ": the payload is spliced as JSON, not as a string";
+
+  const auto text = ce::v3::json_format<To>::encode(subject);
+  expect(text.has_value()) << label << ": encode to text";
+  if (!text) {
+    return;
+  }
+  const auto decoded = ce::v3::json_format<To>::decode(*text);
+  expect(decoded.has_value()) << label << ": decode";
+  if (!decoded) {
+    return;
+  }
+  const auto back = payload_of<To>(*decoded);
+  expect(back.has_value() && To::equal(*back, *expected)) << label << ": round trip";
+  expect(bool{*decoded == subject}) << label << ": documents from two codecs compare by value";
+}
+
+/// mini_codec that counts every parse and dump the format layer asks of it.
+struct counting_codec : mini_codec {
+  static constexpr std::string_view identity = "io.cloudevents.cpp.test.counting";
+  static inline std::size_t parses = 0;
+  static inline std::size_t dumps = 0;
+
+  [[nodiscard]] static auto parse(std::string_view text) -> ce::v3::result<value> {
+    ++parses;
+    return mini_codec::parse(text);
+  }
+  [[nodiscard]] static auto dump(const value& held) -> std::string {
+    ++dumps;
+    return mini_codec::dump(held);
+  }
+};
+static_assert(ce::v3::json::json_codec<counting_codec>);
+
+void check_same_codec_document_is_copied() {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<counting_codec>;
+
+  const auto payload = mini_codec::parse(R"({"k":[1,2],"n":null})");
+  expect(payload.has_value());
+  if (!payload) {
+    return;
+  }
+  const ce::v3::event subject =
+      base_event({.datacontenttype = "application/json"_mediatype,
+                  .data = ce::v3::json_document::make<counting_codec>(mini_codec::copy(*payload))});
+
+  counting_codec::parses = 0;
+  counting_codec::dumps = 0;
+  const auto root = format::to_value(subject);
+  expect(root.has_value());
+  expect(counting_codec::parses == 0U) << "the payload was parsed";
+  expect(counting_codec::dumps == 0U) << "the payload was serialised";
+  const auto* data = root ? counting_codec::find(*root, "data") : nullptr;
+  expect(data != nullptr && counting_codec::equal(*data, *payload)) << "the payload is spliced";
+
+  // encode serialises the finished document once, and nothing else.
+  const auto text = format::encode(subject);
+  expect(text.has_value());
+  expect(counting_codec::parses == 0U);
+  expect(counting_codec::dumps == 1U) << "only the output document is serialised";
+
+  // The event still owns its document: encoding copied it rather than moving it.
+  const auto* kept = std::get<ce::v3::json_document>(subject.data()).get<counting_codec>();
+  expect(kept != nullptr && counting_codec::equal(*kept, *payload));
+
+  // A document from another codec takes the conversion path instead.
+  const ce::v3::event foreign =
+      base_event({.data = ce::v3::json_document::make<mini_codec>(mini_codec::copy(*payload))});
+  counting_codec::parses = 0;
+  expect(format::to_value(foreign).has_value());
+  expect(counting_codec::parses == 1U) << "a foreign document is converted through text";
+}
+
+template <class C>
+void check_extension_name_grammar(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  for (const auto document : {
+           // The underscore is the shape a round-trip fuzzer reached first.
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data_bae6s4":"AAEC"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","Upper":"x"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","has-dash":"x"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","has space":"x"})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","":"x"})"sv,
+       }) {
+    auto decoded = format::decode(document);
+    expect(!decoded.has_value()) << label << ": should reject " << document;
+    if (!decoded) {
+      expect(decoded.error().code == ce::v3::errc::invalid_attribute_name) << label << ": " << document;
+    }
+  }
+
+  // An attribute that is present but empty is a second way to reach an event
+  // that would not validate.
+  {
+    auto empty_type = format::decode(
+        R"({"specversion":"1.0","id":"1","source":"/s","type":""})");
+    expect(!empty_type.has_value()) << label << ": empty type";
+  }
+
+  // A legal name is still accepted, so the rejection is about the grammar.
+  auto ok = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","seq9":"x"})");
+  expect(ok.has_value()) << label;
+
+  // The invariant the fuzzer asserts: a document that decodes can always be
+  // encoded again, and the encoding decodes to the same event.
+  if (ok) {
+    const auto re_encoded = format::encode(*ok);
+    expect(re_encoded.has_value()) << label;
+    if (re_encoded) {
+      const auto again = format::decode(*re_encoded);
+      expect(again.has_value() && bool{*again == *ok}) << label;
+    }
+  }
+}
+
+const boost::ut::suite<"encode-copies-same-codec-document"> same_codec_document = [] {
+  using namespace boost::ut;
+
+  "a document from the encoding codec is neither parsed nor serialised"_test = [] {
+    check_same_codec_document_is_copied();
+  };
+};
+
+const boost::ut::suite<"document-from-another-codec-converts"> document_converts = [] {
+  using namespace boost::ut;
+
+  "nlohmann to mini_codec"_test = [] {
+    check_document_converts<nlohmann_codec, mini_codec>("nlohmann -> mini_codec");
+  };
+  "mini_codec to nlohmann"_test = [] {
+    check_document_converts<mini_codec, nlohmann_codec>("mini_codec -> nlohmann");
+  };
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec} + " to nlohmann") = [codec] {
+      check_document_converts<C, nlohmann_codec>(codec);
+    };
+    test("nlohmann to " + std::string{codec}) = [codec] {
+      check_document_converts<nlohmann_codec, C>(codec);
+    };
+  });
+};
+
+const boost::ut::suite<"decode-data-string-with-non-json-content-type-yields-string">
+    decode_string_data = [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] { check_decode_string_data<C>(codec); };
+      });
+    };
+
+const boost::ut::suite<"decode-both-data-members-is-error"> both_data_members = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_data_conflict<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"unknown-top-level-members-become-extensions"> unknown_members = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_unknown_members_are_extensions<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"extension-decode-type-mapping"> extension_type_mapping = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_extension_type_mapping<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"floating-point-extension-value-is-type-mismatch"> floating_extension = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_floating_extension_rejected<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"json-format-media-types"> media_types = [] {
+  using namespace boost::ut;
+
+  // Constants, not accessors: the HTTP binding matches on them at compile time.
+  "the two media types are fixed and codec-independent"_test = [] {
+    static_assert(ce::v3::json_format<nlohmann_codec>::content_type ==
+                  "application/cloudevents+json"sv);
+    static_assert(ce::v3::json_format<nlohmann_codec>::batch_content_type ==
+                  "application/cloudevents-batch+json"sv);
+    static_assert(ce::v3::json_format<mini_codec>::content_type == "application/cloudevents+json"sv);
+    static_assert(ce::v3::json_format<mini_codec>::batch_content_type ==
+                  "application/cloudevents-batch+json"sv);
+    // The format re-exports what the JSON layer declares, so there is one
+    // definition rather than two that can drift.
+    static_assert(ce::v3::json_format<mini_codec>::content_type == ce::v3::json::content_type);
+    static_assert(ce::v3::json_format<mini_codec>::batch_content_type == ce::v3::json::batch_content_type);
+    expect(true);
+  };
+
+  "both are JSON media types by the SDK's own test"_test = [] {
+    expect(ce::v3::is_json_content_type(ce::v3::json_format<nlohmann_codec>::content_type));
+    expect(ce::v3::is_json_content_type(ce::v3::json_format<mini_codec>::batch_content_type));
+  };
+};
+
+const boost::ut::suite<"empty-batch-decodes-to-no-events"> empty_batch = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_empty_batch<C>(codec); };
+  });
+};
+
+const boost::ut::suite<"decoded-event-always-re-encodes"> extension_name_grammar = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_extension_name_grammar<C>(codec); };
+  });
+};
+
+template <class C>
+void check_null_is_unset(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  // The shape the JSON format specification's own example uses.
+  auto decoded = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","unsetextension":null})");
+  expect(decoded.has_value()) << label;
+  if (decoded) {
+    expect(decoded->extension("unsetextension") == nullptr)
+        << label << ": a null extension must not become an attribute";
+    expect(decoded->extensions().empty()) << label;
+    expect(format::encode(*decoded).has_value()) << label;
+  }
+
+  // A null OPTIONAL context attribute is unset too, and an absent one and an
+  // explicitly null one decode to the same event.
+  auto explicit_null = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","subject":null,"time":null})");
+  auto omitted = format::decode(R"({"specversion":"1.0","id":"1","source":"/s","type":"t"})");
+  expect(explicit_null.has_value()) << label;
+  expect(omitted.has_value()) << label;
+  if (explicit_null && omitted) {
+    expect(bool{*explicit_null == *omitted}) << label;
+    expect(!explicit_null->subject().has_value()) << label;
+    expect(!explicit_null->time().has_value()) << label;
+  }
+
+  // data is the documented exception: an explicit null payload is distinct from
+  // an absent one, so it is NOT swallowed by the unset rule.
+  auto null_data = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","data":null})");
+  expect(null_data.has_value()) << label;
+
+  // A non-null extension beside a null one still arrives.
+  auto mixed = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","gone":null,"kept":"x"})");
+  expect(mixed.has_value()) << label;
+  if (mixed) {
+    expect(mixed->extension("gone") == nullptr) << label;
+    expect(mixed->extension("kept") != nullptr) << label;
+    expect(mixed->extensions().size() == 1_ul) << label;
+  }
+}
+
+const boost::ut::suite<"null-attribute-decodes-as-unset"> null_is_unset = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_null_is_unset<C>(codec); };
+  });
+};
+
+/// \brief An extension integer beyond int64 must not decode to some other number.
+template <class C>
+void check_out_of_range_integer_extension(std::string_view label) {
+  using namespace boost::ut;
+  using format = ce::v3::json_format<C>;
+
+  // 18446744073709551615 reinterprets as -1, which is INSIDE the CloudEvents
+  // Integer range, so the format layer's own bounds check does not catch it.
+  // Before the codec refused it, this decoded to an extension holding -1.
+  for (const auto document : {
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","n":9223372036854775808})"sv,
+           R"({"specversion":"1.0","id":"1","source":"/s","type":"t","n":18446744073709551615})"sv,
+       }) {
+    auto decoded = format::decode(document);
+    expect(!decoded.has_value()) << label << ": should reject " << document;
+    if (decoded) {
+      // Name the value, so a regression says what it produced rather than only
+      // that it produced something.
+      const auto* held = decoded->extension("n");
+      if (held != nullptr && std::holds_alternative<std::int32_t>(*held)) {
+        expect(false) << label << ": decoded to " << std::get<std::int32_t>(*held);
+      }
+      continue;
+    }
+    // Either route is conformant, and the two in-tree codecs take one each:
+    // nlohmann parses the number and refuses it at as_int (out_of_range), while
+    // mini_codec's hand-written parser refuses the document (parse_error). What
+    // the concept forbids is a value, which is asserted above.
+    const auto code = decoded.error().code;
+    expect(code == ce::v3::errc::out_of_range || code == ce::v3::errc::parse_error)
+        << label << ": " << document << " gave " << ce::v3::to_string_view(code);
+  }
+
+  // A value inside the Integer range still decodes, so the refusal is about the
+  // range and not about extensions that happen to be numbers.
+  auto fine = format::decode(
+      R"({"specversion":"1.0","id":"1","source":"/s","type":"t","n":42})");
+  expect(fine.has_value()) << label;
+  if (fine) {
+    const auto* held = fine->extension("n");
+    expect(held != nullptr) << label;
+    if (held != nullptr && std::holds_alternative<std::int32_t>(*held)) {
+      expect(std::get<std::int32_t>(*held) == 42) << label;
+    }
+  }
+}
+
+const boost::ut::suite<"extension-integer-beyond-int64-is-refused"> beyond_int64 = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_out_of_range_integer_extension<C>(codec); };
+  });
+};
+
+}  // namespace
+
+const boost::ut::suite<"format-rules-shared-with-the-bench"> format_rules_shared = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce::v3::checks::check_format_rules<C>(
+          [codec](bool ok, std::string_view what) { expect(ok) << codec << ": " << what; });
+    };
+  });
+};
+
+int main() {}

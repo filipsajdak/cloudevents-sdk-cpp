@@ -15,7 +15,7 @@
 
 #include <ctre.hpp>
 
-namespace ce::inline v3::json::detail {
+namespace ce::v3::json::detail {
 
 // spec: SWR-JSON-0043
 inline constexpr auto json_number_pattern =
@@ -415,4 +415,10 @@ class batch_data_slices {
   bool first_ = true;
 };
 
-}  // namespace ce::inline v3::json::detail
+}  // namespace ce::v3::json::detail
+
+namespace ce::inline v4::json::detail {
+using ce::v3::json::detail::batch_data_slices;
+using ce::v3::json::detail::data_member_text;
+using ce::v3::json::detail::json_slicer;
+}  // namespace ce::inline v4::json::detail

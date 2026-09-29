@@ -2,7 +2,7 @@
 uid: SWR-CORE-0036
 title: Moving a ce::v3 json_document copies it
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   v0.5.0 declared copy operations only for json_document, and its guide said that moving a document copies it, so every document holds a DOM.
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/v3/core.hpp]
+verified_by: [test:test/v3/json_document_test.cpp::a document is never empty, test:test/v3/v3_generation_test.cpp::v3-document-move-copies]
 owner: filip.sajdak
 version: 1
 ---

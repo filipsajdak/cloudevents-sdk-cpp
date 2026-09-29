@@ -81,8 +81,7 @@ namespace ce::v2 {
 namespace json = ce::v1::json;
 }  // namespace ce::v2
 
-// spec: SWR-BUILD-0005
-namespace ce::inline v3::json {
+namespace ce::v3::json {
 using ce::v1::json::batch_content_type;
 using ce::v1::json::content_type;
 using ce::v1::json::kind;
@@ -117,4 +116,13 @@ template<class C>
 concept string_adopting_codec = json_codec<C> && requires(std::string owned) {
   { C::adopt_string(std::move(owned)) } -> std::same_as<typename C::value>;
 };
-}  // namespace ce::inline v3::json
+}  // namespace ce::v3::json
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v4::json {
+using ce::v1::json::batch_content_type;
+using ce::v1::json::content_type;
+using ce::v1::json::kind;
+using ce::v3::json::json_codec;
+using ce::v3::json::string_adopting_codec;
+}  // namespace ce::inline v4::json

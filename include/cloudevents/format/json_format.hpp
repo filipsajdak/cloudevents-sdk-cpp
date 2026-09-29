@@ -16,24 +16,17 @@
 
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/detail/json_slice.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/result.hpp>
 
-namespace ce::inline v3 {
+namespace ce::inline v4 {
 
-namespace json {
-// spec: SWR-JSON-0040
-struct decode_options {
-  static constexpr std::size_t default_retention_limit = std::size_t{16} * 1024;
-  std::size_t retain_document_up_to = default_retention_limit;
-};
-
-namespace detail {
+namespace json::detail {
 template<json_codec Codec>
 struct typed_entry;
-}  // namespace detail
-}  // namespace json
+}  // namespace json::detail
 
 // spec: SYS-JSON-0001
 // spec: SWR-JSON-0010
@@ -56,7 +49,7 @@ struct json_format {
   [[nodiscard]] static auto encode(const event& cloud_event) -> result<std::string> {
     auto document = to_value(cloud_event);
     if (!document) {
-      return ce::v3::detail::forward_failure(std::move(document).error());
+      return ce::v4::detail::forward_failure(std::move(document).error());
     }
     return Codec::dump(*document);
   }
@@ -67,7 +60,7 @@ struct json_format {
     for (const auto& cloud_event : events) {
       auto document = to_value(cloud_event);
       if (!document) {
-        return ce::v3::detail::forward_failure(std::move(document).error());
+        return ce::v4::detail::forward_failure(std::move(document).error());
       }
       Codec::push(array, std::move(*document));
     }
@@ -187,13 +180,13 @@ struct json_format {
     for (const auto& [name, attribute] : cloud_event.extensions()) {
       auto encoded = encode_attribute(attribute);
       if (!encoded) {
-        return ce::v3::detail::forward_failure(std::move(encoded).error(), name.str());
+        return ce::v4::detail::forward_failure(std::move(encoded).error(), name.str());
       }
       Codec::set(root, name.view(), std::move(*encoded));
     }
 
     if (auto stored = write_data(root); !stored) {
-      return ce::v3::detail::forward_failure(std::move(stored).error());
+      return ce::v4::detail::forward_failure(std::move(stored).error());
     }
 
     return root;
@@ -208,7 +201,7 @@ struct json_format {
       auto cloud_event =
           read_event(document, nullptr, payload_mode::copy, std::nullopt, &json_member);
       if (!cloud_event) {
-        return ce::v3::detail::forward_failure(std::move(cloud_event).error());
+        return ce::v4::detail::forward_failure(std::move(cloud_event).error());
       }
       return read(std::move(*cloud_event), json_member);
     }
@@ -220,7 +213,7 @@ struct json_format {
                                                  Read read) -> result<std::vector<Out>> {
     auto document = Codec::parse(text);
     if (!document) {
-      return ce::v3::detail::forward_failure(std::move(document).error(), {});
+      return ce::v4::detail::forward_failure(std::move(document).error(), {});
     }
     if (Codec::kind_of(*document) != json::kind::array) {
       return fail(errc::parse_error, "a batch must be a JSON array");
@@ -247,7 +240,7 @@ struct json_format {
                                     mode == payload_mode::text ? own_texts.next() : std::nullopt,
                                     keeps_event ? nullptr : &json_member);
       if (!cloud_event) {
-        element_error = ce::v3::detail::forward_failure(std::move(cloud_event).error());
+        element_error = ce::v4::detail::forward_failure(std::move(cloud_event).error());
         return;
       }
       if constexpr (keeps_event) {
@@ -255,14 +248,14 @@ struct json_format {
       } else {
         auto out = read(std::move(*cloud_event), json_member);
         if (!out) {
-          element_error = ce::v3::detail::forward_failure(std::move(out).error());
+          element_error = ce::v4::detail::forward_failure(std::move(out).error());
           return;
         }
         events.push_back(std::move(*out));
       }
     });
     if (!element_error) {
-      return ce::v3::detail::forward_failure(std::move(element_error).error());
+      return ce::v4::detail::forward_failure(std::move(element_error).error());
     }
     return events;
   }
@@ -273,7 +266,7 @@ struct json_format {
                                            Read read) -> result<Out> {
     auto document = Codec::parse(text);
     if (!document) {
-      return ce::v3::detail::forward_failure(std::move(document).error(), {});
+      return ce::v4::detail::forward_failure(std::move(document).error(), {});
     }
     if constexpr (std::is_same_v<Read, keep_event>) {
       if (retains(text, options)) {
@@ -292,7 +285,7 @@ struct json_format {
                            json::detail::data_member_text(text),
                            &json_member);
       if (!cloud_event) {
-        return ce::v3::detail::forward_failure(std::move(cloud_event).error());
+        return ce::v4::detail::forward_failure(std::move(cloud_event).error());
       }
       return read(std::move(*cloud_event), json_member);
     }
@@ -335,15 +328,15 @@ struct json_format {
     });
 
     if (auto read = read_context(found, under_construction); !read) {
-      return ce::v3::detail::forward_failure(std::move(read).error());
+      return ce::v4::detail::forward_failure(std::move(read).error());
     }
     if (auto stored =
             decode_data(found, owned, mode, own_text, json_member, under_construction.rest);
         !stored) {
-      return ce::v3::detail::forward_failure(std::move(stored).error());
+      return ce::v4::detail::forward_failure(std::move(stored).error());
     }
     if (!extensions_read) {
-      return ce::v3::detail::forward_failure(std::move(extensions_read).error());
+      return ce::v4::detail::forward_failure(std::move(extensions_read).error());
     }
     return std::move(under_construction).build();
   }
@@ -424,7 +417,7 @@ struct json_format {
                                            std::optional<Attribute>& slot) -> result<void> {
     auto text = required_text_of(member, name);
     if (!text) {
-      return ce::v3::detail::forward_failure(std::move(text).error());
+      return ce::v4::detail::forward_failure(std::move(text).error());
     }
     return detail::store_attribute(slot, *text);
   }
@@ -434,7 +427,7 @@ struct json_format {
                                            std::optional<Attribute>& slot) -> result<void> {
     auto text = optional_text_of(member, name);
     if (!text) {
-      return ce::v3::detail::forward_failure(std::move(text).error());
+      return ce::v4::detail::forward_failure(std::move(text).error());
     }
     if (const auto& present = *text; present) {
       return detail::store_attribute(slot, *present);
@@ -446,12 +439,12 @@ struct json_format {
       -> result<void> {
     auto text = optional_text_of(member, "time");
     if (!text) {
-      return ce::v3::detail::forward_failure(std::move(text).error());
+      return ce::v4::detail::forward_failure(std::move(text).error());
     }
     if (const auto& present = *text; present) {
       auto parsed = parse_timestamp(*present);
       if (!parsed) {
-        return ce::v3::detail::forward_failure(std::move(parsed).error(), "time");
+        return ce::v4::detail::forward_failure(std::move(parsed).error(), "time");
       }
       into.time = *parsed;
     }
@@ -462,10 +455,10 @@ struct json_format {
       -> result<void> {
     auto version = required_text_of(found.specversion, "specversion");
     if (!version) {
-      return ce::v3::detail::forward_failure(std::move(version).error());
+      return ce::v4::detail::forward_failure(std::move(version).error());
     }
     if (auto supported = spec_version::make(*version); !supported) {
-      return ce::v3::detail::forward_failure(std::move(supported).error());
+      return ce::v4::detail::forward_failure(std::move(supported).error());
     }
     if (auto read = store_required(found.id, "id", into.id); !read) {
       return read;
@@ -500,11 +493,11 @@ struct json_format {
     }
     auto attribute = extension_name::make(name);
     if (!attribute) {
-      return ce::v3::detail::forward_failure(std::move(attribute).error(), std::string{name});
+      return ce::v4::detail::forward_failure(std::move(attribute).error(), std::string{name});
     }
     auto decoded = decode_attribute(member);
     if (!decoded) {
-      return ce::v3::detail::forward_failure(std::move(decoded).error(), std::string{name});
+      return ce::v4::detail::forward_failure(std::move(decoded).error(), std::string{name});
     }
     into.extensions.insert_or_assign(std::move(*attribute), std::move(*decoded));
     return {};
@@ -553,14 +546,14 @@ struct json_format {
       case json::kind::boolean: {
         auto held = Codec::as_bool(member);
         if (!held) {
-          return ce::v3::detail::forward_failure(std::move(held).error(), {});
+          return ce::v4::detail::forward_failure(std::move(held).error(), {});
         }
         return attribute_value{*held};
       }
       case json::kind::integer: {
         auto held = Codec::as_int(member);
         if (!held) {
-          return ce::v3::detail::forward_failure(std::move(held).error(), {});
+          return ce::v4::detail::forward_failure(std::move(held).error(), {});
         }
         if (*held < std::numeric_limits<std::int32_t>::min() ||
             *held > std::numeric_limits<std::int32_t>::max()) {
@@ -571,7 +564,7 @@ struct json_format {
       case json::kind::string: {
         auto held = Codec::as_string(member);
         if (!held) {
-          return ce::v3::detail::forward_failure(std::move(held).error(), {});
+          return ce::v4::detail::forward_failure(std::move(held).error(), {});
         }
         return attribute_value{std::string{*held}};
       }
@@ -649,7 +642,7 @@ struct json_format {
       }
       auto decoded = base64_decode(*text);
       if (!decoded) {
-        return ce::v3::detail::forward_failure(std::move(decoded).error(), "data_base64");
+        return ce::v4::detail::forward_failure(std::move(decoded).error(), "data_base64");
       }
       into.data = std::move(*decoded);
       return {};
@@ -735,4 +728,4 @@ struct typed_entry {
 };
 }  // namespace json::detail
 
-}  // namespace ce::inline v3
+}  // namespace ce::inline v4

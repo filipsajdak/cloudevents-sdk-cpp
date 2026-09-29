@@ -125,8 +125,7 @@ using ce::v1::to_string_view;
 using ce::v1::widen;
 }  // namespace ce::v2
 
-// spec: SWR-BUILD-0005
-namespace ce::inline v3 {
+namespace ce::v3 {
 using ce::v1::errc;
 using ce::v1::error;
 using ce::v1::fail;
@@ -148,4 +147,20 @@ namespace detail {
   return failure{std::move(diagnosis)};
 }
 }  // namespace detail
-}  // namespace ce::inline v3
+}  // namespace ce::v3
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v4 {
+using ce::v1::errc;
+using ce::v1::error;
+using ce::v1::fail;
+using ce::v1::failure;
+using ce::v1::result;
+using ce::v1::static_error;
+using ce::v1::to_string_view;
+using ce::v1::widen;
+
+namespace detail {
+using ce::v3::detail::forward_failure;
+}  // namespace detail
+}  // namespace ce::inline v4

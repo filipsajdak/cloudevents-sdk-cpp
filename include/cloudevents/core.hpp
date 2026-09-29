@@ -27,7 +27,7 @@
 
 // spec: SYS-CORE-0001
 // spec: SWR-BUILD-0005
-namespace ce::inline v3 {
+namespace ce::inline v4 {
 
 // spec: SWR-CORE-0031
 // spec: SWR-CORE-0032
@@ -216,14 +216,14 @@ class event {
       }
       auto read = detail::read_attribute<field_type>(*stored, name);
       if (!read) {
-        mapping_error = ce::v3::detail::forward_failure(std::move(read).error());
+        mapping_error = ce::v4::detail::forward_failure(std::move(read).error());
         return;
       }
       field = std::move(*read);
     });
 
     if (!mapping_error) {
-      return ce::v3::detail::forward_failure(std::move(mapping_error).error());
+      return ce::v4::detail::forward_failure(std::move(mapping_error).error());
     }
     return out;
   }
@@ -248,7 +248,7 @@ class event {
       }
       auto attribute = extension_name::make(name);
       if (!attribute) {
-        mapping_error = ce::v3::detail::forward_failure(std::move(attribute).error());
+        mapping_error = ce::v4::detail::forward_failure(std::move(attribute).error());
         return;
       }
       if constexpr (detail::is_optional_field<field_type>) {
@@ -282,4 +282,4 @@ class event {
   options rest_;
 };
 
-}  // namespace ce::inline v3
+}  // namespace ce::inline v4

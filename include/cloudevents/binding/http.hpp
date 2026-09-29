@@ -18,23 +18,23 @@
 #include <cloudevents/result.hpp>
 
 // spec: SYS-HTTP-0001
-namespace ce::inline v3::http {
+namespace ce::inline v4::http {
 
 namespace detail {
 
 inline constexpr std::string_view attribute_prefix = "ce-";
 inline constexpr std::string_view content_type_header = "Content-Type";
 
-using ce::v3::to_bytes;
-using ce::v3::to_text;
-using ce::v3::detail::is_valid_utf8;
-using ce::v3::detail::starts_with_ignoring_case;
-using ce::v3::binding::detail::hex_digit;
-using ce::v3::binding::detail::hex_value;
-using ce::v3::binding::detail::needs_escape;
-using ce::v3::binding::detail::percent_decode;
-using ce::v3::binding::detail::percent_encode;
-using ce::v3::binding::detail::text_of;
+using ce::v4::to_bytes;
+using ce::v4::to_text;
+using ce::v4::detail::is_valid_utf8;
+using ce::v4::detail::starts_with_ignoring_case;
+using ce::v4::binding::detail::hex_digit;
+using ce::v4::binding::detail::hex_value;
+using ce::v4::binding::detail::needs_escape;
+using ce::v4::binding::detail::percent_decode;
+using ce::v4::binding::detail::percent_encode;
+using ce::v4::binding::detail::text_of;
 
 inline constexpr unsigned char first_printable_ascii = 0x20U;
 inline constexpr unsigned char delete_character = 0x7FU;
@@ -42,9 +42,9 @@ inline constexpr unsigned char delete_character = 0x7FU;
 // spec: SWR-BIND-0004
 template <class Values>
 struct http_traits {
-  static constexpr std::string_view attribute_prefix = ce::v3::http::detail::attribute_prefix;
+  static constexpr std::string_view attribute_prefix = ce::v4::http::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
-      ce::v3::http::detail::content_type_header;
+      ce::v4::http::detail::content_type_header;
   static constexpr bool case_sensitive_names = false;
 
   [[nodiscard]] static auto encode_value(std::string_view text) -> result<std::string> {
@@ -141,7 +141,7 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
   if (auto written =
           binding::write_attributes<detail::http_traits<Values>>(cloud_event, out.header_fields);
       !written) {
-    return ce::v3::detail::forward_failure(std::move(written).error());
+    return ce::v4::detail::forward_failure(std::move(written).error());
   }
   binding::write_body(cloud_event, out);
   return out;
@@ -152,7 +152,7 @@ template <json::json_codec Codec>
 [[nodiscard]] auto to_batch_message(std::span<const event> events) -> result<message> {
   auto text = json_format<Codec>::encode_batch(events);
   if (!text) {
-    return ce::v3::detail::forward_failure(std::move(text).error());
+    return ce::v4::detail::forward_failure(std::move(text).error());
   }
   message out;
   out.header_fields.set(std::string{detail::content_type_header},
@@ -183,14 +183,14 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
   auto under_construction =
       binding::read_attributes<detail::http_traits<Values>>(request.header_fields);
   if (!under_construction) {
-    return ce::v3::detail::forward_failure(std::move(under_construction).error());
+    return ce::v4::detail::forward_failure(std::move(under_construction).error());
   }
 
   if (const std::string* declared = request.header_fields.find(detail::content_type_header);
       declared != nullptr) {
     auto media_type = datacontenttype::make(*declared);
     if (!media_type) {
-      return ce::v3::detail::forward_failure(std::move(media_type).error());
+      return ce::v4::detail::forward_failure(std::move(media_type).error());
     }
     under_construction->rest.datacontenttype = std::move(*media_type);
   }
@@ -209,4 +209,4 @@ template <json::json_codec Codec>
   return json_format<Codec>::decode_batch(detail::text_of(request.body));
 }
 
-}  // namespace ce::inline v3::http
+}  // namespace ce::inline v4::http

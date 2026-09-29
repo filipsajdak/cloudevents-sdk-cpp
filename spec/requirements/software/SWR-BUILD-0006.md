@@ -8,15 +8,21 @@ priority: high
 rationale: >
   SPEC 3 rule 4 forbids mutating `v1` once published, because a source-breaking
   change under an unchanged namespace name leaves consumers with no way to pin
-  the generation they compiled against.
+  the generation they compiled against. The owner ruled on 2026-09-28 (CR-0004)
+  that a change to behaviour the published documentation states breaks the API as
+  surely as a changed declaration: a program that compiled against the old
+  generation still compiles, and nothing in its build says it now reads a
+  different value. CR-0004 is the third use of this requirement, after CR-0002
+  and CR-0003.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: []
-verified_by: [test:test/build_test.cpp::config-v1-immutable, test:test/v1/v1_generation_test.cpp::v1-declarations-survive, test:test/v2/v2_generation_test.cpp::v2-declarations-survive]
+verified_by: [test:test/build_test.cpp::config-v1-immutable, test:test/v1/v1_generation_test.cpp::v1-declarations-survive, test:test/v2/v2_generation_test.cpp::v2-declarations-survive, test:test/v3/v3_generation_test.cpp::v3-declarations-survive]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
-When a change breaks the published API, the changed entities shall be declared
-in a new version namespace while the entities of every earlier generation keep
-their existing declarations.
+When a change alters a published declaration, or behaviour that the published
+documentation states, the changed entities shall be declared in a new version
+namespace while the entities of every earlier generation keep their existing
+declarations and their documented behaviour.

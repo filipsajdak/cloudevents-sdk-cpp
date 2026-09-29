@@ -119,12 +119,14 @@ constexpr std::array nested_exports{
     const std::string relative = std::filesystem::relative(entry.path(), root).generic_string();
     // Any detail/ segment, not only the top-level one: binding/detail/ is just
     // as private, and a header there is not something a module consumer names.
-    // cloudevents/v1/ and cloudevents/v2/ are the frozen generations, which the
-    // module does not export (ADR-0009, ADR-0010): a using-declaration of a v1 or
-    // v2 name into ce::v3 exports nothing.
+    // cloudevents/v1/, cloudevents/v2/ and cloudevents/v3/ are the frozen
+    // generations, which the module does not export (ADR-0009, ADR-0010,
+    // ADR-0012): a using-declaration of a v1, v2 or v3 name into ce::v4 exports
+    // nothing.
     if (relative.find("/detail/") != std::string::npos ||
         relative.find("cloudevents/codec/") != std::string::npos ||
-        relative.starts_with("cloudevents/v1/") || relative.starts_with("cloudevents/v2/")) {
+        relative.starts_with("cloudevents/v1/") || relative.starts_with("cloudevents/v2/") ||
+        relative.starts_with("cloudevents/v3/")) {
       continue;
     }
     found.push_back(relative);

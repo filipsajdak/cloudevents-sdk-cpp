@@ -1,0 +1,314 @@
+#pragma once
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <variant>
+
+#include <cloudevents/v3/core.hpp>
+#include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/v3/format/json_format.hpp>
+#include <cloudevents/message.hpp>
+#include <cloudevents/result.hpp>
+
+namespace ce::v3::binding {
+
+template <class T>
+concept binding_traits = requires(std::string_view text) {
+  { T::attribute_prefix } -> std::convertible_to<std::string_view>;
+  { T::content_type_header } -> std::convertible_to<std::string_view>;
+  { T::case_sensitive_names } -> std::convertible_to<bool>;
+  { T::encode_value(text) } -> std::same_as<result<std::string>>;
+  { T::decode_value(text) } -> std::same_as<result<std::string>>;
+};
+
+namespace detail {
+
+[[nodiscard]] inline auto text_of(const binary& body) noexcept -> std::string_view {
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  return {reinterpret_cast<const char*>(body.data()), body.size()};
+}
+
+template <class T>
+concept declares_content_type_as_attribute = requires {
+  { T::content_type_is_attribute } -> std::convertible_to<bool>;
+};
+
+template <class T>
+struct content_type_policy {
+  static constexpr bool as_attribute = false;
+};
+
+template <declares_content_type_as_attribute T>
+struct content_type_policy<T> {
+  static constexpr bool as_attribute = static_cast<bool>(T::content_type_is_attribute);
+};
+
+template <binding_traits T>
+void put(raw_headers& into, std::string name, std::string value) {
+  if constexpr (T::case_sensitive_names) {
+    into.set_exact(std::move(name), std::move(value));
+  } else {
+    into.set(std::move(name), std::move(value));
+  }
+}
+
+template <binding_traits T>
+[[nodiscard]] auto carries_prefix(std::string_view name) -> bool {
+  if constexpr (T::case_sensitive_names) {
+    return name.starts_with(std::string_view{T::attribute_prefix});
+  } else {
+    return ce::v3::detail::starts_with_ignoring_case(name, T::attribute_prefix);
+  }
+}
+
+template <binding_traits T>
+[[nodiscard]] auto same_field_name(std::string_view left, std::string_view right) -> bool {
+  if constexpr (T::case_sensitive_names) {
+    return left == right;
+  } else {
+    return ce::v3::detail::iequals(left, right);
+  }
+}
+
+template <binding_traits T>
+[[nodiscard]] auto first_repeated_name(const raw_headers& delivered) -> const std::string* {
+  for (auto later = delivered.begin(); later != delivered.end(); ++later) {
+    for (auto earlier = delivered.begin(); earlier != later; ++earlier) {
+      if (same_field_name<T>(earlier->first, later->first)) {
+        return &later->first;
+      }
+    }
+  }
+  return nullptr;
+}
+
+template <binding_traits T>
+[[nodiscard]] auto attribute_name_of(std::string_view field) -> std::string {
+  std::string name{field.substr(std::string_view{T::attribute_prefix}.size())};
+  if constexpr (!T::case_sensitive_names) {
+    for (char& character : name) {
+      character = ce::v3::detail::ascii_lower(character);
+    }
+  }
+  return name;
+}
+
+[[nodiscard]] inline auto text_attribute(const attribute_value& value) noexcept
+    -> std::optional<std::string_view> {
+  if (const auto* text = std::get_if<std::string>(&value)) {
+    return *text;
+  }
+  if (const auto* link = std::get_if<uri>(&value)) {
+    return link->view();
+  }
+  if (const auto* reference = std::get_if<uri_ref>(&value)) {
+    return reference->view();
+  }
+  return std::nullopt;
+}
+
+template <binding_traits T>
+[[nodiscard]] auto apply_attribute(event::builder& into, std::string attribute, std::string value)
+    -> result<void> {
+  if (attribute == "datacontenttype") {
+    if constexpr (content_type_policy<T>::as_attribute) {
+      return ce::v3::detail::store_attribute(into.rest.datacontenttype, std::move(value));
+    } else {
+      return fail(errc::invalid_argument,
+                  "this binding carries datacontenttype in its content-type field, "
+                  "not as a prefixed attribute",
+                  std::move(attribute));
+    }
+  }
+  if (attribute == "specversion") {
+    if (auto version = spec_version::make(value); !version) {
+      return ce::v3::detail::forward_failure(std::move(version).error());
+    }
+    return {};
+  }
+  if (attribute == "id") {
+    return ce::v3::detail::store_attribute(into.id, std::move(value));
+  }
+  if (attribute == "source") {
+    return ce::v3::detail::store_attribute(into.source, std::move(value));
+  }
+  if (attribute == "type") {
+    return ce::v3::detail::store_attribute(into.type, std::move(value));
+  }
+  if (attribute == "dataschema") {
+    return ce::v3::detail::store_attribute(into.rest.dataschema, std::move(value));
+  }
+  if (attribute == "subject") {
+    return ce::v3::detail::store_attribute(into.rest.subject, std::move(value));
+  }
+  if (attribute == "time") {
+    auto parsed = parse_timestamp(value);
+    if (!parsed) {
+      return ce::v3::detail::forward_failure(std::move(parsed).error(), "time");
+    }
+    into.rest.time = *parsed;
+    return {};
+  }
+  auto extension = extension_name::make(std::move(attribute));
+  if (!extension) {
+    return ce::v3::detail::forward_failure(std::move(extension).error());
+  }
+  into.rest.extensions.insert_or_assign(std::move(*extension), attribute_value{std::move(value)});
+  return {};
+}
+
+}  // namespace detail
+
+[[nodiscard]] inline auto render_attribute(const attribute_value& value) -> std::string {
+  return std::visit(
+      [](const auto& held) -> std::string {
+        using held_type = std::remove_cvref_t<decltype(held)>;
+        if constexpr (std::is_same_v<held_type, bool>) {
+          return held ? "true" : "false";
+        } else if constexpr (std::is_same_v<held_type, std::int32_t>) {
+          return std::to_string(held);
+        } else if constexpr (std::is_same_v<held_type, std::string>) {
+          return held;
+        } else if constexpr (std::is_same_v<held_type, binary>) {
+          return base64_encode(held);
+        } else if constexpr (std::is_same_v<held_type, timestamp>) {
+          return to_string(held);
+        } else {
+          return std::string{held.view()};
+        }
+      },
+      value);
+}
+
+template <binding_traits T>
+[[nodiscard]] auto write_attributes(const event& cloud_event, raw_headers& into) -> result<void> {
+  result<void> failure{};
+
+  const auto put_attribute = [&into, &failure](std::string_view name, std::string_view value) {
+    if (!failure) {
+      return;
+    }
+    auto encoded = T::encode_value(value);
+    if (!encoded) {
+      failure = ce::v3::detail::forward_failure(std::move(encoded).error(), std::string{name});
+      return;
+    }
+    detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
+  };
+
+  put_attribute("specversion", spec_version::view());
+  put_attribute("id", cloud_event.id().view());
+  put_attribute("source", cloud_event.source().view());
+  put_attribute("type", cloud_event.type().view());
+  if (const auto& schema = cloud_event.dataschema(); schema) {
+    put_attribute("dataschema", schema->view());
+  }
+  if (const auto& named = cloud_event.subject(); named) {
+    put_attribute("subject", named->view());
+  }
+  if (const auto& when = cloud_event.time(); when) {
+    put_attribute("time", to_string(*when));
+  }
+  for (const auto& [name, attribute] : cloud_event.extensions()) {
+    if (const auto text = detail::text_attribute(attribute); text) {
+      put_attribute(name.view(), *text);
+    } else {
+      put_attribute(name.view(), render_attribute(attribute));
+    }
+  }
+
+  if (!failure) {
+    return failure;
+  }
+
+  if (const auto& media_type = cloud_event.datacontenttype(); media_type) {
+    if constexpr (detail::content_type_policy<T>::as_attribute) {
+      put_attribute("datacontenttype", media_type->view());
+    } else {
+      detail::put<T>(into, std::string{T::content_type_header}, media_type->str());
+    }
+  }
+  return failure;
+}
+
+template <binding_traits T>
+[[nodiscard]] auto read_attributes(const raw_headers& delivered) -> result<event::builder> {
+  if (const std::string* repeated = detail::first_repeated_name<T>(delivered);
+      repeated != nullptr) {
+    return fail(errc::invalid_argument,
+                "two fields carry the same attribute, so which one is meant is undecidable",
+                *repeated);
+  }
+
+  event::builder under_construction{};
+  for (const auto& [name, raw_value] : delivered) {
+    if (!detail::carries_prefix<T>(name)) {
+      continue;
+    }
+    std::string attribute = detail::attribute_name_of<T>(name);
+
+    auto decoded = T::decode_value(raw_value);
+    if (!decoded) {
+      return ce::v3::detail::forward_failure(std::move(decoded).error(), attribute);
+    }
+    if (auto applied = detail::apply_attribute<T>(under_construction, std::move(attribute),
+                                                  std::move(*decoded));
+        !applied) {
+      return ce::v3::detail::forward_failure(std::move(applied).error());
+    }
+  }
+  return under_construction;
+}
+
+inline void write_body(const event& cloud_event, message& into) {
+  std::visit(
+      [&into](const auto& held) {
+        using held_type = std::remove_cvref_t<decltype(held)>;
+        if constexpr (std::is_same_v<held_type, std::monostate>) {
+        } else if constexpr (std::is_same_v<held_type, binary>) {
+          into.body = held;
+        } else if constexpr (std::is_same_v<held_type, std::string>) {
+          into.body = to_bytes(held);
+        } else if constexpr (std::is_same_v<held_type, json_document>) {
+          into.body = to_bytes(held.dump());
+        } else {
+          into.body = to_bytes(held.raw);
+        }
+      },
+      cloud_event.data());
+}
+
+[[nodiscard]] inline auto read_body(const binary& body,
+                                    const std::optional<datacontenttype>& media_type) -> data_t {
+  if (body.empty()) {
+    return {};
+  }
+  if (media_type && is_json_content_type(media_type->view())) {
+    return json_text{.raw = to_text(body)};
+  }
+  return body;
+}
+
+template <binding_traits T, json::json_codec Codec>
+[[nodiscard]] auto encode_structured(const event& cloud_event) -> result<message> {
+  auto text = json_format<Codec>::encode(cloud_event);
+  if (!text) {
+    return ce::v3::detail::forward_failure(std::move(text).error());
+  }
+  message out;
+  detail::put<T>(out.header_fields, std::string{T::content_type_header},
+                 std::string{json::content_type});
+  out.body = to_bytes(*text);
+  return out;
+}
+
+template <json::json_codec Codec>
+[[nodiscard]] auto decode_structured(const message& from) -> result<event> {
+  return json_format<Codec>::decode(detail::text_of(from.body));
+}
+
+}  // namespace ce::v3::binding

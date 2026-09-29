@@ -14,7 +14,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SWR-EXT-0006
-namespace ce::inline v3 {
+namespace ce::inline v4 {
 
 namespace detail {
 template<described T, json::json_codec Codec>
@@ -24,7 +24,7 @@ template<described T, json::json_codec Codec>
     if (decoded.error().where.empty()) {
       decoded.error().where = "data";
     }
-    return ce::v3::detail::forward_failure(std::move(decoded).error());
+    return ce::v4::detail::forward_failure(std::move(decoded).error());
   }
   return decoded;
 }
@@ -62,7 +62,7 @@ template<described T, json::json_codec Codec>
 
   auto document = Codec::parse(*text);
   if (!document) {
-    return ce::v3::detail::forward_failure(std::move(document).error(), "data");
+    return ce::v4::detail::forward_failure(std::move(document).error(), "data");
   }
 
   return detail::payload_from<T, Codec>(*document);
@@ -71,7 +71,7 @@ template<described T, json::json_codec Codec>
 // spec: SWR-EXT-0007
 template<class T>
 struct decoded {
-  ce::v3::event event;
+  ce::v4::event event;
   T payload;
 };
 
@@ -82,7 +82,7 @@ template<described T, json::json_codec Codec>
   auto payload = json_member != nullptr ? payload_from<T, Codec>(*json_member)
                                         : data_as<T, Codec>(cloud_event);
   if (!payload) {
-    return ce::v3::detail::forward_failure(std::move(payload).error());
+    return ce::v4::detail::forward_failure(std::move(payload).error());
   }
   return decoded<T>{.event = std::move(cloud_event), .payload = std::move(*payload)};
 }
@@ -126,7 +126,7 @@ template<described T, json::json_codec Codec>
   auto document = json::detail::typed_entry<Codec>::to_value(
       cloud_event, media_type, to_json_value<Codec>(payload));
   if (!document) {
-    return ce::v3::detail::forward_failure(std::move(document).error());
+    return ce::v4::detail::forward_failure(std::move(document).error());
   }
   return Codec::dump(*document);
 }
@@ -149,13 +149,13 @@ class event_of {
   explicit event_of(event cloud_event) : event_{std::move(cloud_event)} {}
 
   [[nodiscard]] static auto with_data(event cloud_event, const T& value) -> event_of {
-    ce::v3::set_data<T, Codec>(cloud_event, value);
+    ce::v4::set_data<T, Codec>(cloud_event, value);
     return event_of{std::move(cloud_event)};
   }
 
   [[nodiscard]] auto data() const -> result<T> { return data_as<T, Codec>(event_); }
 
-  void set_data(const T& value) { ce::v3::set_data<T, Codec>(event_, value); }
+  void set_data(const T& value) { ce::v4::set_data<T, Codec>(event_, value); }
 
   [[nodiscard]] auto underlying() const noexcept -> const event& { return event_; }
 
@@ -165,4 +165,4 @@ class event_of {
   event event_;
 };
 
-}  // namespace ce::inline v3
+}  // namespace ce::inline v4

@@ -4,7 +4,7 @@
 #include <string_view>
 #include <utility>
 
-namespace ce::inline v3::detail {
+namespace ce::v3::detail {
 
 class json_document_model {
  public:
@@ -59,4 +59,12 @@ class json_document_null_model final : public json_document_model {
 
 inline constexpr json_document_null_model moved_from_model{};
 
-}  // namespace ce::inline v3::detail
+}  // namespace ce::v3::detail
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v4::detail {
+using ce::v3::detail::json_document_holder;
+using ce::v3::detail::json_document_model;
+using ce::v3::detail::json_document_null_model;
+using ce::v3::detail::moved_from_model;
+}  // namespace ce::inline v4::detail

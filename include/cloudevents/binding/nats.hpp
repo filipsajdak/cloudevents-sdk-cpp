@@ -14,7 +14,7 @@
 
 // spec: SYS-NATS-0001
 // spec: SWR-NATS-0003
-namespace ce::inline v3::nats {
+namespace ce::inline v4::nats {
 
 // spec: SWR-NATS-0001
 // spec: SWR-NATS-0002
@@ -35,9 +35,9 @@ inline constexpr std::string_view attribute_prefix = "ce-";
 inline constexpr std::string_view content_type_header = "Content-Type";
 
 struct nats_traits {
-  static constexpr std::string_view attribute_prefix = ce::v3::nats::detail::attribute_prefix;
+  static constexpr std::string_view attribute_prefix = ce::v4::nats::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
-      ce::v3::nats::detail::content_type_header;
+      ce::v4::nats::detail::content_type_header;
   static constexpr bool case_sensitive_names = false;
   static constexpr bool content_type_is_attribute = true;
 
@@ -57,7 +57,7 @@ static_assert(binding::binding_traits<nats_traits>);
 [[nodiscard]] inline auto detect_content_mode(const message& incoming) -> content_mode {
   const std::string* declared = incoming.header_fields.find(detail::content_type_header);
   if (declared != nullptr &&
-      ce::v3::detail::starts_with_ignoring_case(*declared, "application/cloudevents")) {
+      ce::v4::detail::starts_with_ignoring_case(*declared, "application/cloudevents")) {
     return content_mode::structured;
   }
   return content_mode::binary_mode;
@@ -76,7 +76,7 @@ template <json::json_codec Codec>
   message out;
   if (auto written = binding::write_attributes<detail::nats_traits>(cloud_event, out.header_fields);
       !written) {
-    return ce::v3::detail::forward_failure(std::move(written).error());
+    return ce::v4::detail::forward_failure(std::move(written).error());
   }
   binding::write_body(cloud_event, out);
   return out;
@@ -95,7 +95,7 @@ template <json::json_codec Codec>
 
   auto under_construction = binding::read_attributes<detail::nats_traits>(incoming.header_fields);
   if (!under_construction) {
-    return ce::v3::detail::forward_failure(std::move(under_construction).error());
+    return ce::v4::detail::forward_failure(std::move(under_construction).error());
   }
 
   under_construction->rest.data =
@@ -104,4 +104,4 @@ template <json::json_codec Codec>
   return std::move(*under_construction).build();
 }
 
-}  // namespace ce::inline v3::nats
+}  // namespace ce::inline v4::nats

@@ -6,6 +6,7 @@
 #include <cloudevents/v2/binding/http.hpp>
 #include <cloudevents/v2/core.hpp>
 #include <cloudevents/v2/format/json_format.hpp>
+#include <cloudevents/v3/core.hpp>
 
 #include <string>
 #include <type_traits>

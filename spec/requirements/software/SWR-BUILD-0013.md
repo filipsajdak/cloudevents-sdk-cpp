@@ -2,7 +2,7 @@
 uid: SWR-BUILD-0013
 title: The v0.6.0 API is ce::v4, and ce::v3 keeps what v0.5.0 published
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   v0.5.0 published json_document with copy operations only and documented that moving a document copies it.
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/v3/core.hpp]
+verified_by: [test:test/v3/CMakeLists.txt::ce-v3-suites, test:test/v3/v3_generation_test.cpp::v3-declarations-survive]
 owner: filip.sajdak
 version: 2
 ---

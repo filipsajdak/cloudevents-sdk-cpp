@@ -14,7 +14,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SYS-KAFKA-0001
-namespace ce::inline v3::kafka {
+namespace ce::inline v4::kafka {
 
 namespace detail {
 
@@ -24,15 +24,15 @@ inline constexpr std::string_view attribute_prefix = "ce_";
 inline constexpr std::string_view content_type_header = "content-type";
 
 struct kafka_traits {
-  static constexpr std::string_view attribute_prefix = ce::v3::kafka::detail::attribute_prefix;
+  static constexpr std::string_view attribute_prefix = ce::v4::kafka::detail::attribute_prefix;
   static constexpr std::string_view content_type_header =
-      ce::v3::kafka::detail::content_type_header;
+      ce::v4::kafka::detail::content_type_header;
   // spec: SWR-KAFKA-0004
   static constexpr bool case_sensitive_names = true;
 
   // spec: SWR-KAFKA-0003
   [[nodiscard]] static auto encode_value(std::string_view text) -> result<std::string> {
-    if (!ce::v3::detail::is_valid_utf8(text)) {
+    if (!ce::v4::detail::is_valid_utf8(text)) {
       return fail(errc::invalid_utf8, "a Kafka header value must be a UTF-8 string");
     }
     return std::string{text};
@@ -75,7 +75,7 @@ template <json::json_codec Codec>
   message out;
   if (auto written = binding::write_attributes<detail::kafka_traits>(cloud_event, out.header_fields);
       !written) {
-    return ce::v3::detail::forward_failure(std::move(written).error());
+    return ce::v4::detail::forward_failure(std::move(written).error());
   }
   binding::write_body(cloud_event, out);
   return out;
@@ -100,14 +100,14 @@ template <json::json_codec Codec>
 
   auto under_construction = binding::read_attributes<detail::kafka_traits>(incoming.header_fields);
   if (!under_construction) {
-    return ce::v3::detail::forward_failure(std::move(under_construction).error());
+    return ce::v4::detail::forward_failure(std::move(under_construction).error());
   }
 
   if (const std::string* declared = incoming.header_fields.find_exact(detail::content_type_header);
       declared != nullptr) {
     auto media_type = datacontenttype::make(*declared);
     if (!media_type) {
-      return ce::v3::detail::forward_failure(std::move(media_type).error());
+      return ce::v4::detail::forward_failure(std::move(media_type).error());
     }
     under_construction->rest.datacontenttype = std::move(*media_type);
   }
@@ -154,9 +154,9 @@ template <json::json_codec Codec, key_mapper Keys = no_key_mapper>
 [[nodiscard]] auto to_record(const event& cloud_event, content_mode mode) -> result<record> {
   auto laid_out = to_message<Codec>(cloud_event, mode);
   if (!laid_out) {
-    return ce::v3::detail::forward_failure(std::move(laid_out).error());
+    return ce::v4::detail::forward_failure(std::move(laid_out).error());
   }
   return record{.value = std::move(*laid_out), .key = Keys::key_of(cloud_event)};
 }
 
-}  // namespace ce::inline v3::kafka
+}  // namespace ce::inline v4::kafka

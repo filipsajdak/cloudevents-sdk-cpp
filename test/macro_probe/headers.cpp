@@ -33,6 +33,13 @@
 #include <cloudevents/v2/core.hpp>
 #include <cloudevents/v2/format/json_format.hpp>
 #include <cloudevents/v2/format/typed_payload.hpp>
+#include <cloudevents/v3/binding/common.hpp>
+#include <cloudevents/v3/binding/http.hpp>
+#include <cloudevents/v3/binding/kafka.hpp>
+#include <cloudevents/v3/binding/nats.hpp>
+#include <cloudevents/v3/core.hpp>
+#include <cloudevents/v3/format/json_format.hpp>
+#include <cloudevents/v3/format/typed_payload.hpp>
 
 // A codec header exists in a build only when its codec is in CE_CODECS. The
 // switches are not CE_-prefixed, so they cannot reach the set under test.

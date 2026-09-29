@@ -15,7 +15,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: [code:include/cloudevents/v3/core.hpp]
-verified_by: [test:test/v3/CMakeLists.txt::ce-v3-suites, test:test/v3/v3_generation_test.cpp::v3-declarations-survive]
+verified_by: [test:test/v3/CMakeLists.txt::ce-v3-suites, test:test/v3/v3_generation_test.cpp::v3-declarations-survive, test:test/module_test.cpp::module-exports-v4-only]
 owner: filip.sajdak
 version: 2
 ---

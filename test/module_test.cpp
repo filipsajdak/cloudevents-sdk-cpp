@@ -76,26 +76,26 @@ constexpr std::array exported_names{CE_MODULE_EXPORTS(CE_NAME_STRING)};
 /// Names exported from a nested namespace inside the module. Checked for
 /// presence in the file, and their existence is proven by the includes above.
 constexpr std::array nested_exports{
-    "ce::v3::json::json_codec"sv, "ce::v3::json::kind"sv, "ce::v3::json::decode_options"sv,
-    "ce::v3::http::from_message"sv, "ce::v3::http::to_message"sv,
-    "ce::v3::ext::tracing"sv,       "ce::v3::ext::dataref"sv,
-    "ce::v3::binding::binding_traits"sv,
-    "ce::v3::binding::write_attributes"sv,
-    "ce::v3::binding::read_attributes"sv,
-    "ce::v3::kafka::to_record"sv,
-    "ce::v3::kafka::from_message"sv,
-    "ce::v3::kafka::partitionkey_mapper"sv,
-    "ce::v3::nats::to_payload"sv,
-    "ce::v3::nats::from_payload"sv,
-    "ce::v3::nats::to_message"sv,
-    "ce::v3::nats::from_message"sv,
-    "ce::v3::literals::operator\"\"_dataschema"sv,
-    "ce::v3::literals::operator\"\"_ext"sv,
-    "ce::v3::literals::operator\"\"_id"sv,
-    "ce::v3::literals::operator\"\"_mediatype"sv,
-    "ce::v3::literals::operator\"\"_source"sv,
-    "ce::v3::literals::operator\"\"_subject"sv,
-    "ce::v3::literals::operator\"\"_type"sv,
+    "ce::v4::json::json_codec"sv, "ce::v4::json::kind"sv, "ce::v4::json::decode_options"sv,
+    "ce::v4::http::from_message"sv, "ce::v4::http::to_message"sv,
+    "ce::v4::ext::tracing"sv,       "ce::v4::ext::dataref"sv,
+    "ce::v4::binding::binding_traits"sv,
+    "ce::v4::binding::write_attributes"sv,
+    "ce::v4::binding::read_attributes"sv,
+    "ce::v4::kafka::to_record"sv,
+    "ce::v4::kafka::from_message"sv,
+    "ce::v4::kafka::partitionkey_mapper"sv,
+    "ce::v4::nats::to_payload"sv,
+    "ce::v4::nats::from_payload"sv,
+    "ce::v4::nats::to_message"sv,
+    "ce::v4::nats::from_message"sv,
+    "ce::v4::literals::operator\"\"_dataschema"sv,
+    "ce::v4::literals::operator\"\"_ext"sv,
+    "ce::v4::literals::operator\"\"_id"sv,
+    "ce::v4::literals::operator\"\"_mediatype"sv,
+    "ce::v4::literals::operator\"\"_source"sv,
+    "ce::v4::literals::operator\"\"_subject"sv,
+    "ce::v4::literals::operator\"\"_type"sv,
 };
 
 [[nodiscard]] auto read_module() -> std::string {
@@ -185,7 +185,7 @@ const boost::ut::suite<"module-wrapper-optional"> module_wrapper = [] {
     // these names exist; this proves the module actually exports them.
     const std::string source = read_module();
     for (const auto exported : exported_names) {
-      const std::string declaration = "using ce::v3::" + std::string{exported} + ";";
+      const std::string declaration = "using ce::v4::" + std::string{exported} + ";";
       expect(source.find(declaration) != std::string::npos)
           << "the module does not export ce::" << exported;
     }
@@ -204,7 +204,7 @@ const boost::ut::suite<"module-wrapper-optional"> module_wrapper = [] {
     }
     std::size_t pos = 0;
     std::size_t counted = 0;
-    const std::string marker = "using ce::v3::";
+    const std::string marker = "using ce::v4::";
     while ((pos = source.find(marker, pos)) != std::string::npos) {
       const std::size_t start = pos + marker.size();
       const std::size_t end = source.find(';', start);
@@ -212,7 +212,7 @@ const boost::ut::suite<"module-wrapper-optional"> module_wrapper = [] {
         break;
       }
       const std::string symbol = source.substr(start, end - start);
-      // Nested exports are spelled ce::v3::json::x and handled above.
+      // Nested exports are spelled ce::v4::json::x and handled above.
       if (symbol.find("::") == std::string::npos) {
         expect(named.contains(symbol)) << "the module exports ce::" << symbol
                                        << ", which this test does not name";
@@ -223,6 +223,33 @@ const boost::ut::suite<"module-wrapper-optional"> module_wrapper = [] {
     expect(counted == exported_names.size())
         << "the module exports " << counted << " top-level names, the test names "
         << exported_names.size();
+  };
+};
+
+// spec: SWR-BUILD-0013
+const boost::ut::suite<"module-exports-v4-only"> module_exports_v4_only = [] {
+  using namespace boost::ut;
+
+  // A frozen generation is reached by including its headers, never through the
+  // module (ADR-0009, ADR-0010, ADR-0012). Exporting one would put a second event
+  // model behind every import, and the v3 conversions would pull in the v3 one.
+  "it exports no frozen generation"_test = [] {
+    const std::string source = read_module();
+    for (const auto frozen : {"using ce::v1::"sv, "using ce::v2::"sv, "using ce::v3::"sv}) {
+      expect(source.find(frozen) == std::string::npos)
+          << "the module exports a name through " << frozen;
+    }
+    for (const auto copies : {"cloudevents/v1/"sv, "cloudevents/v2/"sv, "cloudevents/v3/"sv}) {
+      expect(source.find(copies) == std::string::npos)
+          << "the module includes a frozen header from " << copies;
+    }
+  };
+
+  "it exports neither conversion between v3 and v4"_test = [] {
+    const std::string source = read_module();
+    expect(source.find("from_v3") == std::string::npos);
+    expect(source.find("to_v3") == std::string::npos);
+    expect(source.find("v3_conversion") == std::string::npos);
   };
 };
 

@@ -467,7 +467,7 @@ if (parsed) {
   There is no default constructor, so every `json_document` starts with a DOM.
   Moving one hands its DOM over without touching the reference count, and leaves the source as a moved-from document: `dump()` returns `null`, `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to another moved-from document, never to a document holding JSON null.
   Every member may still be called on it, and assigning to it gives it a value again.
-  In v0.5.0 moving a document copied it; since then a moved-from document reads as null, so copy a document you still need to read.
+  This is `ce::v4`'s document. `ce::v3::json_document` keeps what v0.5.0 published: moving it copies it, and the source keeps its DOM (section 11). Copy a v4 document you still need to read.
 - **`get<Codec>()` returns the DOM only to the codec that built it.**
   It compares `Codec::identity` with the builder's identity, by value; any other codec gets `nullptr`, and `built_by<Codec>()` asks the same question as a `bool`.
 - **Two documents compare as JSON values.**
@@ -801,11 +801,32 @@ The types rule out an invalid event, but they cannot rule out these.
 
 ## 11. API generations
 
-Everything in this guide is `ce::v3`, the inline namespace, so `ce::event` names it.
+Everything in this guide is `ce::v4`, the inline namespace, so `ce::event` names it.
 
+`ce::v3` holds what v0.5.0 published: the `event` class whose `data_t` carries a `json_document`, a document that copies when moved, and the format and bindings built on them.
 `ce::v2` holds what v0.4.0 published: the `event` class whose `data_t` has four alternatives, and the format and bindings built on it.
 `ce::v1` holds what v0.3.0 published: the aggregate `event` with `validate()`, and the format and bindings built on it.
-Both stay as they were, and they take defect fixes but no changes.
+All three stay as they were, in their declarations and in the behaviour this guide documented for them, and they take defect fixes but no changes.
+
+Code written against v0.5.0 keeps compiling, and keeps reading what it read, if it spells `ce::v3::` and includes the `v3/` headers:
+
+```cpp
+#include <cloudevents/v3/binding/http.hpp>
+#include <cloudevents/v3/core.hpp>
+
+inline auto v3_request() -> ce::v3::result<ce::v3::message> {
+  auto order = ce::v3::event::builder{
+      .id = "A1"_id,
+      .source = "/orders"_source,
+      .type = "com.example.order.placed"_type,
+  }.build();
+  if (!order) {
+    return ce::v3::fail(order.error().code, order.error().detail, order.error().where);
+  }
+  return ce::v3::http::to_message<ce::v3::codec::nlohmann_codec>(*order,
+                                                                  ce::v3::content_mode::binary_mode);
+}
+```
 
 Code written against v0.4.0 keeps compiling if it spells `ce::v2::` and includes the `v2/` headers:
 
@@ -841,9 +862,10 @@ inline auto legacy_request() -> ce::v1::result<ce::v1::message> {
 ```
 
 What did not change between the generations is one type through every spelling.
-`errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam are shared by all three generations, so a codec written for v0.3.0 works with v3 unchanged.
-The attribute types, `timestamp`, `message` and the typed extensions are shared by v2 and v3, so `ce::v2::id` and `ce::id` are one type, and a v2 event and a v3 event exchange attributes and messages without a conversion.
-The optional C++20 module exports `ce::v3` only.
+`errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam are shared by all four generations, so a codec written for v0.3.0 works with v4 unchanged.
+The attribute types, `timestamp`, `message` and the typed extensions are shared by v2, v3 and v4, so `ce::v2::id` and `ce::id` are one type, and events of those generations exchange attributes and messages without a conversion.
+The v3 codec concept, `json::decode_options` and the model behind a `json_document` are shared by v3 and v4.
+The optional C++20 module exports `ce::v4` only.
 
 ## Also available
 

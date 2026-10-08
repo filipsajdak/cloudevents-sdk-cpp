@@ -1437,6 +1437,29 @@ which its v0.5.0 text did not, and still keeps `implemented` with
 `delivered_in: v0.5.0`: the owner ruled on 2026-09-29 that it follows CR-0003,
 which widened its statement without reopening it.
 
+## D-CORE-11: The conversions reach the generations through one friend, and v3 compares a moved-from document symmetrically
+
+`from_v3` and `to_v3` (SWR-CORE-0037, SWR-CORE-0038) need the private model of
+a document and the private parts of an event, in both generations. Both events
+and both documents befriend one detail struct, `ce::v3::detail::generation_access`,
+which `v3_conversion.hpp` defines and `detail/json_document_model.hpp` declares.
+Neither generation gains a public member, and for `ce::v3` the friend
+declarations are an addition under rule 4. An rvalue conversion moves a v4
+source's parts and leaves a v4 document moved-from; a v3 document is shared
+rather than moved, because moving a v3 document copies it (SWR-CORE-0036) and
+the v3 source must keep its DOM. That costs one reference-count operation, not a
+DOM.
+
+A converted moved-from document is the first way to reach a moved-from
+`ce::v3::json_document`, and the frozen equality had no branch for it. A
+moved-from document on the left compared unequal to a JSON null, and the same
+pair the other way round compared equal, because the codec's `equal_text` parses
+the moved-from `null`. SWR-CORE-0040 promises it equals only another moved-from
+document, so the body of `ce::v3`'s `operator==` now returns false when either
+model has an empty identity and the models differ, as the v4 operator does. No
+declaration changes, and no document v0.5.0 could build has an empty identity
+(SWR-JSON-0039), so every result v0.5.0 produced is kept (D-CODEC-3).
+
 ## D-CODEC-4: A codec takes over a string through `adopt_string`
 
 The encoder builds the RFC 3339 text of a timestamp and the base64 text of

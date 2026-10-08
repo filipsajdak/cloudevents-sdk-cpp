@@ -20,6 +20,11 @@ declarations and behaviour both.
 - **What v3 shared stays shared**, now with v4 too: the attribute types, `timestamp`, `message`, the literals, the typed extensions, `errc`, `error`, `result`, the codecs and their concepts, base64 and the describe seam are one type through `ce::`, `ce::v4::` and `ce::v3::`.
   So are `json::decode_options`, now declared in `format/decode_options.hpp`, and the model behind a `json_document`.
 - **The optional module exports `ce::v4` only.**
+- **Events convert between the generations.**
+  `ce::v4::from_v3` and `ce::v4::to_v3`, declared in the opt-in header `<cloudevents/v3_conversion.hpp>`, take an event by `const&` or `&&` and return the other generation's event, not a `result`, because no conversion can fail.
+  A `json_document` converts in constant time, because both generations' documents point at one model: a conversion copies or moves that pointer and never a DOM.
+  `to_v3` of a moved-from v4 document yields a v3 document on the same moved-from model, which dumps `null`.
+  No other SDK header includes the conversions, and the module does not export them, so `import cloudevents;` never brings in the v3 event model.
 
 ### Changes since v0.5.0
 

@@ -6,10 +6,11 @@ The design is ADR-0011; the rules are `SWR-PERF-0001` to `SWR-PERF-0007`.
 
 ## What is measured
 
-Twenty operations, each with six codecs: the three the SDK ships (nlohmann, RapidJSON and Boost.JSON) and the bench's own copies of RapidJSON and Boost.JSON, plus Glaze, which the SDK does not ship.
+Twenty-three operations, each with six codecs: the three the SDK ships (nlohmann, RapidJSON and Boost.JSON) and the bench's own copies of RapidJSON and Boost.JSON, plus Glaze, which the SDK does not ship.
 The operations are decode of a minimal, a full and a large event, encode of the full event, a round trip, a batch of 100 each way, and the typed payload paths.
 The typed paths are a read of a payload `set_data` wrote with the same codec, a read of a document that codec built, a write, and the typed entry points: `decode_as` of the full and the large event, `decode_batch_as` of the batch, and `encode_as` of the full event.
 Six more go through the bindings with the full event: HTTP binary-mode decode and encode, HTTP structured decode and encode, and Kafka and NATS binary-mode decode.
+Three more decode a binary-mode message carrying a typed payload and then read it with `data_as`, over HTTP, Kafka and NATS (`http_decode_binary_typed` and its siblings): the receive and the read together, because a decoder that keeps the body as text and one that keeps a document trade cost between those two steps.
 The first fourteen are the operations `bench/codec_bench.cpp` times, over the documents in `bench/documents.hpp` and the payload types in `bench/typed_documents.hpp`.
 
 The shipped codecs are measured because they are what a consumer runs.

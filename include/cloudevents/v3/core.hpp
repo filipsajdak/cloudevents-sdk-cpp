@@ -63,6 +63,11 @@ class json_document {
     if (left.model_ == right.model_) {
       return true;
     }
+    // Only a document reached through to_v3 can be moved-from (SWR-CORE-0040),
+    // and it equals only another moved-from document, whichever side it is on.
+    if (left.model_->identity().empty() || right.model_->identity().empty()) {
+      return false;
+    }
     if (left.model_->identity() == right.model_->identity()) {
       return left.model_->equal_value(*right.model_);
     }

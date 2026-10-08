@@ -412,10 +412,9 @@ const boost::ut::suite<"to-v3-of-a-moved-from-document"> to_v3_of_a_moved_from_d
     expect(back == v4_event_with(moved_from_v4()));
   };
 
-  // ce::v3::json_document::operator== has no moved-from branch of its own, and
-  // a converted document is the first way to reach one. These pin the result in
-  // both argument orders, so that a comparison cannot depend on which side the
-  // moved-from document stands.
+  // A conversion is the only way to reach a moved-from ce::v3 document. These
+  // pin its comparison in both argument orders, so that the result cannot
+  // depend on which side the moved-from document stands.
   "two converted moved-from documents are equal in either order"_test = [] {
     const auto first = ce::v4::to_v3(v4_event_with(moved_from_v4()));
     const auto second = ce::v4::to_v3(v4_event_with(moved_from_v4()));
@@ -424,6 +423,31 @@ const boost::ut::suite<"to-v3-of-a-moved-from-document"> to_v3_of_a_moved_from_d
     expect(left == right);
     expect(right == left);
     expect(first == second);
+  };
+
+  "a converted moved-from document differs from a JSON null in either order"_test = [] {
+    const auto moved = ce::v4::to_v3(v4_event_with(moved_from_v4()));
+    const auto& gone = std::get<ce::v3::json_document>(moved.data());
+    for (const auto& json_null : {document_from<mini_codec, ce::v3::json_document>("null"sv),
+                                  document_from<counting_codec, ce::v3::json_document>("null"sv),
+                                  document_from<other_codec, ce::v3::json_document>("null"sv)}) {
+      expect(json_null.dump() == gone.dump()) << "both serialise as null";
+      expect(!(gone == json_null)) << "moved-from on the left";
+      expect(!(json_null == gone)) << "moved-from on the right";
+      expect(gone != json_null);
+      expect(json_null != gone);
+    }
+  };
+
+  "an event with a moved-from payload differs from one carrying null in either order"_test = [] {
+    const auto moved = ce::v4::to_v3(v4_event_with(moved_from_v4()));
+    const ce::v3::event with_null{
+        "7"_id,
+        "/s"_source,
+        "t"_type,
+        {.data = document_from<mini_codec, ce::v3::json_document>("null"sv)}};
+    expect(!(moved == with_null));
+    expect(!(with_null == moved));
   };
 
   "a v3 document copied from a converted one stays moved-from"_test = [] {

@@ -4,13 +4,32 @@ Notable changes per release. Dates are the tag date.
 
 ## Unreleased
 
+Moving a `json_document` no longer copies it, which changes behaviour v0.5.0
+documented. A documented behaviour is part of the API, so the change ships as a
+fourth API generation, `ce::v4`, which is the inline namespace, and everything
+since v0.5.0 ships with it as v0.6.0. `ce::v3` keeps what v0.5.0 published,
+declarations and behaviour both.
+
+### Four generations
+
+- **`ce::v4` is the inline namespace**, so `ce::event` and `ce::json_document` now name the v4 classes.
+- **`ce::v3` holds the v0.5.0 surface.**
+  The headers that mention `event`, `data_t` or `json_document` are copied under `include/cloudevents/v3/`: `core.hpp`, `format/json_format.hpp`, `format/typed_payload.hpp` and the four binding headers.
+  A v3 declaration does not change, and neither does its documented behaviour; v3 takes defect fixes only.
+  `ce::v3::json_document` declares copy operations only, as v0.5.0 did, so moving it copies it and the source keeps its DOM.
+- **What v3 shared stays shared**, now with v4 too: the attribute types, `timestamp`, `message`, the literals, the typed extensions, `errc`, `error`, `result`, the codecs and their concepts, base64 and the describe seam are one type through `ce::`, `ce::v4::` and `ce::v3::`.
+  So are `json::decode_options`, now declared in `format/decode_options.hpp`, and the model behind a `json_document`.
+- **The optional module exports `ce::v4` only.**
+
+### Changes since v0.5.0
+
 - **A codec may take over the strings the encoder builds.**
   A codec that provides `adopt_string(std::string&&) -> value` receives the RFC 3339 text of timestamps and the base64 text of binary data by move instead of by view; `ce::json::string_adopting_codec<C>` detects it.
-  It is optional, so a v0.5.0 codec keeps compiling and keeps the copy. `nlohmann_codec` provides it.
-- **Moving a `json_document` no longer copies it.**
-  In v0.5.0 a move copied the document, so the source still held the same DOM.
+  It is optional, so a v0.5.0 codec keeps compiling and keeps the copy. `nlohmann_codec` provides it, and the `ce::v3` and `ce::v4` encoders both use it.
+- **Moving a `ce::v4::json_document` no longer copies it.**
+  In v0.5.0 a move copied the document, so the source still held the same DOM, and `ce::v3::json_document` still does.
   Now a move hands the DOM over without touching the reference count, and the moved-from document reads as JSON null: `dump()` returns `null`, `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to another moved-from document.
-  It is still never empty, and every member may be called on it. Code that read a document after moving from it now sees null; copy it instead.
+  It is still never empty, and every member may be called on it. v4 code that read a document after moving from it now sees null; copy it instead, or stay on `ce::v3`.
 
 ## v0.5.0 - 2026-09-27
 

@@ -15,7 +15,7 @@
 #include <cloudevents/result.hpp>
 
 // spec: SYS-BIND-0001
-namespace ce::inline v3::binding {
+namespace ce::inline v4::binding {
 
 // spec: SWR-BIND-0001
 template <class T>
@@ -64,7 +64,7 @@ template <binding_traits T>
   if constexpr (T::case_sensitive_names) {
     return name.starts_with(std::string_view{T::attribute_prefix});
   } else {
-    return ce::v3::detail::starts_with_ignoring_case(name, T::attribute_prefix);
+    return ce::v4::detail::starts_with_ignoring_case(name, T::attribute_prefix);
   }
 }
 
@@ -74,7 +74,7 @@ template <binding_traits T>
   if constexpr (T::case_sensitive_names) {
     return left == right;
   } else {
-    return ce::v3::detail::iequals(left, right);
+    return ce::v4::detail::iequals(left, right);
   }
 }
 
@@ -95,7 +95,7 @@ template <binding_traits T>
   std::string name{field.substr(std::string_view{T::attribute_prefix}.size())};
   if constexpr (!T::case_sensitive_names) {
     for (char& character : name) {
-      character = ce::v3::detail::ascii_lower(character);
+      character = ce::v4::detail::ascii_lower(character);
     }
   }
   return name;
@@ -121,7 +121,7 @@ template <binding_traits T>
     -> result<void> {
   if (attribute == "datacontenttype") {
     if constexpr (content_type_policy<T>::as_attribute) {
-      return ce::v3::detail::store_attribute(into.rest.datacontenttype, std::move(value));
+      return ce::v4::detail::store_attribute(into.rest.datacontenttype, std::move(value));
     } else {
       return fail(errc::invalid_argument,
                   "this binding carries datacontenttype in its content-type field, "
@@ -131,36 +131,36 @@ template <binding_traits T>
   }
   if (attribute == "specversion") {
     if (auto version = spec_version::make(value); !version) {
-      return ce::v3::detail::forward_failure(std::move(version).error());
+      return ce::v4::detail::forward_failure(std::move(version).error());
     }
     return {};
   }
   if (attribute == "id") {
-    return ce::v3::detail::store_attribute(into.id, std::move(value));
+    return ce::v4::detail::store_attribute(into.id, std::move(value));
   }
   if (attribute == "source") {
-    return ce::v3::detail::store_attribute(into.source, std::move(value));
+    return ce::v4::detail::store_attribute(into.source, std::move(value));
   }
   if (attribute == "type") {
-    return ce::v3::detail::store_attribute(into.type, std::move(value));
+    return ce::v4::detail::store_attribute(into.type, std::move(value));
   }
   if (attribute == "dataschema") {
-    return ce::v3::detail::store_attribute(into.rest.dataschema, std::move(value));
+    return ce::v4::detail::store_attribute(into.rest.dataschema, std::move(value));
   }
   if (attribute == "subject") {
-    return ce::v3::detail::store_attribute(into.rest.subject, std::move(value));
+    return ce::v4::detail::store_attribute(into.rest.subject, std::move(value));
   }
   if (attribute == "time") {
     auto parsed = parse_timestamp(value);
     if (!parsed) {
-      return ce::v3::detail::forward_failure(std::move(parsed).error(), "time");
+      return ce::v4::detail::forward_failure(std::move(parsed).error(), "time");
     }
     into.rest.time = *parsed;
     return {};
   }
   auto extension = extension_name::make(std::move(attribute));
   if (!extension) {
-    return ce::v3::detail::forward_failure(std::move(extension).error());
+    return ce::v4::detail::forward_failure(std::move(extension).error());
   }
   into.rest.extensions.insert_or_assign(std::move(*extension), attribute_value{std::move(value)});
   return {};
@@ -200,7 +200,7 @@ template <binding_traits T>
     }
     auto encoded = T::encode_value(value);
     if (!encoded) {
-      failure = ce::v3::detail::forward_failure(std::move(encoded).error(), std::string{name});
+      failure = ce::v4::detail::forward_failure(std::move(encoded).error(), std::string{name});
       return;
     }
     detail::put<T>(into, std::string{T::attribute_prefix}.append(name), std::move(*encoded));
@@ -259,12 +259,12 @@ template <binding_traits T>
 
     auto decoded = T::decode_value(raw_value);
     if (!decoded) {
-      return ce::v3::detail::forward_failure(std::move(decoded).error(), attribute);
+      return ce::v4::detail::forward_failure(std::move(decoded).error(), attribute);
     }
     if (auto applied = detail::apply_attribute<T>(under_construction, std::move(attribute),
                                                   std::move(*decoded));
         !applied) {
-      return ce::v3::detail::forward_failure(std::move(applied).error());
+      return ce::v4::detail::forward_failure(std::move(applied).error());
     }
   }
   return under_construction;
@@ -304,7 +304,7 @@ template <binding_traits T, json::json_codec Codec>
 [[nodiscard]] auto encode_structured(const event& cloud_event) -> result<message> {
   auto text = json_format<Codec>::encode(cloud_event);
   if (!text) {
-    return ce::v3::detail::forward_failure(std::move(text).error());
+    return ce::v4::detail::forward_failure(std::move(text).error());
   }
   message out;
   detail::put<T>(out.header_fields, std::string{T::content_type_header},
@@ -318,4 +318,4 @@ template <json::json_codec Codec>
   return json_format<Codec>::decode(detail::text_of(from.body));
 }
 
-}  // namespace ce::inline v3::binding
+}  // namespace ce::inline v4::binding

@@ -150,6 +150,7 @@ endif()
 
 add_subdirectory(v1)
 add_subdirectory(v2)
+add_subdirectory(v3)
 
 # The performance job's comparison, budget and history tools (SWR-PERF-0001 to
 # 0007). Standard-library Python, so they run in every build that has an

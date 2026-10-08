@@ -171,8 +171,13 @@ using ce::v1::base64_decode;
 using ce::v1::base64_encode;
 }  // namespace ce::v2
 
-// spec: SWR-BUILD-0005
-namespace ce::inline v3 {
+namespace ce::v3 {
 using ce::v1::base64_decode;
 using ce::v1::base64_encode;
-}  // namespace ce::inline v3
+}  // namespace ce::v3
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v4 {
+using ce::v1::base64_decode;
+using ce::v1::base64_encode;
+}  // namespace ce::inline v4

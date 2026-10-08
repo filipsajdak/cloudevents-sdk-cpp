@@ -1,5 +1,5 @@
 # The v0.4.0 fuzz targets, spelled against ce::v2 (SWR-BUILD-0012). They share
-# the seed corpora with the v3 targets, because the wire formats are the same.
+# the seed corpora with the v4 targets, because the wire formats are the same.
 
 set(CE_V2_CORPUS ${CMAKE_CURRENT_SOURCE_DIR}/../corpus)
 

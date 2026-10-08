@@ -63,6 +63,9 @@ Rules that keep the C++29 upgrade cheap:
    keeps what v0.3.0 published.*
    *Applied again in v0.5.0 (CR-0003, ADR-0010): the inline namespace is now `ce::v3`, and
    `ce::v2` keeps what v0.4.0 published.*
+   *Applied a third time for v0.6.0 (CR-0004, ADR-0012): the inline namespace is now `ce::v4`,
+   and `ce::v3` keeps what v0.5.0 published. A change to behaviour the published documentation
+   states is a breaking change too, not only a changed declaration.*
 5. No deprecated or removed-in-C++26 library features. Deprecation warnings are errors.
 6. CI carries an allowed-to-fail job building with the newest available
    `-std=` flag on compiler trunk to surface breakage early.

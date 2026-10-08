@@ -172,7 +172,11 @@ namespace ce::v2 {
 namespace codec = ce::v1::codec;
 }  // namespace ce::v2
 
-// spec: SWR-BUILD-0005
-namespace ce::inline v3 {
+namespace ce::v3 {
 namespace codec = ce::v1::codec;
-}  // namespace ce::inline v3
+}  // namespace ce::v3
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v4 {
+namespace codec = ce::v1::codec;
+}  // namespace ce::inline v4

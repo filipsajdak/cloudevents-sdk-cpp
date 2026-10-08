@@ -1,0 +1,693 @@
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include <cloudevents/v3/core.hpp>
+#include <cloudevents/format/base64.hpp>
+#include <cloudevents/format/decode_options.hpp>
+#include <cloudevents/format/detail/json_slice.hpp>
+#include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/result.hpp>
+
+namespace ce::v3 {
+
+namespace json {
+namespace detail {
+template<json_codec Codec>
+struct typed_entry;
+}  // namespace detail
+}  // namespace json
+
+template <json::json_codec Codec>
+struct json_format {
+  using value = Codec::value;
+
+  static constexpr std::string_view content_type = json::content_type;
+  static constexpr std::string_view batch_content_type = json::batch_content_type;
+
+  [[nodiscard]] static auto to_value(const event& cloud_event) -> result<value> {
+    const auto& media_type = cloud_event.datacontenttype();
+    return to_value_writing(
+        cloud_event,
+        media_type ? std::optional<std::string_view>{media_type->view()} : std::nullopt,
+        [&cloud_event](value& root) { return encode_data(root, cloud_event.data()); });
+  }
+
+  [[nodiscard]] static auto encode(const event& cloud_event) -> result<std::string> {
+    auto document = to_value(cloud_event);
+    if (!document) {
+      return ce::v3::detail::forward_failure(std::move(document).error());
+    }
+    return Codec::dump(*document);
+  }
+
+  [[nodiscard]] static auto encode_batch(std::span<const event> events) -> result<std::string> {
+    auto array = Codec::make_array();
+    for (const auto& cloud_event : events) {
+      auto document = to_value(cloud_event);
+      if (!document) {
+        return ce::v3::detail::forward_failure(std::move(document).error());
+      }
+      Codec::push(array, std::move(*document));
+    }
+    return Codec::dump(array);
+  }
+
+  [[nodiscard]] static auto required_text(const value& document, std::string_view name)
+      -> result<std::string_view> {
+    return required_text_of(Codec::find(document, name), name);
+  }
+
+  [[nodiscard]] static auto optional_text(const value& document, std::string_view name)
+      -> result<std::optional<std::string_view>> {
+    return optional_text_of(Codec::find(document, name), name);
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto read_required(const value& document, std::string_view name,
+                                          std::optional<Attribute>& slot) -> result<void> {
+    return store_required(Codec::find(document, name), name, slot);
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto read_optional(const value& document, std::string_view name,
+                                          std::optional<Attribute>& slot) -> result<void> {
+    return store_optional(Codec::find(document, name), name, slot);
+  }
+
+  [[nodiscard]] static auto read_time(const value& document, event::options& into)
+      -> result<void> {
+    return store_time(Codec::find(document, "time"), into);
+  }
+
+  [[nodiscard]] static auto read_context_attributes(const value& document,
+                                                    event::builder& into) -> result<void> {
+    return read_context(
+        members{
+            .specversion = Codec::find(document, "specversion"),
+            .id = Codec::find(document, "id"),
+            .source = Codec::find(document, "source"),
+            .type = Codec::find(document, "type"),
+            .datacontenttype = Codec::find(document, "datacontenttype"),
+            .dataschema = Codec::find(document, "dataschema"),
+            .subject = Codec::find(document, "subject"),
+            .time = Codec::find(document, "time"),
+            .data = nullptr,
+            .data_base64 = nullptr,
+        },
+        into);
+  }
+
+  [[nodiscard]] static auto read_extensions(const value& document, event::options& into)
+      -> result<void> {
+    result<void> outcome{};
+    Codec::for_each_member(document, [&](std::string_view name, const value& member) {
+      if (!outcome || reserved_name(name)) {
+        return;
+      }
+      outcome = read_extension(name, member, into);
+    });
+    return outcome;
+  }
+
+  [[nodiscard]] static auto from_value(const value& document) -> result<event> {
+    return from_value_reading<event>(document, keep_event{});
+  }
+
+  [[nodiscard]] static auto decode(std::string_view text, json::decode_options options = {})
+      -> result<event> {
+    return decode_reading<event>(text, options, keep_event{});
+  }
+
+  [[nodiscard]] static auto decode_batch(std::string_view text, json::decode_options options = {})
+      -> result<std::vector<event>> {
+    return decode_batch_reading<event>(text, options, keep_event{});
+  }
+
+ private:
+  friend struct json::detail::typed_entry<Codec>;
+
+  enum class payload_mode : std::uint8_t { text, copy, move };
+
+  struct keep_event {};
+
+  template<class WriteData>
+  [[nodiscard]] static auto to_value_writing(const event& cloud_event,
+                                             std::optional<std::string_view> media_type,
+                                             WriteData write_data) -> result<value> {
+    auto root = Codec::make_object();
+    Codec::set(root, "specversion", Codec::make_string(spec_version::view()));
+    Codec::set(root, "id", Codec::make_string(cloud_event.id().view()));
+    Codec::set(root, "source", Codec::make_string(cloud_event.source().view()));
+    Codec::set(root, "type", Codec::make_string(cloud_event.type().view()));
+
+    if (media_type) {
+      Codec::set(root, "datacontenttype", Codec::make_string(*media_type));
+    }
+    if (const auto& schema = cloud_event.dataschema(); schema) {
+      Codec::set(root, "dataschema", Codec::make_string(schema->view()));
+    }
+    if (const auto& named = cloud_event.subject(); named) {
+      Codec::set(root, "subject", Codec::make_string(named->view()));
+    }
+    if (const auto& when = cloud_event.time(); when) {
+      Codec::set(root, "time", built_string(to_string(*when)));
+    }
+
+    for (const auto& [name, attribute] : cloud_event.extensions()) {
+      auto encoded = encode_attribute(attribute);
+      if (!encoded) {
+        return ce::v3::detail::forward_failure(std::move(encoded).error(), name.str());
+      }
+      Codec::set(root, name.view(), std::move(*encoded));
+    }
+
+    if (auto stored = write_data(root); !stored) {
+      return ce::v3::detail::forward_failure(std::move(stored).error());
+    }
+
+    return root;
+  }
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto from_value_reading(const value& document, Read read) -> result<Out> {
+    if constexpr (std::is_same_v<Read, keep_event>) {
+      return read_event(document, nullptr, payload_mode::copy, std::nullopt);
+    } else {
+      const value* json_member = nullptr;
+      auto cloud_event =
+          read_event(document, nullptr, payload_mode::copy, std::nullopt, &json_member);
+      if (!cloud_event) {
+        return ce::v3::detail::forward_failure(std::move(cloud_event).error());
+      }
+      return read(std::move(*cloud_event), json_member);
+    }
+  }
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode_batch_reading(std::string_view text,
+                                                 const json::decode_options& options,
+                                                 Read read) -> result<std::vector<Out>> {
+    auto document = Codec::parse(text);
+    if (!document) {
+      return ce::v3::detail::forward_failure(std::move(document).error(), {});
+    }
+    if (Codec::kind_of(*document) != json::kind::array) {
+      return fail(errc::parse_error, "a batch must be a JSON array");
+    }
+
+    // The batch owns its parsed array, so each element's data member is moved
+    // into its event, as decode moves the one member of a single event.
+    const std::size_t event_count = Codec::size_of(*document);
+    const auto mode =
+        retains_batch(text, event_count, options) ? payload_mode::move : payload_mode::text;
+    std::vector<Out> events;
+    events.reserve(event_count);
+    result<void> element_error{};
+    json::detail::batch_data_slices own_texts{text};
+    Codec::for_each_mutable_element(*document, [&](value& element) {
+      if (!element_error) {
+        return;
+      }
+      constexpr bool keeps_event = std::is_same_v<Read, keep_event>;
+      const value* json_member = nullptr;
+      auto cloud_event = read_event(element,
+                                    &element,
+                                    mode,
+                                    mode == payload_mode::text ? own_texts.next() : std::nullopt,
+                                    keeps_event ? nullptr : &json_member);
+      if (!cloud_event) {
+        element_error = ce::v3::detail::forward_failure(std::move(cloud_event).error());
+        return;
+      }
+      if constexpr (keeps_event) {
+        events.push_back(std::move(*cloud_event));
+      } else {
+        auto out = read(std::move(*cloud_event), json_member);
+        if (!out) {
+          element_error = ce::v3::detail::forward_failure(std::move(out).error());
+          return;
+        }
+        events.push_back(std::move(*out));
+      }
+    });
+    if (!element_error) {
+      return ce::v3::detail::forward_failure(std::move(element_error).error());
+    }
+    return events;
+  }
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode_reading(std::string_view text,
+                                           const json::decode_options& options,
+                                           Read read) -> result<Out> {
+    auto document = Codec::parse(text);
+    if (!document) {
+      return ce::v3::detail::forward_failure(std::move(document).error(), {});
+    }
+    if constexpr (std::is_same_v<Read, keep_event>) {
+      if (retains(text, options)) {
+        return read_event(*document, &*document, payload_mode::move, std::nullopt);
+      }
+      return read_event(
+          *document, &*document, payload_mode::text, json::detail::data_member_text(text));
+    } else {
+      const value* json_member = nullptr;
+      auto cloud_event =
+          retains(text, options)
+              ? read_event(*document, &*document, payload_mode::move, std::nullopt, &json_member)
+              : read_event(*document,
+                           &*document,
+                           payload_mode::text,
+                           json::detail::data_member_text(text),
+                           &json_member);
+      if (!cloud_event) {
+        return ce::v3::detail::forward_failure(std::move(cloud_event).error());
+      }
+      return read(std::move(*cloud_event), json_member);
+    }
+  }
+
+  [[nodiscard]] static auto retains(std::string_view text, const json::decode_options& options)
+      -> bool {
+    return options.retain_document_up_to != 0 && text.size() <= options.retain_document_up_to;
+  }
+
+  [[nodiscard]] static auto retains_batch(std::string_view text,
+                                          std::size_t event_count,
+                                          const json::decode_options& options) -> bool {
+    const auto limit = options.retain_document_up_to;
+    if (limit == 0) {
+      return false;
+    }
+    return event_count > std::numeric_limits<std::size_t>::max() / limit ||
+           text.size() <= limit * event_count;
+  }
+
+  [[nodiscard]] static auto read_event(const value& document,
+                                       value* owned,
+                                       payload_mode mode,
+                                       std::optional<std::string_view> own_text,
+                                       const value** json_member = nullptr) -> result<event> {
+    if (Codec::kind_of(document) != json::kind::object) {
+      return fail(errc::parse_error, "a CloudEvent must be a JSON object");
+    }
+
+    event::builder under_construction{};
+    members found{};
+    result<void> extensions_read{};
+    Codec::for_each_member(document, [&](std::string_view name, const value& member) {
+      if (claim(found, name, member) || !extensions_read) {
+        return;
+      }
+      extensions_read = read_extension(name, member, under_construction.rest);
+    });
+
+    if (auto read = read_context(found, under_construction); !read) {
+      return ce::v3::detail::forward_failure(std::move(read).error());
+    }
+    if (auto stored =
+            decode_data(found, owned, mode, own_text, json_member, under_construction.rest);
+        !stored) {
+      return ce::v3::detail::forward_failure(std::move(stored).error());
+    }
+    if (!extensions_read) {
+      return ce::v3::detail::forward_failure(std::move(extensions_read).error());
+    }
+    return std::move(under_construction).build();
+  }
+
+  struct members {
+    const value* specversion{};
+    const value* id{};
+    const value* source{};
+    const value* type{};
+    const value* datacontenttype{};
+    const value* dataschema{};
+    const value* subject{};
+    const value* time{};
+    const value* data{};
+    const value* data_base64{};
+  };
+
+  using member_slot = std::pair<std::string_view, const value* members::*>;
+
+  static constexpr auto member_slots = std::to_array<member_slot>({
+      {"specversion", &members::specversion},
+      {"id", &members::id},
+      {"source", &members::source},
+      {"type", &members::type},
+      {"datacontenttype", &members::datacontenttype},
+      {"dataschema", &members::dataschema},
+      {"subject", &members::subject},
+      {"time", &members::time},
+      {"data", &members::data},
+      {"data_base64", &members::data_base64},
+  });
+
+  static_assert(member_slots.size() == detail::reserved_names.size());
+  static_assert(std::ranges::all_of(detail::reserved_names, [](std::string_view name) {
+    return std::ranges::find(member_slots, name, &member_slot::first) != member_slots.end();
+  }));
+
+  [[nodiscard]] static auto claim(members& found, std::string_view name, const value& member)
+      -> bool {
+    for (const auto& [slot_name, slot] : member_slots) {
+      if (name == slot_name) {
+        if (found.*slot == nullptr) {
+          found.*slot = &member;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  [[nodiscard]] static auto required_text_of(const value* member, std::string_view name)
+      -> result<std::string_view> {
+    if (member == nullptr) {
+      return fail(errc::missing_required_attribute, "required attribute is absent",
+                  std::string{name});
+    }
+    auto text = Codec::as_string(*member);
+    if (!text) {
+      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
+    }
+    return *text;
+  }
+
+  [[nodiscard]] static auto optional_text_of(const value* member, std::string_view name)
+      -> result<std::optional<std::string_view>> {
+    if (member == nullptr || Codec::kind_of(*member) == json::kind::null) {
+      return std::optional<std::string_view>{};
+    }
+    auto text = Codec::as_string(*member);
+    if (!text) {
+      return fail(errc::invalid_attribute_value, "must be a JSON string", std::string{name});
+    }
+    return std::optional<std::string_view>{*text};
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto store_required(const value* member, std::string_view name,
+                                           std::optional<Attribute>& slot) -> result<void> {
+    auto text = required_text_of(member, name);
+    if (!text) {
+      return ce::v3::detail::forward_failure(std::move(text).error());
+    }
+    return detail::store_attribute(slot, *text);
+  }
+
+  template <class Attribute>
+  [[nodiscard]] static auto store_optional(const value* member, std::string_view name,
+                                           std::optional<Attribute>& slot) -> result<void> {
+    auto text = optional_text_of(member, name);
+    if (!text) {
+      return ce::v3::detail::forward_failure(std::move(text).error());
+    }
+    if (const auto& present = *text; present) {
+      return detail::store_attribute(slot, *present);
+    }
+    return {};
+  }
+
+  [[nodiscard]] static auto store_time(const value* member, event::options& into)
+      -> result<void> {
+    auto text = optional_text_of(member, "time");
+    if (!text) {
+      return ce::v3::detail::forward_failure(std::move(text).error());
+    }
+    if (const auto& present = *text; present) {
+      auto parsed = parse_timestamp(*present);
+      if (!parsed) {
+        return ce::v3::detail::forward_failure(std::move(parsed).error(), "time");
+      }
+      into.time = *parsed;
+    }
+    return {};
+  }
+
+  [[nodiscard]] static auto read_context(const members& found, event::builder& into)
+      -> result<void> {
+    auto version = required_text_of(found.specversion, "specversion");
+    if (!version) {
+      return ce::v3::detail::forward_failure(std::move(version).error());
+    }
+    if (auto supported = spec_version::make(*version); !supported) {
+      return ce::v3::detail::forward_failure(std::move(supported).error());
+    }
+    if (auto read = store_required(found.id, "id", into.id); !read) {
+      return read;
+    }
+    if (auto read = store_required(found.source, "source", into.source); !read) {
+      return read;
+    }
+    if (auto read = store_required(found.type, "type", into.type); !read) {
+      return read;
+    }
+    if (auto read = store_optional(found.datacontenttype, "datacontenttype",
+                                   into.rest.datacontenttype);
+        !read) {
+      return read;
+    }
+    if (auto read = store_optional(found.dataschema, "dataschema", into.rest.dataschema); !read) {
+      return read;
+    }
+    if (auto read = store_optional(found.subject, "subject", into.rest.subject); !read) {
+      return read;
+    }
+    return store_time(found.time, into.rest);
+  }
+
+  [[nodiscard]] static auto read_extension(std::string_view name, const value& member,
+                                           event::options& into) -> result<void> {
+    if (Codec::kind_of(member) == json::kind::null) {
+      return {};
+    }
+    auto attribute = extension_name::make(name);
+    if (!attribute) {
+      return ce::v3::detail::forward_failure(std::move(attribute).error(), std::string{name});
+    }
+    auto decoded = decode_attribute(member);
+    if (!decoded) {
+      return ce::v3::detail::forward_failure(std::move(decoded).error(), std::string{name});
+    }
+    into.extensions.insert_or_assign(std::move(*attribute), std::move(*decoded));
+    return {};
+  }
+
+  [[nodiscard]] static auto encode_attribute(const attribute_value& attribute) -> result<value> {
+    return std::visit(
+        [](const auto& held) -> result<value> {
+          using held_type = std::remove_cvref_t<decltype(held)>;
+          if constexpr (std::is_same_v<held_type, bool>) {
+            return Codec::make_bool(held);
+          } else if constexpr (std::is_same_v<held_type, std::int32_t>) {
+            return Codec::make_int(held);
+          } else if constexpr (std::is_same_v<held_type, std::string>) {
+            return Codec::make_string(held);
+          } else if constexpr (std::is_same_v<held_type, binary>) {
+            return built_string(base64_encode(held));
+          } else if constexpr (std::is_same_v<held_type, timestamp>) {
+            return built_string(to_string(held));
+          } else {
+            return Codec::make_string(held.view());
+          }
+        },
+        attribute);
+  }
+
+  [[nodiscard]] static auto built_string(std::string&& text) -> value
+    requires json::string_adopting_codec<Codec>
+  {
+    return Codec::adopt_string(std::move(text));
+  }
+
+  [[nodiscard]] static auto built_string(std::string_view text) -> value {
+    return Codec::make_string(text);
+  }
+
+  [[nodiscard]] static auto decode_attribute(const value& member) -> result<attribute_value> {
+    switch (Codec::kind_of(member)) {
+      case json::kind::boolean: {
+        auto held = Codec::as_bool(member);
+        if (!held) {
+          return ce::v3::detail::forward_failure(std::move(held).error(), {});
+        }
+        return attribute_value{*held};
+      }
+      case json::kind::integer: {
+        auto held = Codec::as_int(member);
+        if (!held) {
+          return ce::v3::detail::forward_failure(std::move(held).error(), {});
+        }
+        if (*held < std::numeric_limits<std::int32_t>::min() ||
+            *held > std::numeric_limits<std::int32_t>::max()) {
+          return fail(errc::out_of_range, "the CloudEvents Integer type is 32-bit signed");
+        }
+        return attribute_value{static_cast<std::int32_t>(*held)};
+      }
+      case json::kind::string: {
+        auto held = Codec::as_string(member);
+        if (!held) {
+          return ce::v3::detail::forward_failure(std::move(held).error(), {});
+        }
+        return attribute_value{std::string{*held}};
+      }
+      case json::kind::floating:
+        return fail(errc::type_mismatch, "the CloudEvents type system has no floating-point type");
+      case json::kind::null:
+      case json::kind::array:
+      case json::kind::object:
+        break;
+    }
+    return fail(errc::type_mismatch, "an extension attribute must be a boolean, integer or string");
+  }
+
+  [[nodiscard]] static auto encode_data(value& root, const data_t& data) -> result<void> {
+    return std::visit(
+        [&root](const auto& held) -> result<void> {
+          using held_type = std::remove_cvref_t<decltype(held)>;
+          if constexpr (std::is_same_v<held_type, std::monostate>) {
+            return {};
+          } else if constexpr (std::is_same_v<held_type, binary>) {
+            Codec::set(root, "data_base64", built_string(base64_encode(held)));
+            return {};
+          } else if constexpr (std::is_same_v<held_type, std::string>) {
+            Codec::set(root, "data", Codec::make_string(held));
+            return {};
+          } else if constexpr (std::is_same_v<held_type, json_document>) {
+            if (const auto* own = held.template get<Codec>(); own != nullptr) {
+              Codec::set(root, "data", Codec::copy(*own));
+              return {};
+            }
+            auto converted = Codec::parse(held.dump());
+            if (!converted) {
+              return fail(errc::parse_error, "data is not well-formed JSON", "/data");
+            }
+            Codec::set(root, "data", std::move(*converted));
+            return {};
+          } else {
+            auto parsed = Codec::parse(held.raw);
+            if (!parsed) {
+              return fail(errc::parse_error, "data is not well-formed JSON", "/data");
+            }
+            Codec::set(root, "data", std::move(*parsed));
+            return {};
+          }
+        },
+        data);
+  }
+
+  [[nodiscard]] static auto decode_data(const members& found,
+                                        value* owned,
+                                        payload_mode mode,
+                                        std::optional<std::string_view> own_text,
+                                        const value** json_member,
+                                        event::options& into) -> result<void> {
+    const value* data = found.data;
+    const value* data_base64 = found.data_base64;
+    if (data != nullptr && data_base64 != nullptr) {
+      return fail(errc::data_conflict, "data and data_base64 are mutually exclusive", "data");
+    }
+
+    if (data_base64 != nullptr) {
+      auto text = Codec::as_string(*data_base64);
+      if (!text) {
+        return fail(errc::invalid_attribute_value, "data_base64 must be a JSON string",
+                    "data_base64");
+      }
+      auto decoded = base64_decode(*text);
+      if (!decoded) {
+        return ce::v3::detail::forward_failure(std::move(decoded).error(), "data_base64");
+      }
+      into.data = std::move(*decoded);
+      return {};
+    }
+
+    if (data == nullptr) {
+      return {};
+    }
+
+    const auto& media_type = into.datacontenttype;
+    const bool declared_non_json = media_type && !is_json_content_type(media_type->view());
+    if (declared_non_json && Codec::kind_of(*data) == json::kind::string) {
+      auto text = Codec::as_string(*data);
+      if (!text) {
+        return fail(errc::invalid_attribute_value, "data must be a JSON string", "data");
+      }
+      into.data = std::string{*text};
+      return {};
+    }
+
+    if (json_member != nullptr && mode != payload_mode::move) {
+      *json_member = data;
+    }
+    into.data = json_payload(*data, owned, mode, own_text);
+    return {};
+  }
+
+  [[nodiscard]] static auto json_payload(const value& data, value* owned, payload_mode mode,
+                                         std::optional<std::string_view> own_text) -> data_t {
+    switch (mode) {
+      case payload_mode::text:
+        return json_text{.raw = own_text ? std::string{*own_text} : Codec::dump(data)};
+      case payload_mode::copy: return json_document::make<Codec>(Codec::copy(data));
+      case payload_mode::move: break;
+    }
+    if (owned == nullptr || Codec::find(*owned, "data") != &data) {
+      return json_document::make<Codec>(Codec::copy(data));
+    }
+    return json_document::make<Codec>(Codec::extract(*owned, "data"));
+  }
+};
+
+namespace json::detail {
+template<json_codec Codec>
+struct typed_entry {
+  using format = json_format<Codec>;
+  using value = Codec::value;
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode(std::string_view text, const decode_options& options, Read read)
+      -> result<Out> {
+    return format::template decode_reading<Out>(text, options, std::move(read));
+  }
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto decode_batch(std::string_view text,
+                                         const decode_options& options,
+                                         Read read) -> result<std::vector<Out>> {
+    return format::template decode_batch_reading<Out>(text, options, std::move(read));
+  }
+
+  template<class Out, class Read>
+  [[nodiscard]] static auto from_value(const value& document, Read read) -> result<Out> {
+    return format::template from_value_reading<Out>(document, std::move(read));
+  }
+
+  [[nodiscard]] static auto to_value(const event& cloud_event,
+                                     std::string_view media_type,
+                                     value payload) -> result<value> {
+    return format::to_value_writing(
+        cloud_event, media_type, [&payload](value& root) -> result<void> {
+          Codec::set(root, "data", std::move(payload));
+          return {};
+        });
+  }
+};
+}  // namespace json::detail
+
+}  // namespace ce::v3

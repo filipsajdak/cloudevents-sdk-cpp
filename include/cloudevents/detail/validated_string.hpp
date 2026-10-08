@@ -124,7 +124,11 @@ class validated_string {
 
 }  // namespace ce::v2::detail
 
-// spec: SWR-BUILD-0005
-namespace ce::inline v3::detail {
+namespace ce::v3::detail {
 using ce::v2::detail::validated_string;
-}  // namespace ce::inline v3::detail
+}  // namespace ce::v3::detail
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v4::detail {
+using ce::v2::detail::validated_string;
+}  // namespace ce::inline v4::detail

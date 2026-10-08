@@ -222,8 +222,13 @@ template<json::json_codec Codec, described T>
 
 }  // namespace ce::v2
 
-// spec: SWR-BUILD-0005
-namespace ce::inline v3 {
+namespace ce::v3 {
 using ce::v2::from_json_value;
 using ce::v2::to_json_value;
-}  // namespace ce::inline v3
+}  // namespace ce::v3
+
+// spec: SWR-BUILD-0005
+namespace ce::inline v4 {
+using ce::v2::from_json_value;
+using ce::v2::to_json_value;
+}  // namespace ce::inline v4

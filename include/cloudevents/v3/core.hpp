@@ -70,6 +70,8 @@ class json_document {
   }
 
  private:
+  friend struct ce::v3::detail::generation_access;
+
   explicit json_document(std::shared_ptr<const detail::json_document_model> model)
       : model_{std::move(model)} {}
 
@@ -248,6 +250,8 @@ class event {
   }
 
  private:
+  friend struct ce::v3::detail::generation_access;
+
   ce::v3::id id_;
   ce::v3::source source_;
   ce::v3::type type_;

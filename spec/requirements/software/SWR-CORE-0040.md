@@ -2,7 +2,7 @@
 uid: SWR-CORE-0040
 title: to_v3 of a moved-from json_document yields a valid ce::v3 document
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A ce::v4 json_document can be in the moved-from state of SWR-CORE-0035, and ce::v3 promised in v0.5.0 that every document holds a DOM a codec built.
@@ -13,9 +13,9 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/v3_conversion.hpp]
+verified_by: [test:test/generation_conversion_test.cpp::to-v3-of-a-moved-from-document]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
 When `to_v3` converts an event whose payload is a moved-from `ce::v4::json_document`, it shall store a `ce::v3::json_document` that shares the moved-from model, whose `dump()` returns `null` and whose `get<Codec>()` returns `nullptr` for every codec.

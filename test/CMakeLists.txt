@@ -82,6 +82,8 @@ ce_add_test(binding_core_test SOURCES binding_core_test.cpp)
 ce_add_test(message_headers_test SOURCES message_headers_test.cpp)
 ce_add_test(http_encoding_test SOURCES http_encoding_test.cpp)
 ce_add_test(timestamp_test SOURCES timestamp_test.cpp)
+# The conversions name no codec: the suite builds its own, so it runs in a build with none.
+ce_add_test(generation_conversion_test SOURCES generation_conversion_test.cpp)
 
 ce_add_test(module_test SOURCES module_test.cpp)
 # CE_MODULE_IN_DEFAULT_BUILD carries the option's value rather than a constant,

@@ -64,9 +64,12 @@ int main() {
                     "com.example.order.placed"_type};
 
   // set_data writes the struct as the payload and sets datacontenttype, so the
-  // event states what it carries. It returns nothing: a described type is one
-  // the describe seam already accepted, so there is no failure to report.
-  ce::set_data<shop::order, codec>(subject, placed);
+  // event states what it carries. It keeps a JSON media type the event already
+  // declares and refuses any other with type_mismatch, so it returns a result.
+  if (auto stored = ce::set_data<shop::order, codec>(subject, placed); !stored) {
+    std::fprintf(stderr, "set_data: %s\n", stored.error().detail.c_str());
+    return 1;
+  }
 
   auto encoded = ce::json_format<codec>::encode(subject);
   if (!encoded) {
@@ -96,7 +99,11 @@ int main() {
   // consumer share a compile-time contract instead of a documented convention.
   auto view = ce::event_of<shop::line_item, codec>::with_data(
       subject, shop::line_item{.sku = "SKU-1", .quantity = 2});
-  auto item = view.data();
+  if (!view) {
+    std::fprintf(stderr, "event_of::with_data: %s\n", view.error().detail.c_str());
+    return 1;
+  }
+  auto item = view->data();
   if (!item) {
     std::fprintf(stderr, "event_of::data: %s\n", item.error().detail.c_str());
     return 1;

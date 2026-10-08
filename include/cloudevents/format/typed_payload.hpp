@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -132,11 +133,21 @@ template<described T, json::json_codec Codec>
 }
 
 // spec: SWR-EXT-0011
+// spec: SWR-EXT-0013
 template<described T, json::json_codec Codec>
-void set_data(event& cloud_event, const T& value) {
+[[nodiscard]] auto set_data(event& cloud_event, const T& value) -> result<void> {
   using namespace ce::literals;
+  const auto& declared = cloud_event.datacontenttype();
+  if (declared && !is_json_content_type(declared->view())) {
+    return fail(errc::type_mismatch,
+                "a typed payload is JSON but datacontenttype says otherwise",
+                "datacontenttype");
+  }
+  // event::set_data replaces the payload and the media type together, so the declared
+  // one is passed back in: a copy at that boundary, not a rewrite of the caller's choice.
   cloud_event.set_data(json_document::make<Codec>(to_json_value<Codec>(value)),
-                       "application/json"_mediatype);
+                       declared ? declared : std::optional{"application/json"_mediatype});
+  return {};
 }
 
 // spec: SWR-EXT-0004
@@ -148,14 +159,20 @@ class event_of {
 
   explicit event_of(event cloud_event) : event_{std::move(cloud_event)} {}
 
-  [[nodiscard]] static auto with_data(event cloud_event, const T& value) -> event_of {
-    ce::v4::set_data<T, Codec>(cloud_event, value);
+  // spec: SWR-EXT-0013
+  [[nodiscard]] static auto with_data(event cloud_event, const T& value) -> result<event_of> {
+    if (auto written = ce::v4::set_data<T, Codec>(cloud_event, value); !written) {
+      return ce::v4::detail::forward_failure(std::move(written).error());
+    }
     return event_of{std::move(cloud_event)};
   }
 
   [[nodiscard]] auto data() const -> result<T> { return data_as<T, Codec>(event_); }
 
-  void set_data(const T& value) { ce::v4::set_data<T, Codec>(event_, value); }
+  // spec: SWR-EXT-0013
+  [[nodiscard]] auto set_data(const T& value) -> result<void> {
+    return ce::v4::set_data<T, Codec>(event_, value);
+  }
 
   [[nodiscard]] auto underlying() const noexcept -> const event& { return event_; }
 

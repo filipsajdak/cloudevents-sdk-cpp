@@ -660,7 +660,9 @@ It is valid only as an entry in a `CE_DESCRIBE` list.
 ## 8. Typed payloads
 
 A described struct can be the payload.
-`ce::set_data` writes it as JSON and sets `datacontenttype` to `application/json`, and `ce::data_as` reads it back:
+`ce::set_data` writes it as JSON and returns a `result<void>`.
+It sets `datacontenttype` to `application/json` when the event declares none, keeps a JSON media type the event declares (`text/json` and `+json` types included), and refuses any other with `type_mismatch`, leaving the event unchanged.
+`ce::data_as` reads the payload back:
 
 ```cpp
 namespace shop {
@@ -674,7 +676,11 @@ CE_DESCRIBE(line_item, sku, quantity);
 
 inline void carry_a_line_item() {
   ce::event added{"12"_id, "/cart"_source, "com.example.cart.added"_type};
-  ce::set_data<line_item, codec>(added, line_item{.sku = "SKU-1", .quantity = 2});
+  if (auto stored = ce::set_data<line_item, codec>(added, line_item{.sku = "SKU-1", .quantity = 2});
+      !stored) {
+    std::printf("%s\n", stored.error().detail.c_str());
+    return;
+  }
 
   if (auto item = ce::data_as<line_item, codec>(added); item) {
     std::printf("%s x%d\n", item->sku.c_str(), item->quantity);
@@ -696,14 +702,18 @@ A member of the wrong type fails, and `where` names the member.
 auto view = ce::event_of<shop::line_item, codec>::with_data(
     ce::event{"13"_id, "/cart"_source, "com.example.cart.added"_type},
     shop::line_item{.sku = "SKU-2", .quantity = 1});
-if (auto item = view.data(); item) {
-  std::printf("%s\n", item->sku.c_str());
+if (view) {
+  if (auto item = view->data(); item) {
+    std::printf("%s\n", item->sku.c_str());
+  }
+  const ce::event& underlying = view->underlying();
+  std::printf("%s\n", underlying.id().str().c_str());
 }
-const ce::event& underlying = view.underlying();
-std::printf("%s\n", underlying.id().str().c_str());
 ```
 
 `examples/described_payload.cpp` covers vectors, maps, optionals and the failure cases.
+
+`event_of<T, Codec>::with_data` returns a `result<event_of>` and `event_of::set_data` a `result<void>`, for the same refusal.
 
 `set_data` stores the payload as a `json_document` the codec built, so encoding with the same codec copies the DOM and `data_as` with it reads the DOM, neither going through text.
 A document another codec built is converted through its text.

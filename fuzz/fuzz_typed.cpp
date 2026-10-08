@@ -96,16 +96,25 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
 
     // A payload that read back must survive being written and read again.
     if (auto payload = ce::data_as<parcel, codec>(*decoded)) {
+      // set_data and encode_as refuse the same events: those declaring a media type
+      // that is not JSON.
+      const auto media_type = decoded->datacontenttype();
+      const bool refusable = media_type && !ce::is_json_content_type(media_type->view());
       ce::event again = *decoded;
-      ce::set_data<parcel, codec>(again, *payload);
-      auto second = ce::data_as<parcel, codec>(again);
-      if (!second || !same_parcel(*second, *payload)) {
+      const auto stored = ce::set_data<parcel, codec>(again, *payload);
+      if (stored.has_value() == refusable) {
+        __builtin_trap();
+      }
+      if (stored) {
+        auto second = ce::data_as<parcel, codec>(again);
+        if (!second || !same_parcel(*second, *payload)) {
+          __builtin_trap();
+        }
+      } else if (again != *decoded) {
         __builtin_trap();
       }
       // encode_as writes what set_data then encode would, and reads back.
       auto written = ce::encode_as<parcel, codec>(*decoded, *payload);
-      const auto media_type = decoded->datacontenttype();
-      const bool refusable = media_type && !ce::is_json_content_type(media_type->view());
       if (written.has_value() == refusable) {
         __builtin_trap();
       }

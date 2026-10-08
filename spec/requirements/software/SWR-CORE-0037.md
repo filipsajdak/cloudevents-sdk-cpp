@@ -2,7 +2,7 @@
 uid: SWR-CORE-0037
 title: from_v3 converts a ce::v3 event into an equal ce::v4 event
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   A service moving to ce::v4 still exchanges events with code built against ce::v3.
@@ -14,9 +14,9 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/v3_conversion.hpp]
+verified_by: [test:test/generation_conversion_test.cpp::from-v3-keeps-the-event]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
 The header `cloudevents/v3_conversion.hpp` shall provide `ce::v4::from_v3`, overloaded for `const ce::v3::event&` and `ce::v3::event&&`, returning without a `result` wrapper a `ce::v4::event` with the same context attributes, the same extensions and the same payload as the v3 event.

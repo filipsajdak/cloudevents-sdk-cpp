@@ -2,7 +2,7 @@
 uid: SWR-CORE-0039
 title: A converted json_document shares its model and copies no DOM
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   A retained document can occupy several times its text (SWR-JSON-0040), and copying a RapidJSON value needs the codec's copy.
@@ -13,9 +13,9 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/v3_conversion.hpp]
+verified_by: [test:test/generation_conversion_test.cpp::conversion-shares-the-document]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
 When `from_v3` or `to_v3` converts a payload held as a json_document, the converted document shall share the source document's model, so that no DOM is copied, serialised or parsed and `get<Codec>()` on both returns the same address.

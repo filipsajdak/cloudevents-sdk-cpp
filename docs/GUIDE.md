@@ -861,6 +861,25 @@ inline auto legacy_request() -> ce::v1::result<ce::v1::message> {
 }
 ```
 
+### Moving from v3 to v4
+
+A service that moves to `ce::v4` still exchanges events with code built against `ce::v3`.
+Include `<cloudevents/v3_conversion.hpp>`, which no other header does, and convert at the boundary:
+
+```cpp
+#include <cloudevents/v3_conversion.hpp>
+
+inline auto to_legacy_service(const ce::event& order) -> ce::v3::event { return ce::to_v3(order); }
+inline auto from_legacy_service(ce::v3::event&& order) -> ce::event { return ce::from_v3(std::move(order)); }
+```
+
+`from_v3` and `to_v3` return the event itself, because every v3 event is a valid v4 event and the reverse differs only in the moved-from state.
+The `const&` overload copies the event and the `&&` overload moves its parts.
+A `json_document` payload converts in constant time: both generations' documents point at one model, so a conversion copies or moves that pointer and never the DOM, and `get<Codec>()` on the two returns the same address.
+A v3 document is still copied when moved, so `from_v3(std::move(event))` leaves the v3 event's document intact.
+`to_v3` of a v4 event whose payload was moved from yields a v3 document that dumps `null` and yields its DOM to no codec.
+The module does not export the conversions; a module consumer includes the header.
+
 What did not change between the generations is one type through every spelling.
 `errc`, `error`, `result`, the codec concept, the three codecs, base64 and the describe seam are shared by all four generations, so a codec written for v0.3.0 works with v4 unchanged.
 The attribute types, `timestamp`, `message` and the typed extensions are shared by v2, v3 and v4, so `ce::v2::id` and `ce::id` are one type, and events of those generations exchange attributes and messages without a conversion.

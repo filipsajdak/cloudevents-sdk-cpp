@@ -6,6 +6,11 @@
 
 namespace ce::v3::detail {
 
+/// The one accessor both generations' documents and events grant access to, so
+/// that include/cloudevents/v3_conversion.hpp can hand a model or a member over
+/// without either generation widening its public surface (ADR-0012).
+struct generation_access;
+
 class json_document_model {
  public:
   json_document_model() = default;

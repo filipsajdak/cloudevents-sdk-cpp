@@ -126,7 +126,10 @@ constexpr std::array nested_exports{
     if (relative.find("/detail/") != std::string::npos ||
         relative.find("cloudevents/codec/") != std::string::npos ||
         relative.starts_with("cloudevents/v1/") || relative.starts_with("cloudevents/v2/") ||
-        relative.starts_with("cloudevents/v3/")) {
+        relative.starts_with("cloudevents/v3/") ||
+        // The v3 conversions are opt-in and reachable only through their own
+        // header, which the module does not include (SWR-BUILD-0013).
+        relative == "cloudevents/v3_conversion.hpp") {
       continue;
     }
     found.push_back(relative);

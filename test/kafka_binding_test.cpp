@@ -1,3 +1,9 @@
+#include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <variant>
+
 #include <boost/ut.hpp>
 
 #include <cloudevents/binding/kafka.hpp>
@@ -7,12 +13,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
-#include <optional>
-#include <string>
-#include <string_view>
-#include <type_traits>
-#include <variant>
-
+#include "binding_decode_options.hpp"
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
@@ -123,10 +124,8 @@ void check_document_round_trip(std::string_view codec) {
     auto read_back = ce::kafka::from_message<Codec>(*laid_out);
     expect(read_back && ce_test::same_json_payload<Codec>(read_back->data(), document_payload))
         << codec;
-    if (mode == ce::content_mode::binary_mode) {
-      expect(read_back && std::holds_alternative<ce::json_text>(read_back->data()))
-          << codec << ": binary mode reads JSON text";
-    }
+    expect(read_back && std::holds_alternative<ce::json_document>(read_back->data()))
+        << codec << ": both modes read a JSON document";
   }
 }
 
@@ -368,6 +367,45 @@ const boost::ut::suite<"kafka-record-and-key-mapper"> kafka_record_and_key_mappe
 
   ce_test::for_each_codec([]<class C>(std::string_view codec) {
     test(std::string{codec}) = [codec] { check_record_and_key_mapper<C>(codec); };
+  });
+};
+
+// spec: SWR-BIND-0009
+const boost::ut::suite<"from-message-takes-decode-options"> kafka_from_message_takes_options = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_from_message_takes_decode_options<C>(
+          codec,
+          [](const ce::event& subject, ce::content_mode mode) {
+            return ce::kafka::to_message<C>(subject, mode);
+          },
+          [](const ce::message& laid_out, ce::json::decode_options options) {
+            return ce::kafka::from_message<C>(laid_out, options);
+          });
+    };
+  });
+};
+
+// spec: SWR-BIND-0008
+// spec: SWR-BIND-0010
+const boost::ut::suite<"kafka-binary-mode-json-body"> kafka_binary_mode_json_body = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce::message record = record_with({"content-type", "application/json"});
+      record.body = ce::to_bytes("{not json");
+      const auto refused = ce::kafka::from_message<C>(record);
+      expect(!refused.has_value()) << codec;
+      if (!refused) {
+        expect(refused.error().code == ce::errc::parse_error) << codec;
+      }
+      record.body = {};
+      const auto empty = ce::kafka::from_message<C>(record);
+      expect(empty.has_value() && std::holds_alternative<std::monostate>(empty->data())) << codec;
+    };
   });
 };
 

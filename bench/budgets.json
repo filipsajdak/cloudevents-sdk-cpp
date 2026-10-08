@@ -319,34 +319,34 @@
       "instructions": 39426
     },
     "http_decode_binary/boost.json": {
-      "allocated_bytes": 743,
-      "allocations": 11,
-      "instructions": 41463
+      "allocated_bytes": 1196,
+      "allocations": 25,
+      "instructions": 46853
     },
     "http_decode_binary/boost.json.shipped": {
-      "allocated_bytes": 743,
-      "allocations": 11,
-      "instructions": 41257
+      "allocated_bytes": 1196,
+      "allocations": 25,
+      "instructions": 46852
     },
     "http_decode_binary/glaze": {
-      "allocated_bytes": 743,
-      "allocations": 11,
-      "instructions": 41463
+      "allocated_bytes": 1818,
+      "allocations": 18,
+      "instructions": 51402
     },
     "http_decode_binary/nlohmann": {
-      "allocated_bytes": 743,
-      "allocations": 11,
-      "instructions": 41463
+      "allocated_bytes": 1897,
+      "allocations": 41,
+      "instructions": 61273
     },
     "http_decode_binary/rapidjson": {
-      "allocated_bytes": 743,
-      "allocations": 11,
-      "instructions": 41463
+      "allocated_bytes": 2402,
+      "allocations": 20,
+      "instructions": 45695
     },
     "http_decode_binary/rapidjson.shipped": {
-      "allocated_bytes": 743,
-      "allocations": 11,
-      "instructions": 41257
+      "allocated_bytes": 2402,
+      "allocations": 20,
+      "instructions": 45696
     },
     "http_decode_binary_typed/boost.json": {
       "allocated_bytes": 494,
@@ -469,34 +469,34 @@
       "instructions": 46679
     },
     "kafka_decode_binary/boost.json": {
-      "allocated_bytes": 736,
-      "allocations": 11,
-      "instructions": 34358
+      "allocated_bytes": 1190,
+      "allocations": 25,
+      "instructions": 39774
     },
     "kafka_decode_binary/boost.json.shipped": {
-      "allocated_bytes": 736,
-      "allocations": 11,
-      "instructions": 34311
+      "allocated_bytes": 1190,
+      "allocations": 25,
+      "instructions": 39774
     },
     "kafka_decode_binary/glaze": {
-      "allocated_bytes": 736,
-      "allocations": 11,
-      "instructions": 34358
+      "allocated_bytes": 1811,
+      "allocations": 18,
+      "instructions": 44324
     },
     "kafka_decode_binary/nlohmann": {
-      "allocated_bytes": 736,
-      "allocations": 11,
-      "instructions": 34358
+      "allocated_bytes": 1890,
+      "allocations": 41,
+      "instructions": 54242
     },
     "kafka_decode_binary/rapidjson": {
-      "allocated_bytes": 736,
-      "allocations": 11,
-      "instructions": 34358
+      "allocated_bytes": 2395,
+      "allocations": 20,
+      "instructions": 38616
     },
     "kafka_decode_binary/rapidjson.shipped": {
-      "allocated_bytes": 736,
-      "allocations": 11,
-      "instructions": 34311
+      "allocated_bytes": 2395,
+      "allocations": 20,
+      "instructions": 38618
     },
     "kafka_decode_binary_typed/boost.json": {
       "allocated_bytes": 480,
@@ -529,34 +529,34 @@
       "instructions": 14016
     },
     "nats_decode_binary/boost.json": {
-      "allocated_bytes": 758,
-      "allocations": 11,
-      "instructions": 42070
+      "allocated_bytes": 1212,
+      "allocations": 25,
+      "instructions": 47429
     },
     "nats_decode_binary/boost.json.shipped": {
-      "allocated_bytes": 758,
-      "allocations": 11,
-      "instructions": 41833
+      "allocated_bytes": 1212,
+      "allocations": 25,
+      "instructions": 47428
     },
     "nats_decode_binary/glaze": {
-      "allocated_bytes": 758,
-      "allocations": 11,
-      "instructions": 42070
+      "allocated_bytes": 1833,
+      "allocations": 18,
+      "instructions": 52026
     },
     "nats_decode_binary/nlohmann": {
-      "allocated_bytes": 758,
-      "allocations": 11,
-      "instructions": 42070
+      "allocated_bytes": 1912,
+      "allocations": 41,
+      "instructions": 61976
     },
     "nats_decode_binary/rapidjson": {
-      "allocated_bytes": 758,
-      "allocations": 11,
-      "instructions": 42070
+      "allocated_bytes": 2417,
+      "allocations": 20,
+      "instructions": 46318
     },
     "nats_decode_binary/rapidjson.shipped": {
-      "allocated_bytes": 758,
-      "allocations": 11,
-      "instructions": 41833
+      "allocated_bytes": 2417,
+      "allocations": 20,
+      "instructions": 46319
     },
     "nats_decode_binary_typed/boost.json": {
       "allocated_bytes": 510,

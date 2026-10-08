@@ -8,6 +8,7 @@
 
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/core.hpp>
+#include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
 #include <cloudevents/message.hpp>
@@ -82,15 +83,17 @@ template <json::json_codec Codec>
 }
 
 // spec: SWR-KAFKA-0006
-template <json::json_codec Codec>
-[[nodiscard]] auto from_message(const message& incoming) -> result<event> {
+// spec: SWR-BIND-0009
+template<json::json_codec Codec>
+[[nodiscard]] auto from_message(const message& incoming, json::decode_options options = {})
+    -> result<event> {
   const content_mode mode = detect_content_mode(incoming);
 
   if (mode == content_mode::batched) {
     return fail(errc::invalid_argument, "the Kafka binding defines no batch mode");
   }
   if (mode == content_mode::structured) {
-    return binding::decode_structured<Codec>(incoming);
+    return binding::decode_structured<Codec>(incoming, options);
   }
 
   if (!incoming.header_fields.contains_exact("ce_specversion")) {
@@ -112,8 +115,12 @@ template <json::json_codec Codec>
     under_construction->rest.datacontenttype = std::move(*media_type);
   }
 
-  under_construction->rest.data =
-      binding::read_body(incoming.body, under_construction->rest.datacontenttype);
+  auto payload =
+      binding::read_body<Codec>(incoming.body, under_construction->rest.datacontenttype, options);
+  if (!payload) {
+    return ce::v4::detail::forward_failure(std::move(payload).error());
+  }
+  under_construction->rest.data = std::move(*payload);
 
   return std::move(*under_construction).build();
 }

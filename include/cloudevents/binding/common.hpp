@@ -9,6 +9,7 @@
 #include <variant>
 
 #include <cloudevents/core.hpp>
+#include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
 #include <cloudevents/message.hpp>
@@ -289,15 +290,29 @@ inline void write_body(const event& cloud_event, message& into) {
 }
 
 // spec: SWR-BIND-0006
-[[nodiscard]] inline auto read_body(const binary& body,
-                                    const std::optional<datacontenttype>& media_type) -> data_t {
+// spec: SWR-BIND-0007
+// spec: SWR-BIND-0008
+// spec: SWR-BIND-0010
+template<json::json_codec Codec>
+[[nodiscard]] auto read_body(const binary& body,
+                             const std::optional<datacontenttype>& media_type,
+                             const json::decode_options& options = {}) -> result<data_t> {
   if (body.empty()) {
-    return {};
+    return data_t{};
   }
-  if (media_type && is_json_content_type(media_type->view())) {
-    return json_text{.raw = to_text(body)};
+  if (!media_type || !is_json_content_type(media_type->view())) {
+    // The message is the caller's and stays so, so its bytes are copied into the event.
+    return data_t{body};
   }
-  return body;
+  const std::string_view text = detail::text_of(body);
+  auto parsed = Codec::parse(text);
+  if (!parsed) {
+    return ce::v4::detail::forward_failure(std::move(parsed).error());
+  }
+  if (!json::detail::retains_text_of(text.size(), options)) {
+    return data_t{json_text{.raw = std::string{text}}};
+  }
+  return data_t{json_document::make<Codec>(std::move(*parsed))};
 }
 
 template <binding_traits T, json::json_codec Codec>
@@ -313,9 +328,11 @@ template <binding_traits T, json::json_codec Codec>
   return out;
 }
 
-template <json::json_codec Codec>
-[[nodiscard]] auto decode_structured(const message& from) -> result<event> {
-  return json_format<Codec>::decode(detail::text_of(from.body));
+// spec: SWR-BIND-0009
+template<json::json_codec Codec>
+[[nodiscard]] auto decode_structured(const message& from, const json::decode_options& options = {})
+    -> result<event> {
+  return json_format<Codec>::decode(detail::text_of(from.body), options);
 }
 
 }  // namespace ce::inline v4::binding

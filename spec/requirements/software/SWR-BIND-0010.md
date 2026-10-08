@@ -2,7 +2,7 @@
 uid: SWR-BIND-0010
 title: An empty binary-mode body carries no payload, whatever its media type
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   In ce::v4 a binary-mode body under a JSON media type is parsed (SWR-BIND-0006), and a body that does not parse is a parse error (SWR-BIND-0008).
@@ -13,9 +13,9 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp]
+verified_by: [test:test/binding_core_test.cpp::empty-binary-body-has-no-payload, test:test/http_binding_test.cpp::http-binary-mode-json-body, test:test/kafka_binding_test.cpp::kafka-binary-mode-json-body, test:test/nats_binding_test.cpp::nats-binary-mode-json-body]
 owner: filip.sajdak
-version: 1
+version: 2
 ---
 When a binding reads an empty binary-mode body, it shall return an event with no payload, whether or not its media type is one `is_json_content_type` accepts.

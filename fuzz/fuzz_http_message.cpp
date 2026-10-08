@@ -58,5 +58,9 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
     }
   }
   (void)ce::http::from_batch_message<ce::codec::nlohmann_codec>(request);
+  // The text path above the retention limit takes the same input (SWR-BIND-0007).
+  (void)ce::http::from_message<ce::codec::nlohmann_codec>(request, {.retain_document_up_to = 0});
+  (void)ce::http::from_batch_message<ce::codec::nlohmann_codec>(request,
+                                                                {.retain_document_up_to = 0});
   return 0;
 }

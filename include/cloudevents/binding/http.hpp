@@ -12,6 +12,7 @@
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/detail/percent.hpp>
 #include <cloudevents/core.hpp>
+#include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
 #include <cloudevents/message.hpp>
@@ -165,12 +166,14 @@ template <json::json_codec Codec>
 // spec: SWR-HTTP-0013
 // spec: SWR-HTTP-0014
 // spec: SWR-HTTP-0015
-template <json::json_codec Codec, value_policy Values = percent_encoded_values>
-[[nodiscard]] auto from_message(const message& request) -> result<event> {
+// spec: SWR-BIND-0009
+template<json::json_codec Codec, value_policy Values = percent_encoded_values>
+[[nodiscard]] auto from_message(const message& request, json::decode_options options = {})
+    -> result<event> {
   const content_mode mode = detect_content_mode(request);
 
   if (mode == content_mode::structured) {
-    return binding::decode_structured<Codec>(request);
+    return binding::decode_structured<Codec>(request, options);
   }
   if (mode == content_mode::batched) {
     return fail(errc::invalid_argument, "this message is a batch; use from_batch_message");
@@ -195,18 +198,24 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
     under_construction->rest.datacontenttype = std::move(*media_type);
   }
 
-  under_construction->rest.data =
-      binding::read_body(request.body, under_construction->rest.datacontenttype);
+  auto payload =
+      binding::read_body<Codec>(request.body, under_construction->rest.datacontenttype, options);
+  if (!payload) {
+    return ce::v4::detail::forward_failure(std::move(payload).error());
+  }
+  under_construction->rest.data = std::move(*payload);
 
   return std::move(*under_construction).build();
 }
 
-template <json::json_codec Codec>
-[[nodiscard]] auto from_batch_message(const message& request) -> result<std::vector<event>> {
+// spec: SWR-BIND-0009
+template<json::json_codec Codec>
+[[nodiscard]] auto from_batch_message(const message& request, json::decode_options options = {})
+    -> result<std::vector<event>> {
   if (detect_content_mode(request) != content_mode::batched) {
     return fail(errc::not_a_cloudevent, "the content type is not a CloudEvents batch");
   }
-  return json_format<Codec>::decode_batch(detail::text_of(request.body));
+  return json_format<Codec>::decode_batch(detail::text_of(request.body), options);
 }
 
 }  // namespace ce::inline v4::http

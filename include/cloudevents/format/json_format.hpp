@@ -26,6 +26,13 @@ namespace ce::inline v4 {
 namespace json::detail {
 template<json_codec Codec>
 struct typed_entry;
+
+// spec: SWR-JSON-0040
+// spec: SWR-BIND-0007
+[[nodiscard]] constexpr auto retains_text_of(std::size_t length,
+                                             const decode_options& options) noexcept -> bool {
+  return options.retain_document_up_to != 0 && length <= options.retain_document_up_to;
+}
 }  // namespace json::detail
 
 // spec: SYS-JSON-0001
@@ -293,7 +300,7 @@ struct json_format {
 
   [[nodiscard]] static auto retains(std::string_view text, const json::decode_options& options)
       -> bool {
-    return options.retain_document_up_to != 0 && text.size() <= options.retain_document_up_to;
+    return json::detail::retains_text_of(text.size(), options);
   }
 
   // spec: SWR-JSON-0040

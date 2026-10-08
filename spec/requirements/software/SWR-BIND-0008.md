@@ -2,7 +2,7 @@
 uid: SWR-BIND-0008
 title: A binary-mode body that is not JSON under a JSON media type is a parse error
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   In ce::v3 a binary-mode body under a JSON media type was stored as json_text without being parsed, so a malformed body was accepted and failed only when something read it, far from the sender.
@@ -13,9 +13,9 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp]
+verified_by: [test:test/binding_core_test.cpp::binary-json-body-must-parse, test:test/http_binding_test.cpp::http-binary-mode-json-body, test:test/kafka_binding_test.cpp::kafka-binary-mode-json-body, test:test/nats_binding_test.cpp::nats-binary-mode-json-body]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
 If a binding reads a non-empty binary-mode body under a media type that `is_json_content_type` accepts and the body is not valid JSON for the decoding codec, then `from_message` shall return a failed `result` with `errc::parse_error`.

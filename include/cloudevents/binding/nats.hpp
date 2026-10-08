@@ -7,6 +7,7 @@
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/detail/percent.hpp>
 #include <cloudevents/core.hpp>
+#include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
 #include <cloudevents/message.hpp>
@@ -24,9 +25,11 @@ template <json::json_codec Codec>
 }
 
 // spec: SWR-NATS-0004
-template <json::json_codec Codec>
-[[nodiscard]] auto from_payload(std::string_view payload) -> result<event> {
-  return json_format<Codec>::decode(payload);
+// spec: SWR-BIND-0009
+template<json::json_codec Codec>
+[[nodiscard]] auto from_payload(std::string_view payload, json::decode_options options = {})
+    -> result<event> {
+  return json_format<Codec>::decode(payload, options);
 }
 
 namespace detail {
@@ -82,10 +85,12 @@ template <json::json_codec Codec>
   return out;
 }
 
-template <json::json_codec Codec>
-[[nodiscard]] auto from_message(const message& incoming) -> result<event> {
+// spec: SWR-BIND-0009
+template<json::json_codec Codec>
+[[nodiscard]] auto from_message(const message& incoming, json::decode_options options = {})
+    -> result<event> {
   if (detect_content_mode(incoming) == content_mode::structured) {
-    return binding::decode_structured<Codec>(incoming);
+    return binding::decode_structured<Codec>(incoming, options);
   }
 
   if (!incoming.header_fields.contains("ce-specversion")) {
@@ -98,8 +103,12 @@ template <json::json_codec Codec>
     return ce::v4::detail::forward_failure(std::move(under_construction).error());
   }
 
-  under_construction->rest.data =
-      binding::read_body(incoming.body, under_construction->rest.datacontenttype);
+  auto payload =
+      binding::read_body<Codec>(incoming.body, under_construction->rest.datacontenttype, options);
+  if (!payload) {
+    return ce::v4::detail::forward_failure(std::move(payload).error());
+  }
+  under_construction->rest.data = std::move(*payload);
 
   return std::move(*under_construction).build();
 }

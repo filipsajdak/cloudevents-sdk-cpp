@@ -26,6 +26,27 @@ declarations and behaviour both.
   `to_v3` of a moved-from v4 document yields a v3 document on the same moved-from model, which dumps `null`.
   No other SDK header includes the conversions, and the module does not export them, so `import cloudevents;` never brings in the v3 event model.
 
+### Breaking changes from v3
+
+- **`set_data` keeps a JSON media type and refuses any other.**
+  In v3 `set_data<T, Codec>` set `datacontenttype` to `application/json` whatever the event declared.
+  In v4 it sets `application/json` only when the event declares none, keeps a media type `is_json_content_type` accepts (`text/json` and `+json` types included), and refuses any other with `errc::type_mismatch` naming `datacontenttype`, leaving the event unchanged, as `encode_as` already did.
+  `set_data` and `event_of::set_data` return `result<void>`, and `event_of::with_data` returns `result<event_of>`; all three are `[[nodiscard]]`.
+  *Migrate:* check the result (`if (auto stored = ce::set_data<T, Codec>(event, value); !stored) { ... }`) and unwrap `with_data` (`view->data()`); if an event declares a non-JSON type that you now want replaced, call `event.set_data(ce::json_document::make<Codec>(ce::to_json_value<Codec>(value)), "application/json"_mediatype)` yourself.
+- **A JSON body received in binary mode is a `json_document`.**
+  In v3 the HTTP, Kafka and NATS `from_message` stored a binary-mode body under a JSON media type as unparsed `json_text`.
+  In v4 `from_message<Codec>` parses it with the codec, under the rules of structured decode: a payload within the 16 KiB retention limit is a `json_document`, one above it is `json_text` holding the body's bytes exactly as received, and a non-empty body that is not valid JSON fails with `errc::parse_error`.
+  An empty body is still no payload, whatever its media type, and other media types are still `ce::binary` or `std::string` as before.
+  `binding::read_body` takes the codec and the decode options and returns a `result<data_t>`.
+  The parse costs instructions and allocations on receive that v3 spent only when the payload was read.
+  Receive plus one typed read (`from_message` then `data_as`) costs the same as in v3, within about 2% in instructions, with equal allocations and slightly fewer retained bytes, because the read reuses the document instead of parsing the text again; each further read is cheaper.
+  A consumer that never reads the payload, such as a forwarder or router, pays the parse for nothing: on the HTTP full-event path the receive alone costs 15% to 54% more instructions (RapidJSON +15%, Boost.JSON +18%, Glaze +29%, nlohmann +54%) and 8 to 27 more allocations, by codec.
+  No option skips the parse today: `json::decode_options{.retain_document_up_to = 0}` keeps the body as `json_text` instead of a document, but the body is still parsed to validate it (SWR-BIND-0007, SWR-BIND-0008), so it saves the retained DOM and not the parse.
+  *Migrate:* code that matched `json_text` on a received binary-mode event reads the document (`data_as`, `get<Codec>()`, `dump()`) or sets `.retain_document_up_to = 0` to keep text; code that relied on a malformed body being accepted now gets `parse_error` from `from_message`.
+- **Decode options reach every binding entry point that decodes JSON** (an addition, not a break).
+  `from_message<Codec>` of HTTP, Kafka and NATS, `http::from_batch_message<Codec>` and `nats::from_payload<Codec>` take a defaulted last `json::decode_options` and apply it in every mode they read, so existing calls compile unchanged.
+  `json_format::from_value` and `from_value_as` take none: they receive a DOM you already hold.
+
 ### Changes since v0.5.0
 
 - **A codec may take over the strings the encoder builds.**

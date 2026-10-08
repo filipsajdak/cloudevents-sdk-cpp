@@ -405,7 +405,8 @@ std::printf("document: %d, text: %d\n",
 ```
 
 `from_value` always keeps a document, copying the member out of the DOM you passed, which it leaves as it was.
-A binding's binary-mode body is not a JSON event, so a JSON body there still arrives as `ce::json_text`.
+A binding's binary-mode body is the payload itself, and it is read under the same limit: a JSON body arrives as a `ce::json_document` within it and as `ce::json_text` holding the body's bytes exactly as received above it, and `from_message` fails with `parse_error` when a non-empty body under a JSON media type is not JSON.
+An empty body is no payload, whatever its media type.
 
 ### What decoding loses
 
@@ -530,7 +531,8 @@ When you build a message, use `set` rather than `add` unless you mean to repeat 
 | structured mode | yes | yes | yes |
 | batched mode | yes | no | no |
 
-Every binding offers `to_message<Codec>(event, mode)`, `from_message<Codec>(message)` and `detect_content_mode(message)`.
+Every binding offers `to_message<Codec>(event, mode)`, `from_message<Codec>(message, options)` and `detect_content_mode(message)`.
+The last parameter of `from_message`, of `http::from_batch_message` and of `nats::from_payload` is a `ce::json::decode_options`, with the same 16 KiB retention default as `json_format::decode`, applied to every JSON payload the call decodes, in structured, batched and binary mode.
 Asking for a mode a binding does not define returns `invalid_argument`; the SDK never invents one.
 
 ### HTTP
@@ -799,7 +801,7 @@ The types rule out an invalid event, but they cannot rule out these.
 | mistake | what happens | what to do |
 |---|---|---|
 | A text payload with no `datacontenttype` | It is decoded as `json_text` holding `"hello"`, quotes included, because absent means JSON. | Always set `datacontenttype` for text. |
-| Trusting a JSON payload received in binary mode | The body is carried as `json_text` unparsed; malformed JSON surfaces only when you parse it. | Treat `json_text` as untrusted until `data_as` or your own parser accepts it. |
+| Receiving a large JSON body in binary mode | It is parsed on receive, so a malformed body fails `from_message` with `parse_error`, and a body above the retention limit is kept as `json_text` holding its bytes. | Pass `ce::json::decode_options` to `from_message` to set the limit for untrusted input. |
 | Comparing an extension after a round trip | A `ce::uri` extension comes back as `std::string`, so the events differ. | Read it with a typed extension. |
 | Reading a payload as the wrong struct | Absent members default, so it succeeds with empty fields. | Switch on `type` before choosing the struct. |
 | Holding the pointer `extension()` returned | It dangles after `set_extension`, `remove_extension`, `set`, or the event's destruction. | Copy the value if you need it longer. |

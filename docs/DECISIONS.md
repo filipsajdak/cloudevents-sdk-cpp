@@ -1460,6 +1460,37 @@ model has an empty identity and the models differ, as the v4 operator does. No
 declaration changes, and no document v0.5.0 could build has an empty identity
 (SWR-JSON-0039), so every result v0.5.0 produced is kept (D-CODEC-3).
 
+## D-EXT-6: `set_data` copies the declared media type back, and a refusal changes nothing
+
+v4 `set_data` (SWR-EXT-0011, SWR-EXT-0013) tests the declared media type first
+and writes only after the test passes, so a refused call leaves payload and
+media type as they were. `event::set_data` replaces the payload and the media
+type together and there is no setter for the payload alone, so a kept media type
+is passed back as a copy of the event's own. Adding a payload-only setter to
+`event` would widen the core surface for one short string, so the copy stays and
+is named here. The amended SWR-EXT-0011 and SWR-BIND-0006 were `implemented`
+with `delivered_in` naming v0.5.0 and v0.4.0; their statements changed, so they
+return to `approved` without `delivered_in`, and gain it again at the release
+that delivers the new statement. (This is a judgement call: the stage 1 and 2
+requirements were new, so no precedent covers an amended delivered one.)
+
+## D-BIND-2: A binary-mode body that does not parse forwards the codec's error as it is
+
+The body reader (SWR-BIND-0006, SWR-BIND-0008) returns the failure the codec's
+`parse` gave, with `where` left empty, the same value structured decode returns
+for a document that does not parse (SWR-JSON-0010). The requirement fixes the
+code (`parse_error`) and says the failure is the one structured decode gives, not
+a `where`; naming `data` would be a second spelling of the same failure.
+The body is parsed even above the retention limit (SWR-BIND-0007), so the
+codec builds a DOM it then drops; that is the price of a malformed body failing
+the same way at any size, and it is the cost the perf job shows on
+`http_decode_binary` for payloads above the limit. `read_body` takes its options
+as a defaulted last parameter, like every entry point (SWR-BIND-0009), and the
+entry points take the small aggregate by value, as `json_format::decode` does
+(D-JSON-5). The text kept above the limit is copied from the body because the
+message stays the caller's; a body under a non-JSON media type is copied into
+`ce::binary` for the same reason, as it was in v3.
+
 ## D-CODEC-4: A codec takes over a string through `adopt_string`
 
 The encoder builds the RFC 3339 text of a timestamp and the base64 text of

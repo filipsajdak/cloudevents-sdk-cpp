@@ -3,7 +3,7 @@ uid: SWR-BUILD-0006
 title: Breaking API changes introduce a new version namespace
 type: software
 status: implemented
-delivered_in: v0.5.0
+delivered_in: v0.6.0
 priority: high
 rationale: >
   SPEC 3 rule 4 forbids mutating `v1` once published, because a source-breaking

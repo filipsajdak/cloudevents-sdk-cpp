@@ -2,7 +2,8 @@
 uid: SWR-JSON-0044
 title: The encoder hands a codec the strings it would otherwise discard
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: medium
 rationale: >
   The encoder builds some strings itself and drops each one as soon as the codec has made a value from it: the time attribute and a timestamp extension rendered as RFC 3339 text, and a binary extension or a data_base64 payload rendered as base64.

@@ -2,37 +2,43 @@
 
 Notable changes per release. Dates are the tag date.
 
-## Unreleased
+## v0.6.0 - 2026-10-10
 
-Moving a `json_document` no longer copies it, which changes behaviour v0.5.0
-documented. A documented behaviour is part of the API, so the change ships as a
-fourth API generation, `ce::v4`, which is the inline namespace, and everything
-since v0.5.0 ships with it as v0.6.0. `ce::v3` keeps what v0.5.0 published,
-declarations and behaviour both.
+`ce::v4` opens: a `json_document` can move, a typed write refuses a media type that is not JSON, and a JSON body received in binary mode keeps the document it was parsed into.
+Each of those changes behaviour that v0.5.0 documented, and a documented behaviour is part of the API, so they ship as a fourth API generation, `ce::v4`, which is the inline namespace.
+`ce::v3` stays what v0.5.0 published, declarations and behaviour both, and the opt-in header `<cloudevents/v3_conversion.hpp>` moves events across.
 
-### Four generations
+### Breaking
 
-- **`ce::v4` is the inline namespace**, so `ce::event` and `ce::json_document` now name the v4 classes.
-- **`ce::v3` holds the v0.5.0 surface.**
-  The headers that mention `event`, `data_t` or `json_document` are copied under `include/cloudevents/v3/`: `core.hpp`, `format/json_format.hpp`, `format/typed_payload.hpp` and the four binding headers.
-  A v3 declaration does not change, and neither does its documented behaviour; v3 takes defect fixes only.
-  `ce::v3::json_document` declares copy operations only, as v0.5.0 did, so moving it copies it and the source keeps its DOM.
-- **What v3 shared stays shared**, now with v4 too: the attribute types, `timestamp`, `message`, the literals, the typed extensions, `errc`, `error`, `result`, the codecs and their concepts, base64 and the describe seam are one type through `ce::`, `ce::v4::` and `ce::v3::`.
-  So are `json::decode_options`, now declared in `format/decode_options.hpp`, and the model behind a `json_document`.
-- **The optional module exports `ce::v4` only.**
-- **Events convert between the generations.**
-  `ce::v4::from_v3` and `ce::v4::to_v3`, declared in the opt-in header `<cloudevents/v3_conversion.hpp>`, take an event by `const&` or `&&` and return the other generation's event, not a `result`, because no conversion can fail.
-  A `json_document` converts in constant time, because both generations' documents point at one model: a conversion copies or moves that pointer and never a DOM.
-  `to_v3` of a moved-from v4 document yields a v3 document on the same moved-from model, which dumps `null`.
-  No other SDK header includes the conversions, and the module does not export them, so `import cloudevents;` never brings in the v3 event model.
+Every change below is in `ce::v4`; `ce::v3` behaves as v0.5.0 did.
 
-### Breaking changes from v3
+- **`ce::` now names v4.** `ce::event`, `ce::json_document`, `ce::json_format`, `ce::http`, `ce::kafka`, `ce::nats` and `ce::decode_as` are the v4 entities.
+  *To keep v0.5.0 code compiling unchanged,* spell the v3 namespace and include the `v3/` copy of each header that has one (`core.hpp`, `format/json_format.hpp`, `format/typed_payload.hpp` and the four binding headers):
 
+  ```cpp
+  #include <cloudevents/v3/binding/http.hpp>
+
+  using namespace ce::v3::literals;
+  auto order = ce::v3::event::builder{.id = "A1"_id, .source = "/orders"_source,
+                                      .type = "com.example.placed"_type}.build();
+  auto request = ce::v3::http::to_message<ce::v3::codec::nlohmann_codec>(
+      *order, ce::v3::content_mode::binary_mode);
+  ```
+
+  Code that names only shared entities, such as an attribute type, `message`, `json::decode_options` or a codec, needs no change.
+  To exchange events with code that moved to v4, include `<cloudevents/v3_conversion.hpp>` and call `ce::v4::from_v3` and `ce::v4::to_v3`.
+- **Moving a `ce::v4::json_document` leaves it reading as JSON null.**
+  In v0.5.0 a move copied the document, so the source still held the same DOM, and `ce::v3::json_document` still does.
+  In v4 a move hands the DOM over without touching the reference count, and the moved-from document is a valid, never-empty document that reads as null: `dump()` returns `null`, `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to another moved-from document.
+  v0.5.0 documented the copy, so this is a break, and it is why v4 exists.
+  *Migrate:* copy the document instead of moving it where you read the source afterwards, or stay on `ce::v3`.
 - **`set_data` keeps a JSON media type and refuses any other.**
   In v3 `set_data<T, Codec>` set `datacontenttype` to `application/json` whatever the event declared.
   In v4 it sets `application/json` only when the event declares none, keeps a media type `is_json_content_type` accepts (`text/json` and `+json` types included), and refuses any other with `errc::type_mismatch` naming `datacontenttype`, leaving the event unchanged, as `encode_as` already did.
-  `set_data` and `event_of::set_data` return `result<void>`, and `event_of::with_data` returns `result<event_of>`; all three are `[[nodiscard]]`.
-  *Migrate:* check the result (`if (auto stored = ce::set_data<T, Codec>(event, value); !stored) { ... }`) and unwrap `with_data` (`view->data()`); if an event declares a non-JSON type that you now want replaced, call `event.set_data(ce::json_document::make<Codec>(ce::to_json_value<Codec>(value)), "application/json"_mediatype)` yourself.
+  `set_data` and `event_of::set_data` return `[[nodiscard]] result<void>`.
+  *Migrate:* check the result (`if (auto stored = ce::set_data<T, Codec>(event, value); !stored) { ... }`); if an event declares a non-JSON type that you now want replaced, call `event.set_data(ce::json_document::make<Codec>(ce::to_json_value<Codec>(value)), "application/json"_mediatype)` yourself.
+- **`event_of::with_data` returns `[[nodiscard]] result<event_of>`**, because it can be refused for the same reason.
+  *Migrate:* unwrap it (`view->data()`).
 - **A JSON body received in binary mode is a `json_document`.**
   In v3 the HTTP, Kafka and NATS `from_message` stored a binary-mode body under a JSON media type as unparsed `json_text`.
   In v4 `from_message<Codec>` parses it with the codec, under the rules of structured decode: a payload within the 16 KiB retention limit is a `json_document`, one above it is `json_text` holding the body's bytes exactly as received, and a non-empty body that is not valid JSON fails with `errc::parse_error`.
@@ -47,19 +53,68 @@ declarations and behaviour both.
   `required_text`, `optional_text`, `read_required`, `read_optional`, `read_time`, `read_context_attributes` and `read_extensions` are not declared by `ce::v4::json_format<Codec>`.
   Nothing in the SDK called them, no suite tested them, and a generation's first tag is the only moment surface can go. `ce::v3::json_format` keeps all seven with their v0.5.0 signatures.
   *Migrate:* read a whole event with `decode` or `from_value`, and a typed payload with `decode_as` or `from_value_as`; code that needs one of the helpers itself spells `ce::v3::json_format<Codec>` and includes `<cloudevents/v3/format/json_format.hpp>`.
-- **Decode options reach every binding entry point that decodes JSON** (an addition, not a break).
+
+### Generations
+
+- **`ce::v4` is the inline namespace**, so `ce::event` and `ce::json_document` now name the v4 classes. v0.6.0 is its first tag.
+- **`ce::v3` holds the v0.5.0 surface.**
+  The headers that mention `event`, `data_t` or `json_document` are copied under `include/cloudevents/v3/`: `core.hpp`, `format/json_format.hpp`, `format/typed_payload.hpp` and the four binding headers.
+  A v3 declaration does not change, and neither does its documented behaviour; v3 takes defect fixes only.
+  `ce::v3::json_document` declares copy operations only, as v0.5.0 did, so moving it copies it and the source keeps its DOM.
+- **What v3 shared stays shared**, now with v4 too: the attribute types, `timestamp`, `message`, the literals, the typed extensions, `errc`, `error`, `result`, the codecs and their concepts, base64 and the describe seam are one type through `ce::`, `ce::v4::` and `ce::v3::`.
+  So are `json::decode_options`, now declared in `format/decode_options.hpp`, and the model behind a `json_document`.
+- **The optional module exports `ce::v4` only.**
+- **Events convert between the generations.**
+  `ce::v4::from_v3` and `ce::v4::to_v3`, declared in the opt-in header `<cloudevents/v3_conversion.hpp>`, take an event by `const&` or `&&` and return the other generation's event, not a `result`, because no conversion can fail.
+  A `json_document` converts in constant time, because both generations' documents point at one model: a conversion copies or moves that pointer and never a DOM.
+  `to_v3` of a moved-from v4 document yields a v3 document on the same moved-from model, which dumps `null`.
+  No other SDK header includes the conversions, and the module does not export them, so `import cloudevents;` never brings in the v3 event model.
+- **Decode options reach every binding entry point that decodes JSON** (an addition).
   `from_message<Codec>` of HTTP, Kafka and NATS, `http::from_batch_message<Codec>` and `nats::from_payload<Codec>` take a defaulted last `json::decode_options` and apply it in every mode they read, so existing calls compile unchanged.
   `json_format::from_value` and `from_value_as` take none: they receive a DOM you already hold.
 
-### Changes since v0.5.0
+### Faster
 
 - **A codec may take over the strings the encoder builds.**
   A codec that provides `adopt_string(std::string&&) -> value` receives the RFC 3339 text of timestamps and the base64 text of binary data by move instead of by view; `ce::json::string_adopting_codec<C>` detects it.
   It is optional, so a v0.5.0 codec keeps compiling and keeps the copy. `nlohmann_codec` provides it, and the `ce::v3` and `ce::v4` encoders both use it.
-- **Moving a `ce::v4::json_document` no longer copies it.**
-  In v0.5.0 a move copied the document, so the source still held the same DOM, and `ce::v3::json_document` still does.
-  Now a move hands the DOM over without touching the reference count, and the moved-from document reads as JSON null: `dump()` returns `null`, `get<Codec>()` returns `nullptr` for every codec, and it compares equal only to another moved-from document.
-  It is still never empty, and every member may be called on it. v4 code that read a document after moving from it now sees null; copy it instead, or stay on `ce::v3`.
+  Measured by the perf job: one allocation fewer in `encode_full` on nlohmann (65 to 64), and 100 fewer in a 100-event batch encode on nlohmann (2,824 to 2,724) and on Glaze (715 to 615). Boost.JSON and RapidJSON cannot take over a `std::string`, so they are unchanged.
+- **A moved `ce::v4::json_document` touches no reference count.**
+  Move construction goes from one atomic read-modify-write instruction to none, and move assignment from two to one.
+  Every decode and batch moves events, so they stop counting references.
+- **An error is forwarded by move through one cold helper**, `detail::forward_failure`, instead of being copied.
+  It changes no result and no success path: the first version, which moved inline at every site, made `encode_full/rapidjson.shipped` run 2.09 percent more instructions in the perf job, and the cold helper left it at +0.40 percent.
+- **Message bodies are copied in bulk**, not one `push_back` per byte, in `to_bytes` and `to_text`. It is a body-only fix that every generation takes (D-CODEC-3). Measured by the perf job (x86_64, g++-14), instructions per operation:
+  HTTP structured encode 7.4 percent fewer on nlohmann (74,500 to 68,971) and 13.0 to 15.0 percent fewer on the other codecs, HTTP binary decode 4.2 percent fewer, HTTP binary encode 4.3, Kafka binary decode 5.1 and NATS binary decode 5.2. Allocations are unchanged.
+- A body that owns a `std::string` instead of a `std::vector<std::byte>` was measured and declined: it would save at most 1.3 to 3.0 percent of instructions and one 506-byte allocation on HTTP structured encode, and nothing on a binary-mode path. `message` is unchanged and shared by every generation.
+
+### Tooling
+
+- **The perf job measures twenty-three operations**, up from nineteen, each with six codecs: nlohmann, the shipped RapidJSON and Boost.JSON, the bench's own copies of those two, and Glaze.
+  The new ones are HTTP structured encode and, over HTTP, Kafka and NATS, a binary-mode decode followed by a typed read (`*_decode_binary_typed`), the pair that shows what the binary-mode parse costs net.
+  Budgets for the three `*_decode_binary` operations were raised to this release's measurement plus 10 percent, the cost recorded under Measured below.
+- **The clang-tidy gate catches needless copies**, in the public headers and in the suites, and never fixes them.
+  It names the 11 built-in copy checks and four query-based custom ones; the headers went from 8 findings to 0 (all already marked deliberate) and the suites from 16 to 0 (12 marked deliberate, each with its reason, and 4 fixed).
+  The `ce::v3` copies are outside the gate (D-TIDY-8).
+- The v0.5.0 suites, examples and fuzz targets run against `ce::v3` in every preset, so v3's behaviour stays pinned as well as its declarations.
+
+### Measured
+
+- **Coverage, from the `coverage floor` job on `main` at `7af8ab3`, the merge of the last change before this release** (run 38075023082; GCC 13, C++20, Debug): lines 96.1% (4371 of 4549), functions 91.7% (2119 of 2310), branches 60.7% (4881 of 8036), against a floor of 90% lines.
+- **CI toolchains:** GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17 at C++23, AppleClang at C++20 and C++23, MSVC 19 (Windows 2022), a C++26 static-reflection job on GCC 15 (GCC 14 if 15 is unavailable; allowed to fail), plus the forced polyfill, exceptions disabled, no default codec, RapidJSON alone, Boost.JSON alone, every codec on Linux and macOS at C++20 and C++23, ASan with UBSan and TSan on Clang 17, the clang-tidy gate on Homebrew LLVM, install-and-consume, the examples, and interop with the Go and Java SDKs.
+- **Fuzzing:** 28 targets, seven for each of the four generations, run on every pull request at one minute each against the checked-in seed corpus, and nightly at fifteen minutes.
+- **What binary-mode parsing costs net** (perf job, x86_64, g++-14, `main` against the change that parses the body; instructions, allocations and retained bytes):
+  - *Receive plus one typed read* (`from_message` then `data_as`) is neutral to slightly cheaper on every codec: instructions -1.8% to +0.5%, allocations equal, retained bytes -0.7% to -4.6%. On v3 the body was copied to `json_text` and `data_as` parsed it; on v4 the body is parsed once on receive and `data_as` reads the document. Each further read of the same event saves a parse.
+  - *Receive alone*, on the HTTP full-event path, costs more: +15.0% instructions on the shipped RapidJSON, +17.9% on Boost.JSON, +29.4% on Glaze and +54.2% on nlohmann, and 8 to 27 more allocations. Kafka and NATS behave the same.
+
+### Known limitations
+
+- libc++ 17 and 18 implement `std::format` without defining `__cpp_lib_format`; the SDK carves them out by version (D-CI-1).
+- Clang 16 cannot compile libstdc++ 13 or 14 in C++23 mode, so the C++23 Clang job uses libc++ (D-CI-1).
+- The module interface is usable, with constraints on what an importing translation unit may also include (D-MODULE-1), and it exports `ce::v4` only: not `ce::v3`, and not `from_v3` or `to_v3`.
+- Given the same non-JSON payload, the Java SDK writes `data_base64` where Go and this SDK write a JSON string. Both are legal (D-INTEROP-1).
+- HTTP binary mode percent-encodes header values as the binding requires; the Go and Java SDKs do not, so talking to them needs `ce::http::literal_values` (D-HTTP-1).
+- **A forwarder pays for a parse it never reads.** A binary-mode body under a JSON media type is parsed once on receive, even with `json::decode_options{.retain_document_up_to = 0}`: that setting keeps the body as `json_text` and saves the retained DOM, not the parse, because the body is validated either way (SWR-BIND-0007, SWR-BIND-0008). A service that only passes events on pays the receive-alone cost above; staying on `ce::v3` avoids it.
 
 ## v0.5.0 - 2026-09-27
 

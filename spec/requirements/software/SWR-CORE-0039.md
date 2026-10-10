@@ -2,7 +2,8 @@
 uid: SWR-CORE-0039
 title: A converted json_document shares its model and copies no DOM
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: high
 rationale: >
   A retained document can occupy several times its text (SWR-JSON-0040), and copying a RapidJSON value needs the codec's copy.

@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0013
 title: The v0.6.0 API is ce::v4, and ce::v3 keeps what v0.5.0 published
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: high
 rationale: >
   v0.5.0 published json_document with copy operations only and documented that moving a document copies it.

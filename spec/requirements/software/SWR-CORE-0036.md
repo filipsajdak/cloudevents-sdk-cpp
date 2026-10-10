@@ -2,7 +2,8 @@
 uid: SWR-CORE-0036
 title: Moving a ce::v3 json_document copies it
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: high
 rationale: >
   v0.5.0 declared copy operations only for json_document, and its guide said that moving a document copies it, so every document holds a DOM.

@@ -2,7 +2,8 @@
 uid: SWR-BIND-0008
 title: A binary-mode body that is not JSON under a JSON media type is a parse error
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: high
 rationale: >
   In ce::v3 a binary-mode body under a JSON media type was stored as json_text without being parsed, so a malformed body was accepted and failed only when something read it, far from the sender.

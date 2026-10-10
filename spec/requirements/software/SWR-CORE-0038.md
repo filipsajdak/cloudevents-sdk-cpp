@@ -2,7 +2,8 @@
 uid: SWR-CORE-0038
 title: to_v3 converts a ce::v4 event into an equal ce::v3 event
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: high
 rationale: >
   Code built against ce::v4 hands events to libraries that are still on ce::v3.

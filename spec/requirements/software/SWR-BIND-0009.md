@@ -2,7 +2,8 @@
 uid: SWR-BIND-0009
 title: Every binding entry point that decodes JSON takes the JSON decode options
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: medium
 rationale: >
   In ce::v3 a binding's from_message decoded a structured message with the default decode options and gave the caller no way to set the retention limit, and http::from_batch_message and nats::from_payload did the same for a batch and a NATS payload.

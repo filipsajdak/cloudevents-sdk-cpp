@@ -2,7 +2,8 @@
 uid: SWR-BIND-0010
 title: An empty binary-mode body carries no payload, whatever its media type
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: medium
 rationale: >
   In ce::v4 a binary-mode body under a JSON media type is parsed (SWR-BIND-0006), and a body that does not parse is a parse error (SWR-BIND-0008).

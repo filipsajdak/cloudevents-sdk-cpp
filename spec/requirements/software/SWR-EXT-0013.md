@@ -2,7 +2,8 @@
 uid: SWR-EXT-0013
 title: set_data refuses a datacontenttype that is not JSON
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: medium
 rationale: >
   set_data stores a JSON payload, so an event whose datacontenttype says text/plain would describe it wrongly.

@@ -2,7 +2,8 @@
 uid: SWR-CORE-0037
 title: from_v3 converts a ce::v3 event into an equal ce::v4 event
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: high
 rationale: >
   A service moving to ce::v4 still exchanges events with code built against ce::v3.

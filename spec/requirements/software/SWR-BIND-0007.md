@@ -2,7 +2,8 @@
 uid: SWR-BIND-0007
 title: A binary-mode JSON body above the retention limit is kept as its own text
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: high
 rationale: >
   In ce::v4 a JSON body received in binary mode is parsed into a json_document (SWR-BIND-0006), and a retained DOM can occupy several times its text for the life of the event.

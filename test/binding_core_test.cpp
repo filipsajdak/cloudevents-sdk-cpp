@@ -1,12 +1,3 @@
-#include <boost/ut.hpp>
-
-#include <cloudevents/binding/common.hpp>
-#include <cloudevents/core.hpp>
-#include <cloudevents/message.hpp>
-#include <cloudevents/result.hpp>
-#include "equality.hpp"
-#include "mini_codec.hpp"
-
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -15,6 +6,17 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+#include <boost/ut.hpp>
+
+#include <cloudevents/binding/common.hpp>
+#include <cloudevents/core.hpp>
+#include <cloudevents/message.hpp>
+#include <cloudevents/result.hpp>
+
+#include "equality.hpp"
+#include "mini_codec.hpp"
+#include "payload.hpp"
 
 // The HTTP binding exercises the core with case_sensitive_names == false and a
 // percent-encoding value codec. The other half of every `if constexpr` in the
@@ -386,8 +388,9 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
   };
 
   // The media type is an argument, so the payload is decided by what the caller
-  // passes rather than by what a half-built event happened to hold.
-  "the body round-trips as bytes or as JSON text"_test = [] {
+  // passes rather than by what a half-built event happened to hold. A JSON body is
+  // parsed with the codec the caller passes (SWR-BIND-0006).
+  "the body round-trips as bytes or as a JSON document"_test = [] {
     const ce::event subject = base_event({.datacontenttype = "application/json"_mediatype,
                                           .data = ce::json_text{.raw = "{\"a\":1}"}});
 
@@ -395,13 +398,22 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
     binding::write_body(subject, out);
     expect(out.body.size() == 7U);
 
-    expect(bool{binding::read_body(out.body, subject.datacontenttype()) == subject.data()});
-    expect(std::holds_alternative<ce::binary>(binding::read_body(out.body, std::nullopt)));
-    expect(std::holds_alternative<std::monostate>(
-        binding::read_body(ce::binary{}, subject.datacontenttype())));
+    const auto as_json =
+        binding::read_body<ce::test::mini_codec>(out.body, subject.datacontenttype());
+    expect(as_json.has_value());
+    if (as_json) {
+      expect(ce_test::same_json_payload<ce::test::mini_codec>(*as_json, R"({"a":1})"sv));
+      const auto* document = std::get_if<ce::json_document>(&*as_json);
+      expect(document != nullptr && document->built_by<ce::test::mini_codec>());
+    }
+    const auto as_bytes = binding::read_body<ce::test::mini_codec>(out.body, std::nullopt);
+    expect(as_bytes.has_value() && std::holds_alternative<ce::binary>(*as_bytes));
+    const auto as_nothing =
+        binding::read_body<ce::test::mini_codec>(ce::binary{}, subject.datacontenttype());
+    expect(as_nothing.has_value() && std::holds_alternative<std::monostate>(*as_nothing));
   };
 
-  "a document body is its compact serialisation, and reads back as JSON text"_test = [] {
+  "a document body is its compact serialisation, and reads back as a document"_test = [] {
     const auto parsed = ce::test::mini_codec::parse(R"({ "a" : [1, 2] })");
     expect(parsed.has_value());
     if (!parsed) {
@@ -413,11 +425,189 @@ const boost::ut::suite<"binding-core-round-trip"> binding_core_round_trip = [] {
 
     ce::message out;
     binding::write_body(subject, out);
-    const auto body_read = binding::read_body(out.body, subject.datacontenttype());
-    expect(std::holds_alternative<ce::json_text>(body_read));
-    if (const auto* text = std::get_if<ce::json_text>(&body_read)) {
-      expect(text->raw == R"({"a":[1,2]})"sv);
+    expect(binding::detail::text_of(out.body) == R"({"a":[1,2]})"sv);
+    const auto body_read =
+        binding::read_body<ce::test::mini_codec>(out.body, subject.datacontenttype());
+    expect(body_read.has_value());
+    if (body_read) {
+      const auto* document = std::get_if<ce::json_document>(&*body_read);
+      expect(document != nullptr);
+      if (document != nullptr) {
+        expect(document->dump() == R"({"a":[1,2]})"sv);
+      }
     }
+  };
+};
+
+namespace {
+
+using mini = ce::test::mini_codec;
+
+[[nodiscard]] auto bytes_of(std::string_view text) -> ce::binary {
+  return ce::to_bytes(text);
+}
+
+[[nodiscard]] auto read_json_body(std::string_view body,
+                                  std::string_view media_type,
+                                  ce::json::decode_options options = {}) -> ce::result<ce::data_t> {
+  const auto declared = ce::datacontenttype::make(media_type);
+  return binding::read_body<mini>(
+      bytes_of(body), declared ? std::optional{*declared} : std::nullopt, options);
+}
+
+// Leading and trailing whitespace is part of the body, and the text keeps it:
+// structured decode trims around a member (SWR-JSON-0043), a binary body has
+// no surrounding document to trim it from.
+constexpr auto padded_body = "  {\"a\" : [1, 2]}\n"sv;
+
+constexpr std::string_view malformed[] = {
+    "{not json", "{\"a\":", "[1,2", "]", "nul", "{\"a\":1} x"};
+
+/// The media types the body reader treats as JSON: everything is_json_content_type accepts.
+constexpr std::string_view json_media_types[] = {"application/json",
+                                                 "text/json",
+                                                 "application/vnd.example+json",
+                                                 "Application/JSON; charset=utf-8"};
+
+}  // namespace
+
+// spec: SWR-BIND-0007
+const boost::ut::suite<"binary-json-body-above-the-limit-stays-text"> binary_json_body_over_limit =
+    [] {
+      using namespace boost::ut;
+
+      "a body within the limit is a document the codec built"_test = [&] {
+        const auto read = read_json_body(
+            padded_body, "application/json", {.retain_document_up_to = padded_body.size()});
+        expect(read.has_value());
+        if (read) {
+          const auto* document = std::get_if<ce::json_document>(&*read);
+          expect(document != nullptr && document->built_by<mini>());
+        }
+      };
+
+      "a body one byte over the limit is its own bytes, as received"_test = [&] {
+        const auto read = read_json_body(
+            padded_body, "application/json", {.retain_document_up_to = padded_body.size() - 1U});
+        expect(read.has_value());
+        if (read) {
+          const auto* text = std::get_if<ce::json_text>(&*read);
+          expect(text != nullptr);
+          if (text != nullptr) {
+            expect(text->raw == padded_body);
+          }
+        }
+      };
+
+      "a limit of zero keeps every body as text"_test = [&] {
+        const auto read =
+            read_json_body(padded_body, "application/json", {.retain_document_up_to = 0});
+        expect(read.has_value() && std::holds_alternative<ce::json_text>(*read));
+      };
+
+      "the default limit is the retention default"_test = [] {
+        const std::string at_limit(ce::json::decode_options::default_retention_limit, ' ');
+        const std::string within = "[" + at_limit.substr(2) + "]";
+        const std::string over = "[" + at_limit.substr(1) + "]";
+        expect(within.size() == ce::json::decode_options::default_retention_limit);
+        const auto kept = read_json_body(within, "application/json");
+        expect(kept.has_value() && std::holds_alternative<ce::json_document>(*kept));
+        const auto text = read_json_body(over, "application/json");
+        expect(text.has_value() && std::holds_alternative<ce::json_text>(*text));
+        if (text) {
+          expect(std::get<ce::json_text>(*text).raw == over);
+        }
+      };
+
+      "every JSON media type applies the limit"_test = [&] {
+        for (const auto media_type : json_media_types) {
+          const auto read = read_json_body(padded_body, media_type, {.retain_document_up_to = 0});
+          expect(read.has_value() && std::holds_alternative<ce::json_text>(*read)) << media_type;
+        }
+      };
+
+      "a body that is not JSON media is never parsed, whatever the limit"_test = [&] {
+        for (const auto media_type :
+             {"text/plain", "application/octet-stream", "application/xml"}) {
+          const auto read = read_json_body(padded_body, media_type, {.retain_document_up_to = 0});
+          expect(read.has_value() && std::holds_alternative<ce::binary>(*read)) << media_type;
+        }
+        const auto undeclared = binding::read_body<mini>(bytes_of(padded_body), std::nullopt);
+        expect(undeclared.has_value() && std::holds_alternative<ce::binary>(*undeclared));
+      };
+    };
+
+// spec: SWR-BIND-0008
+const boost::ut::suite<"binary-json-body-must-parse"> binary_json_body_must_parse = [] {
+  using namespace boost::ut;
+
+
+  "a non-empty body that is not JSON is a parse error under every JSON media type"_test = [&] {
+    for (const auto media_type : json_media_types) {
+      for (const auto body : malformed) {
+        const auto read = read_json_body(body, media_type);
+        expect(!read.has_value()) << media_type << ": " << body;
+        if (!read) {
+          expect(read.error().code == ce::errc::parse_error) << media_type << ": " << body;
+        }
+      }
+    }
+  };
+
+  "a malformed body fails the same way above the limit"_test = [&] {
+    for (const auto body : malformed) {
+      for (const std::size_t limit : {std::size_t{0}, std::size_t{1}}) {
+        const auto read =
+            read_json_body(body, "application/json", {.retain_document_up_to = limit});
+        expect(!read.has_value()) << body;
+        if (!read) {
+          expect(read.error().code == ce::errc::parse_error) << body;
+        }
+      }
+    }
+  };
+
+  "a body of whitespace only is not JSON"_test = [] {
+    const auto read = read_json_body(" \n", "application/json");
+    expect(!read.has_value());
+    if (!read) {
+      expect(read.error().code == ce::errc::parse_error);
+    }
+  };
+
+  "any JSON value is a payload, not only an object"_test = [] {
+    for (const auto body : {"42", "\"text\"", "null", "true", "[1,2]", "{}"}) {
+      const auto read = read_json_body(body, "application/json");
+      expect(read.has_value() && std::holds_alternative<ce::json_document>(*read)) << body;
+    }
+  };
+
+  "a body that is not under a JSON media type is not parsed"_test = [&] {
+    for (const auto body : malformed) {
+      const auto read = read_json_body(body, "text/plain");
+      expect(read.has_value() && std::holds_alternative<ce::binary>(*read)) << body;
+    }
+  };
+};
+
+// spec: SWR-BIND-0010
+const boost::ut::suite<"empty-binary-body-has-no-payload"> empty_binary_body = [] {
+  using namespace boost::ut;
+
+  "an empty body is no payload whatever its media type or the limit"_test = [] {
+    for (const auto media_type : {"application/json",
+                                  "text/json",
+                                  "application/vnd.example+json",
+                                  "text/plain",
+                                  "application/octet-stream"}) {
+      for (const std::size_t limit :
+           {std::size_t{0}, ce::json::decode_options::default_retention_limit}) {
+        const auto read = read_json_body("", media_type, {.retain_document_up_to = limit});
+        expect(read.has_value() && std::holds_alternative<std::monostate>(*read)) << media_type;
+      }
+    }
+    const auto undeclared = binding::read_body<mini>(ce::binary{}, std::nullopt);
+    expect(undeclared.has_value() && std::holds_alternative<std::monostate>(*undeclared));
   };
 };
 

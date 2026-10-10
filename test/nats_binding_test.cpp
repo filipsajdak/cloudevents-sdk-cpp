@@ -1,16 +1,17 @@
-#include <boost/ut.hpp>
-
-#include <cloudevents/binding/nats.hpp>
-#include <cloudevents/message.hpp>
-#include <cloudevents/core.hpp>
-#include <cloudevents/format/json_codec.hpp>
-#include <cloudevents/result.hpp>
-
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <variant>
 
+#include <boost/ut.hpp>
+
+#include <cloudevents/binding/nats.hpp>
+#include <cloudevents/core.hpp>
+#include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/message.hpp>
+#include <cloudevents/result.hpp>
+
+#include "binding_decode_options.hpp"
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
@@ -82,9 +83,9 @@ void check_document_round_trip(std::string_view codec) {
   expect(bool{binary}) << codec << ": binary";
   if (binary) {
     auto read_back = ce::nats::from_message<Codec>(*binary);
-    expect(read_back && std::holds_alternative<ce::json_text>(read_back->data()) &&
+    expect(read_back && std::holds_alternative<ce::json_document>(read_back->data()) &&
            ce_test::same_json_payload<Codec>(read_back->data(), document_payload))
-        << codec << ": binary mode reads JSON text";
+        << codec << ": binary mode reads a JSON document";
   }
 }
 
@@ -294,6 +295,79 @@ const boost::ut::suite<"nats-binary-mode"> nats_binary_mode = [] {
     test(std::string{codec}) = [codec] {
       check_binary_mode<C>(codec);
       check_mode_detection<C>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0009
+const boost::ut::suite<"from-message-takes-decode-options"> nats_from_message_takes_options = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_from_message_takes_decode_options<C>(
+          codec,
+          [](const ce::event& subject, ce::content_mode mode) {
+            return ce::nats::to_message<C>(subject, mode);
+          },
+          [](const ce::message& laid_out, ce::json::decode_options options) {
+            return ce::nats::from_message<C>(laid_out, options);
+          });
+    };
+  });
+};
+
+// spec: SWR-BIND-0009
+const boost::ut::suite<"from-payload-takes-decode-options"> nats_from_payload_takes_options = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      const auto payload = ce::nats::to_payload<C>(ce_test::options_event());
+      expect(payload.has_value()) << codec;
+      if (!payload) {
+        return;
+      }
+      const auto is_document = [](const ce::result<ce::event>& read) {
+        return read.has_value() && std::holds_alternative<ce::json_document>(read->data());
+      };
+      const auto is_text = [](const ce::result<ce::event>& read) {
+        return read.has_value() && std::holds_alternative<ce::json_text>(read->data());
+      };
+      expect(is_document(ce::nats::from_payload<C>(*payload))) << codec;
+      expect(is_document(ce::nats::from_payload<C>(*payload, {}))) << codec;
+      expect(is_document(
+          ce::nats::from_payload<C>(*payload, {.retain_document_up_to = payload->size()})))
+          << codec;
+      expect(is_text(
+          ce::nats::from_payload<C>(*payload, {.retain_document_up_to = payload->size() - 1U})))
+          << codec;
+      expect(is_text(ce::nats::from_payload<C>(*payload, {.retain_document_up_to = 0}))) << codec;
+    };
+  });
+};
+
+// spec: SWR-BIND-0008
+// spec: SWR-BIND-0010
+const boost::ut::suite<"nats-binary-mode-json-body"> nats_binary_mode_json_body = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce::message incoming{.header_fields = {{"ce-specversion", "1.0"},
+                                             {"ce-id", "1"},
+                                             {"ce-source", "/s"},
+                                             {"ce-type", "t"},
+                                             {"ce-datacontenttype", "application/json"}}};
+      incoming.body = ce::to_bytes("{not json");
+      const auto refused = ce::nats::from_message<C>(incoming);
+      expect(!refused.has_value()) << codec;
+      if (!refused) {
+        expect(refused.error().code == ce::errc::parse_error) << codec;
+      }
+      incoming.body = {};
+      const auto empty = ce::nats::from_message<C>(incoming);
+      expect(empty.has_value() && std::holds_alternative<std::monostate>(empty->data())) << codec;
     };
   });
 };

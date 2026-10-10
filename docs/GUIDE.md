@@ -405,7 +405,8 @@ std::printf("document: %d, text: %d\n",
 ```
 
 `from_value` always keeps a document, copying the member out of the DOM you passed, which it leaves as it was.
-A binding's binary-mode body is not a JSON event, so a JSON body there still arrives as `ce::json_text`.
+A binding's binary-mode body is the payload itself, and it is read under the same limit: a JSON body arrives as a `ce::json_document` within it and as `ce::json_text` holding the body's bytes exactly as received above it, and `from_message` fails with `parse_error` when a non-empty body under a JSON media type is not JSON.
+An empty body is no payload, whatever its media type.
 
 ### What decoding loses
 
@@ -530,7 +531,8 @@ When you build a message, use `set` rather than `add` unless you mean to repeat 
 | structured mode | yes | yes | yes |
 | batched mode | yes | no | no |
 
-Every binding offers `to_message<Codec>(event, mode)`, `from_message<Codec>(message)` and `detect_content_mode(message)`.
+Every binding offers `to_message<Codec>(event, mode)`, `from_message<Codec>(message, options)` and `detect_content_mode(message)`.
+The last parameter of `from_message`, of `http::from_batch_message` and of `nats::from_payload` is a `ce::json::decode_options`, with the same 16 KiB retention default as `json_format::decode`, applied to every JSON payload the call decodes, in structured, batched and binary mode.
 Asking for a mode a binding does not define returns `invalid_argument`; the SDK never invents one.
 
 ### HTTP
@@ -660,7 +662,9 @@ It is valid only as an entry in a `CE_DESCRIBE` list.
 ## 8. Typed payloads
 
 A described struct can be the payload.
-`ce::set_data` writes it as JSON and sets `datacontenttype` to `application/json`, and `ce::data_as` reads it back:
+`ce::set_data` writes it as JSON and returns a `result<void>`.
+It sets `datacontenttype` to `application/json` when the event declares none, keeps a JSON media type the event declares (`text/json` and `+json` types included), and refuses any other with `type_mismatch`, leaving the event unchanged.
+`ce::data_as` reads the payload back:
 
 ```cpp
 namespace shop {
@@ -674,7 +678,11 @@ CE_DESCRIBE(line_item, sku, quantity);
 
 inline void carry_a_line_item() {
   ce::event added{"12"_id, "/cart"_source, "com.example.cart.added"_type};
-  ce::set_data<line_item, codec>(added, line_item{.sku = "SKU-1", .quantity = 2});
+  if (auto stored = ce::set_data<line_item, codec>(added, line_item{.sku = "SKU-1", .quantity = 2});
+      !stored) {
+    std::printf("%s\n", stored.error().detail.c_str());
+    return;
+  }
 
   if (auto item = ce::data_as<line_item, codec>(added); item) {
     std::printf("%s x%d\n", item->sku.c_str(), item->quantity);
@@ -696,14 +704,18 @@ A member of the wrong type fails, and `where` names the member.
 auto view = ce::event_of<shop::line_item, codec>::with_data(
     ce::event{"13"_id, "/cart"_source, "com.example.cart.added"_type},
     shop::line_item{.sku = "SKU-2", .quantity = 1});
-if (auto item = view.data(); item) {
-  std::printf("%s\n", item->sku.c_str());
+if (view) {
+  if (auto item = view->data(); item) {
+    std::printf("%s\n", item->sku.c_str());
+  }
+  const ce::event& underlying = view->underlying();
+  std::printf("%s\n", underlying.id().str().c_str());
 }
-const ce::event& underlying = view.underlying();
-std::printf("%s\n", underlying.id().str().c_str());
 ```
 
 `examples/described_payload.cpp` covers vectors, maps, optionals and the failure cases.
+
+`event_of<T, Codec>::with_data` returns a `result<event_of>` and `event_of::set_data` a `result<void>`, for the same refusal.
 
 `set_data` stores the payload as a `json_document` the codec built, so encoding with the same codec copies the DOM and `data_as` with it reads the DOM, neither going through text.
 A document another codec built is converted through its text.
@@ -789,7 +801,7 @@ The types rule out an invalid event, but they cannot rule out these.
 | mistake | what happens | what to do |
 |---|---|---|
 | A text payload with no `datacontenttype` | It is decoded as `json_text` holding `"hello"`, quotes included, because absent means JSON. | Always set `datacontenttype` for text. |
-| Trusting a JSON payload received in binary mode | The body is carried as `json_text` unparsed; malformed JSON surfaces only when you parse it. | Treat `json_text` as untrusted until `data_as` or your own parser accepts it. |
+| Receiving a large JSON body in binary mode | It is parsed on receive, so a malformed body fails `from_message` with `parse_error`, and a body above the retention limit is kept as `json_text` holding its bytes. | Pass `ce::json::decode_options` to `from_message` to set the limit for untrusted input. |
 | Comparing an extension after a round trip | A `ce::uri` extension comes back as `std::string`, so the events differ. | Read it with a typed extension. |
 | Reading a payload as the wrong struct | Absent members default, so it succeeds with empty fields. | Switch on `type` before choosing the struct. |
 | Holding the pointer `extension()` returned | It dangles after `set_extension`, `remove_extension`, `set`, or the event's destruction. | Copy the value if you need it longer. |

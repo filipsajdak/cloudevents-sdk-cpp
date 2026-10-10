@@ -56,6 +56,9 @@ INSTR_ITERATIONS = {
     "http_encode_structured": 1000,
     "kafka_decode_binary": 1000,
     "nats_decode_binary": 1000,
+    "http_decode_binary_typed": 1000,
+    "kafka_decode_binary_typed": 1000,
+    "nats_decode_binary_typed": 1000,
 }
 DEFAULT_ITERATIONS = 200
 

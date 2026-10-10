@@ -226,6 +226,61 @@ auto nats_decode_binary() -> bool {
   return event.has_value();
 }
 
+// Binary-mode decode followed by the typed read of the payload it carries. Where the
+// body is kept as text the read parses it again; where the decode keeps a document
+// the codec built, the read uses it. The two sides differ in what the receive and
+// the read cost together, which neither the decode nor the read shows alone.
+template<class Binding>
+[[nodiscard]] auto typed_binary_message() -> const ce::message& {
+  static const ce::message subject = laid_out([] {
+    return Binding::template to_message<nlohmann_codec>(ce::bench::typed_event<nlohmann_codec>(),
+                                                        ce::content_mode::binary_mode);
+  });
+  return subject;
+}
+
+struct http_binding {
+  template<class C>
+  static auto from_message(const ce::message& incoming) {
+    return ce::http::from_message<C>(incoming);
+  }
+  template<class C>
+  static auto to_message(const ce::event& subject, ce::content_mode mode) {
+    return ce::http::to_message<C>(subject, mode);
+  }
+};
+struct kafka_binding {
+  template<class C>
+  static auto from_message(const ce::message& incoming) {
+    return ce::kafka::from_message<C>(incoming);
+  }
+  template<class C>
+  static auto to_message(const ce::event& subject, ce::content_mode mode) {
+    return ce::kafka::to_message<C>(subject, mode);
+  }
+};
+struct nats_binding {
+  template<class C>
+  static auto from_message(const ce::message& incoming) {
+    return ce::nats::from_message<C>(incoming);
+  }
+  template<class C>
+  static auto to_message(const ce::event& subject, ce::content_mode mode) {
+    return ce::nats::to_message<C>(subject, mode);
+  }
+};
+
+template<class Binding, class C>
+auto decode_binary_typed() -> bool {
+  const auto event = Binding::template from_message<C>(typed_binary_message<Binding>());
+  if (!event) {
+    return false;
+  }
+  auto payload = ce::data_as<ce::bench::order, C>(*event);
+  escape(payload);
+  return payload.has_value();
+}
+
 template<class C>
 auto typed_payload_read() -> bool {
   auto payload = ce::data_as<ce::bench::order, C>(ce::bench::typed_event<C>());
@@ -244,9 +299,10 @@ template<class C>
 auto typed_payload_write() -> bool {
   using namespace ce::literals;
   ce::event subject{"A234"_id, "/orders"_source, "com.example.order"_type};
-  ce::set_data<ce::bench::order, C>(subject, ce::bench::typed_order());
+  const bool written =
+      ce::bench::write_typed<ce::bench::order, C>(subject, ce::bench::typed_order());
   escape(subject);
-  return true;
+  return written;
 }
 
 // --- the typed entry points ---------------------------------------------------
@@ -344,6 +400,9 @@ auto operations_for(std::string_view codec) {
       {.id = id("http_encode_structured"), .run = http_encode_structured<C>},
       {.id = id("kafka_decode_binary"), .run = kafka_decode_binary<C>},
       {.id = id("nats_decode_binary"), .run = nats_decode_binary<C>},
+      {.id = id("http_decode_binary_typed"), .run = decode_binary_typed<http_binding, C>},
+      {.id = id("kafka_decode_binary_typed"), .run = decode_binary_typed<kafka_binding, C>},
+      {.id = id("nats_decode_binary_typed"), .run = decode_binary_typed<nats_binding, C>},
   });
 }
 

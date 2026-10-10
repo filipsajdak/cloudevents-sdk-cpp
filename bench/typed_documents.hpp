@@ -9,8 +9,10 @@
 /// `ce::bench`, which is where `CE_DESCRIBE`'s function is found by ADL.
 
 #include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <cloudevents/core.hpp>
@@ -68,13 +70,30 @@ CE_DESCRIBE(tick, n);
   return payload;
 }
 
+/// Writes `value` with `set_data` and says whether it was stored.
+///
+/// `set_data` returns void in ce::v3 and a result in ce::v4. The perf job measures
+/// the merge base with the pull request's probe, so the probe has to compile
+/// against both.
+template<class T, class C>
+[[nodiscard]] auto write_typed(ce::event& subject, const T& value) -> bool {
+  if constexpr (std::is_void_v<decltype(ce::set_data<T, C>(subject, value))>) {
+    ce::set_data<T, C>(subject, value);
+    return true;
+  } else {
+    return ce::set_data<T, C>(subject, value).has_value();
+  }
+}
+
 /// An event whose payload `set_data` wrote with the codec that reads it.
 template<class C>
 [[nodiscard]] auto typed_event() -> const ce::event& {
   static const ce::event subject = [] {
     using namespace ce::literals;
     ce::event out{"A234"_id, "/orders"_source, "com.example.order"_type};
-    ce::set_data<order, C>(out, typed_order());
+    if (!write_typed<order, C>(out, typed_order())) {
+      std::abort();
+    }
     return out;
   }();
   return subject;

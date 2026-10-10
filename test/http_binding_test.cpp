@@ -1,14 +1,3 @@
-#include <boost/ut.hpp>
-
-#include <cloudevents/binding/http.hpp>
-#include <cloudevents/codec/nlohmann.hpp>
-#include <cloudevents/core.hpp>
-#include <cloudevents/detail/timestamp.hpp>
-#include <cloudevents/format/json_codec.hpp>
-#include <cloudevents/format/json_format.hpp>
-#include <cloudevents/message.hpp>
-#include <cloudevents/result.hpp>
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +9,18 @@
 #include <variant>
 #include <vector>
 
+#include <boost/ut.hpp>
+
+#include <cloudevents/binding/http.hpp>
+#include <cloudevents/codec/nlohmann.hpp>
+#include <cloudevents/core.hpp>
+#include <cloudevents/detail/timestamp.hpp>
+#include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/format/json_format.hpp>
+#include <cloudevents/message.hpp>
+#include <cloudevents/result.hpp>
+
+#include "binding_decode_options.hpp"
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
@@ -475,9 +476,10 @@ void check_binary_mode_body(std::string_view label) {
     expect(ce::http::detail::to_text(from_json->body) == raw) << label;
     auto back = ce::http::from_message<C>(*from_json);
     expect(back.has_value()) << label;
-    if (back && std::holds_alternative<ce::json_text>(back->data())) {
-      expect(std::get<ce::json_text>(back->data()).raw == raw) << label;
-    }
+    // A binary-mode JSON body is parsed on receive (SWR-BIND-0006), so it comes back as
+    // a document holding the same value.
+    expect(back && std::holds_alternative<ce::json_document>(back->data())) << label;
+    expect(back && ce_test::same_json_payload<C>(back->data(), raw)) << label;
   }
 
   // No payload leaves the body empty rather than writing a placeholder.
@@ -517,10 +519,8 @@ void check_document_round_trip(std::string_view label) {
     }
     auto back = ce::http::from_message<C>(*laid_out);
     expect(back && ce_test::same_json_payload<C>(back->data(), document_payload)) << label;
-    if (mode == ce::content_mode::binary_mode) {
-      expect(back && std::holds_alternative<ce::json_text>(back->data()))
-          << label << ": binary mode reads JSON text";
-    }
+    expect(back && std::holds_alternative<ce::json_document>(back->data()))
+        << label << ": both modes read a JSON document";
   }
 }
 
@@ -937,10 +937,8 @@ void check_spec_examples(std::string_view label) {
     expect(ce::to_string(*from_binary->time()) == "2018-04-05T03:56:24Z"sv) << label;
   }
   expect(from_binary->extensions().size() == 2U) << label;
-  expect(std::holds_alternative<ce::json_text>(from_binary->data())) << label;
-  if (std::holds_alternative<ce::json_text>(from_binary->data())) {
-    expect(std::get<ce::json_text>(from_binary->data()).raw == R"({"much":"wow"})"sv) << label;
-  }
+  expect(std::holds_alternative<ce::json_document>(from_binary->data())) << label;
+  expect(ce_test::same_json_payload<C>(from_binary->data(), R"({"much":"wow"})"sv)) << label;
 
   // Sending the decoded event back out reproduces the example's headers, so the
   // two directions agree on the same wire form.
@@ -1742,6 +1740,117 @@ const boost::ut::suite<"http-value-policy"> http_value_policy = [] {
       check_value_policy<C>(codec);
       check_literal_refuses_control_characters<C>(codec);
     };
+  });
+};
+
+// spec: SWR-BIND-0009
+const boost::ut::suite<"from-message-takes-decode-options"> http_from_message_takes_options = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_from_message_takes_decode_options<C>(
+          codec,
+          [](const ce::event& subject, ce::content_mode mode) {
+            return ce::http::to_message<C>(subject, mode);
+          },
+          [](const ce::message& laid_out, ce::json::decode_options options) {
+            return ce::http::from_message<C>(laid_out, options);
+          });
+    };
+  });
+};
+
+// spec: SWR-BIND-0009
+const boost::ut::suite<"from-batch-message-takes-decode-options"> http_from_batch_options = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      const std::vector<ce::event> batch{ce_test::options_event(), ce_test::options_event()};
+      const auto laid_out = ce::http::to_batch_message<C>(batch);
+      expect(laid_out.has_value()) << codec;
+      if (!laid_out) {
+        return;
+      }
+      const auto holds_every = [&codec](const ce::result<std::vector<ce::event>>& read,
+                                        bool as_documents) {
+        expect(read.has_value() && read->size() == 2U) << codec;
+        if (!read) {
+          return;
+        }
+        for (const auto& decoded : *read) {
+          expect(std::holds_alternative<ce::json_document>(decoded.data()) == as_documents)
+              << codec;
+          expect(std::holds_alternative<ce::json_text>(decoded.data()) != as_documents) << codec;
+        }
+      };
+
+      holds_every(ce::http::from_batch_message<C>(*laid_out), true);
+      holds_every(ce::http::from_batch_message<C>(*laid_out, {}), true);
+      holds_every(ce::http::from_batch_message<C>(*laid_out, {.retain_document_up_to = 0}), false);
+      // A batch keeps documents when its text is at most the limit times its events.
+      holds_every(ce::http::from_batch_message<C>(*laid_out,
+                                                  {.retain_document_up_to = laid_out->body.size()}),
+                  true);
+      holds_every(ce::http::from_batch_message<C>(*laid_out, {.retain_document_up_to = 1}), false);
+    };
+  });
+};
+
+template<class C>
+void check_binary_json_body(std::string_view codec) {
+  using namespace boost::ut;
+
+  // A body under a JSON media type is parsed on receive, like a structured message
+  // (SWR-BIND-0006), and a body that is not JSON is refused (SWR-BIND-0008).
+  for (const auto media_type :
+       {"application/json"sv, "text/json"sv, "application/x.thing+json"sv}) {
+    ce::message request = binary_message_with({"Content-Type", std::string{media_type}});
+    request.body = ce::http::detail::to_bytes(R"({"much":"wow"})");
+    const auto parsed = ce::http::from_message<C>(request);
+    expect(parsed.has_value() && std::holds_alternative<ce::json_document>(parsed->data()))
+        << codec << ": " << media_type;
+
+    request.body = ce::http::detail::to_bytes("{not json");
+    const auto refused = ce::http::from_message<C>(request);
+    expect(!refused.has_value()) << codec << ": " << media_type;
+    if (!refused) {
+      expect(refused.error().code == ce::errc::parse_error) << codec << ": " << media_type;
+    }
+
+    // An empty body carries no payload whatever the media type (SWR-BIND-0010).
+    request.body = {};
+    const auto empty = ce::http::from_message<C>(request);
+    expect(empty.has_value() && std::holds_alternative<std::monostate>(empty->data()))
+        << codec << ": " << media_type;
+  }
+
+  // Another media type is carried as bytes, valid JSON or not.
+  ce::message other = binary_message_with({"Content-Type", "text/plain"});
+  other.body = ce::http::detail::to_bytes("{not json");
+  const auto bytes = ce::http::from_message<C>(other);
+  expect(bytes.has_value() && std::holds_alternative<ce::binary>(bytes->data())) << codec;
+
+  // Above the limit the payload is the body's own bytes (SWR-BIND-0007).
+  ce::message padded = binary_message_with({"Content-Type", "application/json"});
+  padded.body = ce::http::detail::to_bytes(" {\"much\" : \"wow\"}\n");
+  const auto text = ce::http::from_message<C>(padded, {.retain_document_up_to = 4});
+  expect(text.has_value() && std::holds_alternative<ce::json_text>(text->data())) << codec;
+  if (text && std::holds_alternative<ce::json_text>(text->data())) {
+    expect(std::get<ce::json_text>(text->data()).raw == " {\"much\" : \"wow\"}\n"sv) << codec;
+  }
+}
+
+// spec: SWR-BIND-0006
+// spec: SWR-BIND-0007
+// spec: SWR-BIND-0008
+// spec: SWR-BIND-0010
+const boost::ut::suite<"http-binary-mode-json-body"> http_binary_mode_json_body = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] { check_binary_json_body<C>(codec); };
   });
 };
 

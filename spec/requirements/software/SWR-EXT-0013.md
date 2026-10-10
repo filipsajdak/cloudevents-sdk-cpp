@@ -2,7 +2,7 @@
 uid: SWR-EXT-0013
 title: set_data refuses a datacontenttype that is not JSON
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   set_data stores a JSON payload, so an event whose datacontenttype says text/plain would describe it wrongly.
@@ -14,9 +14,9 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-DESC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/typed_payload.hpp]
+verified_by: [test:test/typed_payload_test.cpp::set-data-refuses-a-non-json-media-type]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
 If the event declares a `datacontenttype` that `is_json_content_type` does not accept, then `set_data<T, Codec>` shall return a failed `result` with `errc::type_mismatch` naming `datacontenttype`, and leave the event unchanged.

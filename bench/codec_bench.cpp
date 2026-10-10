@@ -142,7 +142,8 @@ void typed_payload_write(benchmark::State& state) {
   using namespace ce::literals;
   for (auto _ : state) {
     ce::event subject{"A234"_id, "/orders"_source, "com.example.order"_type};
-    ce::set_data<ce::bench::order, C>(subject, ce::bench::typed_order());
+    bool written = ce::bench::write_typed<ce::bench::order, C>(subject, ce::bench::typed_order());
+    benchmark::DoNotOptimize(written);
     benchmark::DoNotOptimize(subject);
   }
 }

@@ -51,6 +51,8 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
   const ce::message incoming = build(input);
 
   (void)ce::kafka::detect_content_mode(incoming);
+  // The text path above the retention limit takes the same input (SWR-BIND-0007).
+  (void)ce::kafka::from_message<ce::codec::nlohmann_codec>(incoming, {.retain_document_up_to = 0});
   auto decoded = ce::kafka::from_message<ce::codec::nlohmann_codec>(incoming);
   if (decoded) {
     // Every header value that got here passed UTF-8 validation on the way in, so

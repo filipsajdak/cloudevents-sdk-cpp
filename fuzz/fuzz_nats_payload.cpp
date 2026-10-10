@@ -57,6 +57,9 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
 
   const ce::message incoming = build(payload);
   (void)ce::nats::detect_content_mode(incoming);
+  // The text path above the retention limit takes the same input (SWR-BIND-0007).
+  (void)ce::nats::from_message<ce::codec::nlohmann_codec>(incoming, {.retain_document_up_to = 0});
+  (void)ce::nats::from_payload<ce::codec::nlohmann_codec>(payload, {.retain_document_up_to = 0});
   if (auto from_headers = ce::nats::from_message<ce::codec::nlohmann_codec>(incoming)) {
     // Everything that got here percent-decoded and validated, so writing it back
     // out cannot fail; a failure means the two directions disagree.

@@ -2,7 +2,7 @@
 uid: SWR-BIND-0007
 title: A binary-mode JSON body above the retention limit is kept as its own text
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   In ce::v4 a JSON body received in binary mode is parsed into a json_document (SWR-BIND-0006), and a retained DOM can occupy several times its text for the life of the event.
@@ -14,9 +14,9 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp, code:include/cloudevents/format/json_format.hpp]
+verified_by: [test:test/binding_core_test.cpp::binary-json-body-above-the-limit-stays-text, test:test/http_binding_test.cpp::http-binary-mode-json-body]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
 When a binding reads a binary-mode body under a media type that `is_json_content_type` accepts and the body is longer than the retention limit, it shall store the body's bytes, exactly as received, as `json_text` instead of a json_document.

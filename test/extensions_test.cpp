@@ -452,9 +452,14 @@ void check_event_of(std::string_view label) {
 
   const payload sent{.label = "crate", .count = 12};
 
-  // with_data returns the view itself: writing a described payload cannot fail,
-  // so there is no result to unwrap.
-  auto built = view::with_data(minimal(), sent);
+  // with_data returns a result: the event may declare a media type that is not JSON
+  // (SWR-EXT-0013), which a typed payload would describe wrongly.
+  auto written = view::with_data(minimal(), sent);
+  expect(written.has_value()) << label;
+  if (!written) {
+    return;
+  }
+  auto built = std::move(*written);
 
   auto read = built.data();
   expect(read.has_value()) << label;
@@ -470,7 +475,7 @@ void check_event_of(std::string_view label) {
 
   // Writing through the view updates the event it holds.
   const payload replaced{.label = "pallet", .count = 3};
-  built.set_data(replaced);
+  expect(built.set_data(replaced).has_value()) << label;
   auto again = built.data();
   expect(again.has_value()) << label;
   if (again) {

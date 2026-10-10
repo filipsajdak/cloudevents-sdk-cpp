@@ -91,7 +91,7 @@ void check_payload_roundtrip(std::string_view label) {
   ce::event subject = minimal();
   const reading sent = sample();
 
-  ce::set_data<reading, C>(subject, sent);
+  expect(ce::set_data<reading, C>(subject, sent).has_value()) << "set_data refused a JSON payload";
 
   // The event states what it carries, so a peer that only reads attributes can
   // tell the payload is JSON.
@@ -128,7 +128,7 @@ void check_payload_through_the_wire(std::string_view label) {
 
   ce::event subject = minimal();
   const reading sent = sample();
-  ce::set_data<reading, C>(subject, sent);
+  expect(ce::set_data<reading, C>(subject, sent).has_value()) << "set_data refused a JSON payload";
 
   auto encoded = format::encode(subject);
   expect(encoded.has_value()) << label;
@@ -443,7 +443,8 @@ void check_set_data_stores_a_document(std::string_view label) {
   const reading sent = sample();
   ce::event subject = minimal();
   counted::reset();
-  ce::set_data<reading, counted>(subject, sent);
+  expect(ce::set_data<reading, counted>(subject, sent).has_value())
+      << "set_data refused a JSON payload";
   expect(counted::counts().dumps == 0U) << label << ": set_data serialised the payload";
   expect(counted::counts().parses == 0U) << label;
 
@@ -477,7 +478,8 @@ void check_set_data_stores_a_document(std::string_view label) {
   // Writing again replaces the document.
   reading second = sent;
   second.sensor = "s-2";
-  ce::set_data<reading, counted>(subject, second);
+  expect(ce::set_data<reading, counted>(subject, second).has_value())
+      << "set_data refused a JSON payload";
   auto read = ce::data_as<reading, counted>(subject);
   expect(read.has_value() && read->sensor == "s-2") << label;
 }
@@ -490,6 +492,84 @@ const boost::ut::suite<"set-data-stores-a-document"> set_data_stores_a_document 
     check_set_data_stores_a_document<nlohmann_codec>("nlohmann_codec");
   };
   "mini_codec"_test = [] { check_set_data_stores_a_document<mini_codec>("mini_codec"); };
+};
+
+// --- SWR-EXT-0013 -----------------------------------------------------------
+
+template<class C>
+void check_set_data_refuses_a_non_json_media_type(std::string_view label) {
+  using namespace boost::ut;
+  using view = ce::event_of<reading, C>;
+
+  const reading sent = sample();
+
+  // A refused write leaves the event as it was, payload and media type included.
+  for (const auto declared : {"text/plain"_mediatype,
+                              "image/png"_mediatype,
+                              "application/xml"_mediatype,
+                              "application/jsonx"_mediatype}) {
+    ce::event subject = minimal({.datacontenttype = declared, .data = std::string{"kept"}});
+    const ce::event untouched = subject;  // NOLINT(performance-unnecessary-copy-initialization)
+    const auto refused = ce::set_data<reading, C>(subject, sent);
+    expect(!refused.has_value()) << label << ": " << declared.view();
+    if (!refused) {
+      expect(refused.error().code == ce::errc::type_mismatch) << label;
+      expect(refused.error().where == "datacontenttype") << label;
+    }
+    expect(bool{subject == untouched}) << label << ": a refused set_data changed the event";
+
+    const auto refused_view = view::with_data(subject, sent);
+    expect(!refused_view.has_value()) << label;
+    if (!refused_view) {
+      expect(refused_view.error().code == ce::errc::type_mismatch) << label;
+      expect(refused_view.error().where == "datacontenttype") << label;
+    }
+
+    view held{subject};
+    const auto refused_member = held.set_data(sent);
+    expect(!refused_member.has_value()) << label;
+    expect(bool{held.underlying() == untouched}) << label << ": event_of::set_data changed it";
+  }
+
+  // A JSON media type is kept as declared, whatever is_json_content_type accepts.
+  for (const auto declared : {"application/json"_mediatype,
+                              "application/vnd.example+json"_mediatype,
+                              "text/json"_mediatype,
+                              "Application/JSON; charset=utf-8"_mediatype}) {
+    ce::event subject = minimal({.datacontenttype = declared, .data = std::string{"replaced"}});
+    expect(ce::set_data<reading, C>(subject, sent).has_value()) << label;
+    expect(subject.datacontenttype() == declared) << label << ": " << declared.view();
+    expect(std::holds_alternative<ce::json_document>(subject.data())) << label;
+
+    const auto built = view::with_data(minimal({.datacontenttype = declared}), sent);
+    expect(built.has_value() && built->underlying().datacontenttype() == declared) << label;
+
+    view held{minimal({.datacontenttype = declared})};
+    expect(held.set_data(sent).has_value()) << label;
+    expect(held.underlying().datacontenttype() == declared) << label;
+  }
+
+  // With no media type declared, application/json is set.
+  ce::event bare = minimal();
+  expect(ce::set_data<reading, C>(bare, sent).has_value()) << label;
+  expect(bare.datacontenttype().has_value() && bare.datacontenttype()->view() == "application/json")
+      << label;
+  const auto built = view::with_data(minimal(), sent);
+  expect(built.has_value() && built->underlying().datacontenttype().has_value() &&
+         built->underlying().datacontenttype()->view() == "application/json")
+      << label;
+}
+
+// spec: SWR-EXT-0013
+const boost::ut::suite<"set-data-refuses-a-non-json-media-type"> set_data_refuses_non_json = [] {
+  using namespace boost::ut;
+
+  "nlohmann_codec"_test = [] {
+    check_set_data_refuses_a_non_json_media_type<nlohmann_codec>("nlohmann_codec");
+  };
+  "mini_codec"_test = [] {
+    check_set_data_refuses_a_non_json_media_type<mini_codec>("mini_codec");
+  };
 };
 
 // --- SWR-EXT-0007 -----------------------------------------------------------
@@ -802,7 +882,8 @@ void check_encode_as(std::string_view label) {
   expect(bool{subject == untouched}) << label << ": encode_as modified the event";
 
   ce::event two_steps = subject;
-  ce::set_data<reading, counted>(two_steps, sent);
+  expect(ce::set_data<reading, counted>(two_steps, sent).has_value())
+      << "set_data refused a JSON payload";
   const auto expected_text = format::encode(two_steps);
   expect(expected_text.has_value()) << label;
   if (text && expected_text) {
@@ -887,7 +968,8 @@ const boost::ut::suite<"typed-payload-layering"> payload_layering = [] {
     // of ce::event. Calling them as free functions is what pins that.
     ce::event subject = minimal();
     const reading sent = sample();
-    ce::set_data<reading, nlohmann_codec>(subject, sent);
+    expect(ce::set_data<reading, nlohmann_codec>(subject, sent).has_value())
+        << "set_data refused a JSON payload";
     expect(ce::data_as<reading, nlohmann_codec>(subject).has_value());
 
     static_assert(!carries_typed_payload_member<ce::event>,

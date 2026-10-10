@@ -43,6 +43,10 @@ declarations and behaviour both.
   A consumer that never reads the payload, such as a forwarder or router, pays the parse for nothing: on the HTTP full-event path the receive alone costs 15% to 54% more instructions (RapidJSON +15%, Boost.JSON +18%, Glaze +29%, nlohmann +54%) and 8 to 27 more allocations, by codec.
   No option skips the parse today: `json::decode_options{.retain_document_up_to = 0}` keeps the body as `json_text` instead of a document, but the body is still parsed to validate it (SWR-BIND-0007, SWR-BIND-0008), so it saves the retained DOM and not the parse.
   *Migrate:* code that matched `json_text` on a received binary-mode event reads the document (`data_as`, `get<Codec>()`, `dump()`) or sets `.retain_document_up_to = 0` to keep text; code that relied on a malformed body being accepted now gets `parse_error` from `from_message`.
+- **`json_format` drops seven public helpers.**
+  `required_text`, `optional_text`, `read_required`, `read_optional`, `read_time`, `read_context_attributes` and `read_extensions` are not declared by `ce::v4::json_format<Codec>`.
+  Nothing in the SDK called them, no suite tested them, and a generation's first tag is the only moment surface can go. `ce::v3::json_format` keeps all seven with their v0.5.0 signatures.
+  *Migrate:* read a whole event with `decode` or `from_value`, and a typed payload with `decode_as` or `from_value_as`; code that needs one of the helpers itself spells `ce::v3::json_format<Codec>` and includes `<cloudevents/v3/format/json_format.hpp>`.
 - **Decode options reach every binding entry point that decodes JSON** (an addition, not a break).
   `from_message<Codec>` of HTTP, Kafka and NATS, `http::from_batch_message<Codec>` and `nats::from_payload<Codec>` take a defaulted last `json::decode_options` and apply it in every mode they read, so existing calls compile unchanged.
   `json_format::from_value` and `from_value_as` take none: they receive a DOM you already hold.

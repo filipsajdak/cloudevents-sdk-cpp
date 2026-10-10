@@ -37,6 +37,7 @@ struct typed_entry;
 
 // spec: SYS-JSON-0001
 // spec: SWR-JSON-0010
+// spec: SWR-JSON-0045
 template <json::json_codec Codec>
 struct json_format {
   using value = Codec::value;
@@ -72,66 +73,6 @@ struct json_format {
       Codec::push(array, std::move(*document));
     }
     return Codec::dump(array);
-  }
-
-  [[nodiscard]] static auto required_text(const value& document, std::string_view name)
-      -> result<std::string_view> {
-    return required_text_of(Codec::find(document, name), name);
-  }
-
-  [[nodiscard]] static auto optional_text(const value& document, std::string_view name)
-      -> result<std::optional<std::string_view>> {
-    return optional_text_of(Codec::find(document, name), name);
-  }
-
-  template <class Attribute>
-  [[nodiscard]] static auto read_required(const value& document, std::string_view name,
-                                          std::optional<Attribute>& slot) -> result<void> {
-    return store_required(Codec::find(document, name), name, slot);
-  }
-
-  template <class Attribute>
-  [[nodiscard]] static auto read_optional(const value& document, std::string_view name,
-                                          std::optional<Attribute>& slot) -> result<void> {
-    return store_optional(Codec::find(document, name), name, slot);
-  }
-
-  [[nodiscard]] static auto read_time(const value& document, event::options& into)
-      -> result<void> {
-    return store_time(Codec::find(document, "time"), into);
-  }
-
-  [[nodiscard]] static auto read_context_attributes(const value& document,
-                                                    event::builder& into) -> result<void> {
-    return read_context(
-        members{
-            .specversion = Codec::find(document, "specversion"),
-            .id = Codec::find(document, "id"),
-            .source = Codec::find(document, "source"),
-            .type = Codec::find(document, "type"),
-            .datacontenttype = Codec::find(document, "datacontenttype"),
-            .dataschema = Codec::find(document, "dataschema"),
-            .subject = Codec::find(document, "subject"),
-            .time = Codec::find(document, "time"),
-            .data = nullptr,
-            .data_base64 = nullptr,
-        },
-        into);
-  }
-
-  // spec: SWR-JSON-0022
-  // spec: SWR-JSON-0023
-  // spec: SWR-JSON-0032
-  [[nodiscard]] static auto read_extensions(const value& document, event::options& into)
-      -> result<void> {
-    result<void> outcome{};
-    Codec::for_each_member(document, [&](std::string_view name, const value& member) {
-      if (!outcome || reserved_name(name)) {
-        return;
-      }
-      outcome = read_extension(name, member, into);
-    });
-    return outcome;
   }
 
   // spec: SWR-JSON-0031

@@ -138,11 +138,13 @@ def _py_test_for_marker(lines: list[str], marker_line: int) -> str | None:
 def _ut_test_for_marker(lines: list[str], marker_line: int) -> str | None:
     """The ut suite a marker belongs to: the first suite declared on the marker's
     own line, or on one of the few lines below it (a marker sits above its suite).
+    Four stacked markers are the most one suite carries, so the suite may be four
+    lines below the first of them.
 
     A suite declaration is preferred over a `_test` case on the same line, because
     a requirement's verified_by names the suite.
     """
-    for offset in range(0, 4):
+    for offset in range(0, 5):
         idx = marker_line + offset
         if idx >= len(lines):
             break

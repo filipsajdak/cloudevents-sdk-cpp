@@ -184,6 +184,23 @@ latter marks every routine reachable by input from an untrusted peer (timestamp
 parsing, base64, percent-decoding, UTF-8 validation, JSON and message decoding).
 No new profile was added, so this repo grades the same way as the others.
 
+## D-SPEC-3: A suite may sit four lines below its first spec marker
+
+`spec/tools/check_references.py` attaches a `// spec:` marker to the suite
+declared on its own line or on one of the three lines below it. The grammar is
+one marker per line, so a suite that verifies four requirements, as
+`http-binary-mode-json-body` does (SWR-BIND-0006, 0007, 0008 and 0010), has its
+declaration four lines below the first marker, and that marker was reported as
+not attached to a suite. `docs/RELEASE.md` requires `check_references.py` to exit
+with no warning, so a release could not be tagged with it.
+
+The lookahead is now four lines, which admits four stacked markers. The
+alternatives were splitting the suite, which would rename evidence four
+requirements already cite, and a second marker spelling on one line, which every
+reader of the tree would have to learn for one suite. A suite with five
+requirements would meet the limit again and should be split then. The unittest
+variant of the lookahead is unchanged, because no Python suite carries four.
+
 ## D-BUILD-1: boost-ext/ut is patched for GCC on macOS
 
 ut 2.3.1 captures `argc`/`argv` from a function marked

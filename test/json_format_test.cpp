@@ -2071,6 +2071,67 @@ const boost::ut::suite<"extension-integer-beyond-int64-is-refused"> beyond_int64
   });
 };
 
+// The seven helpers ce::v3 declares and ce::v4 does not (CR-0004 item 3). Each concept names
+// one of them, so a helper that comes back fails on its own line. ce::v3 keeping them is pinned
+// by test/v3/v3_generation_test.cpp::v3-declarations-survive.
+template<class Format>
+concept declares_required_text = requires { &Format::required_text; };
+template<class Format>
+concept declares_optional_text = requires { &Format::optional_text; };
+template<class Format>
+concept declares_read_required = requires { &Format::template read_required<ce::id>; };
+template<class Format>
+concept declares_read_optional = requires { &Format::template read_optional<ce::id>; };
+template<class Format>
+concept declares_read_time = requires { &Format::read_time; };
+template<class Format>
+concept declares_read_context_attributes = requires { &Format::read_context_attributes; };
+template<class Format>
+concept declares_read_extensions = requires { &Format::read_extensions; };
+
+/// A stand-in that declares all seven, to prove the concepts above can fail.
+struct declares_all {
+  static void required_text();
+  static void optional_text();
+  template<class Attribute>
+  static void read_required();
+  template<class Attribute>
+  static void read_optional();
+  static void read_time();
+  static void read_context_attributes();
+  static void read_extensions();
+};
+
+template<class C>
+constexpr bool declares_no_attribute_helper =
+    !declares_required_text<ce::json_format<C>> && !declares_optional_text<ce::json_format<C>> &&
+    !declares_read_required<ce::json_format<C>> && !declares_read_optional<ce::json_format<C>> &&
+    !declares_read_time<ce::json_format<C>> &&
+    !declares_read_context_attributes<ce::json_format<C>> &&
+    !declares_read_extensions<ce::json_format<C>>;
+
+// spec: SWR-JSON-0045
+const boost::ut::suite<"json-format-declares-no-attribute-helpers"> declares_no_helpers = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [] {
+      static_assert(declares_no_attribute_helper<C>);
+      expect(declares_no_attribute_helper<C>);
+    };
+  });
+
+  // The concepts must be able to see a helper, or the absence above proves nothing.
+  "the checks detect a format that declares them"_test = [] {
+    static_assert(declares_required_text<declares_all> && declares_optional_text<declares_all> &&
+                  declares_read_required<declares_all> && declares_read_optional<declares_all> &&
+                  declares_read_time<declares_all> &&
+                  declares_read_context_attributes<declares_all> &&
+                  declares_read_extensions<declares_all>);
+    expect(true);
+  };
+};
+
 }  // namespace
 
 // spec: SWR-JSON-0037

@@ -2,7 +2,7 @@
 
 Notable changes per release. Dates are the tag date.
 
-## v0.6.0 - 2026-10-10
+## v0.6.0 - 2026-10-11
 
 `ce::v4` opens: a `json_document` can move, a typed write refuses a media type that is not JSON, and a JSON body received in binary mode keeps the document it was parsed into.
 Each of those changes behaviour that v0.5.0 documented, and a documented behaviour is part of the API, so they ship as a fourth API generation, `ce::v4`, which is the inline namespace.
@@ -102,7 +102,7 @@ Every change below is in `ce::v4`; `ce::v3` behaves as v0.5.0 did.
 
 - **Coverage, from the `coverage floor` job on `main` at `7af8ab3`, the merge of the last change before this release** (run 38075023082; GCC 13, C++20, Debug): lines 96.1% (4371 of 4549), functions 91.7% (2119 of 2310), branches 60.7% (4881 of 8036), against a floor of 90% lines.
 - **CI toolchains:** GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17 at C++23, AppleClang at C++20 and C++23, MSVC 19 (Windows 2022), a C++26 static-reflection job on GCC 15 (GCC 14 if 15 is unavailable; allowed to fail), plus the forced polyfill, exceptions disabled, no default codec, RapidJSON alone, Boost.JSON alone, every codec on Linux and macOS at C++20 and C++23, ASan with UBSan and TSan on Clang 17, the clang-tidy gate on Homebrew LLVM, install-and-consume, the examples, and interop with the Go and Java SDKs.
-- **Fuzzing:** 28 targets, seven for each of the four generations, run on every pull request at one minute each against the checked-in seed corpus, and nightly at fifteen minutes.
+- **Fuzzing:** 28 targets, seven for each of the four generations, run on every pull request at one minute each against the checked-in seed corpus, and nightly at fifteen minutes. On the release commit `9595c54` all 28 ran ten minutes each with no crash and no finding (`fuzz` workflow run 38098545650, started on demand).
 - **What binary-mode parsing costs net** (perf job, x86_64, g++-14, `main` against the change that parses the body; instructions, allocations and retained bytes):
   - *Receive plus one typed read* (`from_message` then `data_as`) is neutral to slightly cheaper on every codec: instructions -1.8% to +0.5%, allocations equal, retained bytes -0.7% to -4.6%. On v3 the body was copied to `json_text` and `data_as` parsed it; on v4 the body is parsed once on receive and `data_as` reads the document. Each further read of the same event saves a parse.
   - *Receive alone*, on the HTTP full-event path, costs more: +15.0% instructions on the shipped RapidJSON, +17.9% on Boost.JSON, +29.4% on Glaze and +54.2% on nlohmann, and 8 to 27 more allocations. Kafka and NATS behave the same.

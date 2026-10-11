@@ -2,7 +2,8 @@
 uid: SWR-JSON-0045
 title: json_format declares no public attribute-reading helpers
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: low
 rationale: >
   The ce::v3 json_format declares seven public static helpers: required_text, optional_text, read_required, read_optional, read_time, read_context_attributes and read_extensions.

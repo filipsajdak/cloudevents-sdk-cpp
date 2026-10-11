@@ -2,7 +2,8 @@
 uid: SWR-CORE-0040
 title: to_v3 of a moved-from json_document yields a valid ce::v3 document
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.0
 priority: medium
 rationale: >
   A ce::v4 json_document can be in the moved-from state of SWR-CORE-0035, and ce::v3 promised in v0.5.0 that every document holds a DOM a codec built.

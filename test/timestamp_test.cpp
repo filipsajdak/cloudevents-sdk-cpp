@@ -189,4 +189,40 @@ const boost::ut::suite<"timestamp-field-limits-at-their-boundaries"> timestamp_f
   };
 };
 
+// The offset is rendered from the minutes the parser stored, as two digits for
+// the hours and two for the minutes. Choosing hours and minutes that differ, in
+// both signs, is what makes a swapped or mis-scaled digit show.
+inline constexpr auto offset_spellings = std::to_array<std::string_view>({
+    "2018-04-05T17:31:00+05:30",
+    "2018-04-05T17:31:00-03:45",
+    "2018-04-05T17:31:00+12:34",
+    "2018-04-05T17:31:00-00:30",
+    "2018-04-05T17:31:00+00:00",
+    "2018-04-05T17:31:00.5+23:59",
+    "2018-04-05T17:31:00.123456789-23:59",
+});
+
+// spec: SWR-CORE-0009
+const boost::ut::suite<"timestamp-formats-the-offset-digits"> timestamp_offset_digits = [] {
+  using namespace boost::ut;
+
+  "a numeric offset renders back to the exact text"_test = [] {
+    for (const auto spelling : offset_spellings) {
+      const auto parsed = ce::parse_timestamp(spelling);
+      expect(parsed.has_value()) << spelling;
+      if (parsed) {
+        expect(ce::to_string(*parsed) == spelling);
+      }
+    }
+  };
+
+  "an instant with no fraction renders no decimal point"_test = [] {
+    const auto parsed = ce::parse_timestamp("2018-04-05T17:31:00Z"sv);
+    expect(parsed.has_value());
+    if (parsed) {
+      expect(ce::to_string(*parsed) == "2018-04-05T17:31:00Z");
+    }
+  };
+};
+
 int main() {}

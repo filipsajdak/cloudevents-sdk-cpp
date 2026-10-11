@@ -27,6 +27,41 @@ A snippet in the guide is fenced `cpp` for declarations, `cpp body` for statemen
 The `perf` workflow measures every pull request against main and against `bench/budgets.json`, and fails when an operation gets costlier.
 [docs/PERFORMANCE.md](docs/PERFORMANCE.md) explains its table, how to reproduce it with Docker, and how to raise a budget for a deliberate cost.
 
+## Mutation testing
+
+A pull request that changes source runs [Mull](https://mull.readthedocs.io) on the lines it changes and ends its Verification with one line.
+Mull is a clang plugin and must match the LLVM major version it was built for, so the script does not use the `clang-cxx20` preset's compiler.
+On macOS with Apple silicon:
+
+```bash
+brew install llvm@21                      # keg-only: it does not replace your clang
+mkdir -p ~/.local/opt/mull-21 && cd ~/.local/opt/mull-21
+gh release download 0.34.1 -R mull-project/mull -p 'Mull-21-*macOS*.zip' && unzip -q Mull-21-*.zip
+xattr -dr com.apple.quarantine .
+```
+
+Then, from the repository root:
+
+```bash
+scripts/mutation.sh origin/main                                  # every suite
+scripts/mutation.sh origin/main --suites timestamp_test,core_test # the suites that cover your change
+scripts/mutation.sh origin/main --dry-run                        # print the plan, build nothing
+```
+
+The script builds in `build/mutation` and mutates only the lines that differ from the merge base with `<base-ref>`, uncommitted edits included, in `include/cloudevents/` (see `mull.yml`).
+The SDK is header-only, so every suite compiles the headers: a mutant counts as killed when any suite kills it, and as surviving when every suite that ran it missed.
+Set `CE_MULL_LLVM`, `CE_MULL_DIR` and `CE_MULL_VERSION` for another install (the script's header lists them).
+
+It prints each surviving mutant and the line to paste:
+
+```text
+Mutation: Mull, changed lines: 12 killed, 10 survived (0 new tests, 0 equivalent, 0 arid)
+```
+
+Triage every survivor: write a test that kills it, or mark it equivalent (no observable behaviour changes) or arid (nothing worth asserting), then pass the counts with `scripts/mutation_summary.py --new-tests N --equivalent E --arid A <build/mutation/*.mull.log>`.
+If the change has no mutable lines, or Mull cannot run, write `Mutation: none, because <reason>`.
+Mutation is advice, never a merge gate.
+
 ## Spec first
 
 Every behaviour of the SDK traces to a requirement in [spec/requirements/](spec/requirements/).

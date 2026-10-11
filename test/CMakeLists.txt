@@ -163,6 +163,12 @@ if(Python3_Interpreter_FOUND)
     COMMAND Python3::Interpreter -m unittest discover
             -s "${PROJECT_SOURCE_DIR}/bench/perf" -p "test_*.py")
   set_tests_properties(perf_tools PROPERTIES LABELS "perf")
+  # The mutation-testing script's report folding and argument handling. It needs
+  # neither Mull nor a compiler: scripts/mutation.sh --dry-run builds nothing.
+  add_test(NAME mutation_tools
+    COMMAND Python3::Interpreter -m unittest discover
+            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_*.py")
+  set_tests_properties(mutation_tools PROPERTIES LABELS "tools")
 endif()
 
 # The performance probe's malloc counting (SWR-PERF-0002, SWR-PERF-0003), linked

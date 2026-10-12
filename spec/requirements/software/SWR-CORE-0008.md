@@ -12,7 +12,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
 satisfied_by: [code:include/cloudevents/detail/timestamp.hpp]
-verified_by: [test:test/core_test.cpp::core-timestamp-parse-ctre]
+verified_by: [test:test/core_test.cpp::core-timestamp-parse-ctre, test:test/timestamp_test.cpp::timestamp-field-limits-at-their-boundaries]
 owner: filip.sajdak
 version: 1
 ---

@@ -46,10 +46,16 @@ Then, from the repository root:
 scripts/mutation.sh origin/main                                  # every suite
 scripts/mutation.sh origin/main --suites timestamp_test,core_test # the suites that cover your change
 scripts/mutation.sh origin/main --dry-run                        # print the plan, build nothing
+scripts/mutation.sh origin/main --no-build --suites timestamp_test # reuse the suites already built
 ```
+
+It runs from any directory.
 
 The script builds in `build/mutation` and mutates only the lines that differ from the merge base with `<base-ref>`, uncommitted edits included, in `include/cloudevents/` (see `mull.yml`).
 The SDK is header-only, so every suite compiles the headers: a mutant counts as killed when any suite kills it, and as surviving when every suite that ran it missed.
+`<base-ref>` is read as `git diff` reads it: the lines that differ from the merge base of `<base-ref>` and `HEAD`.
+A header the base does not have counts whole, every line of it as changed, because Mull ignores a file missing from its reference; the script gives Mull a reference commit with an empty copy of each such header (nothing in your tree or refs changes).
+It prints how many changed lines Mull will consider, so a base that is too narrow or too wide shows before the run.
 Set `CE_MULL_LLVM`, `CE_MULL_DIR` and `CE_MULL_VERSION` for another install (the script's header lists them).
 
 It prints each surviving mutant and the line to paste:
@@ -59,7 +65,16 @@ Mutation: Mull, changed lines: 12 killed, 10 survived (0 new tests, 0 equivalent
 ```
 
 Triage every survivor: write a test that kills it, or mark it equivalent (no observable behaviour changes) or arid (nothing worth asserting), then pass the counts with `scripts/mutation_summary.py --new-tests N --equivalent E --arid A <build/mutation/*.mull.log>`.
-If the change has no mutable lines, or Mull cannot run, write `Mutation: none, because <reason>`.
+The script fails loudly rather than print a clean line when it cannot tell:
+
+| exit | meaning |
+|---|---|
+| 0 | a result, or no changed C++ line under `include/` ("nothing to mutate") |
+| 3 | lines changed under `include/` but Mull ran no mutant on them |
+| 4 | Mull did not read `build/mutation/mull.yml` or could not resolve the reference |
+
+On 3, check that a named suite reaches the lines and that the build is current.
+If the changed lines have no operator Mull mutates (renames, namespaces), or Mull cannot run, write `Mutation: none, because <reason>`.
 Mutation is advice, never a merge gate.
 
 ## Spec first

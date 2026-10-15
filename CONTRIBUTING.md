@@ -77,6 +77,18 @@ On 3, check that a named suite reaches the lines and that the build is current.
 If the changed lines have no operator Mull mutates (renames, namespaces), or Mull cannot run, write `Mutation: none, because <reason>`.
 Mutation is advice, never a merge gate.
 
+### The pull request job
+
+The `mutation` workflow (`.github/workflows/mutation.yml`, SWR-BUILD-0014) runs the same script on every pull request that touches `include/`, `mull.yml` or the mutation tooling, against the merge base with the target branch.
+It publishes the `Mutation:` line and the surviving mutants in the job summary and in one comment that later pushes update in place.
+Run it by hand from the Actions tab with a `base_ref` to see numbers for any branch.
+
+- **It is advisory.** A surviving mutant never fails it, so it stays out of the required checks; do not add it to branch protection. Triage the survivors as above and write the triaged line in the pull request's Verification.
+- **It fails only when the tool did not run** (Mull could not read its configuration, the build broke, a download failed), because a green job has to mean that mutants ran. Changed `include/` lines that no operator reaches end in a notice, not a failure.
+- **Pinned:** Mull 0.34.1 for LLVM 18, installed from the `.deb` built for Ubuntu 24.04, checked against its published SHA-256 and cached by that checksum; the compiler is that release's own `clang-18` (18.1.3).
+  To move it, change the four `MULL_*` values in the workflow together.
+- The run uses the whole job budget (`timeout-minutes` in the workflow) because it builds every suite with the plugin; cancel a superseded run rather than waiting.
+
 ## Spec first
 
 Every behaviour of the SDK traces to a requirement in [spec/requirements/](spec/requirements/).

@@ -14,7 +14,7 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
-satisfied_by: []
+satisfied_by: [code:.github/workflows/mutation.yml, code:scripts/mutation_report.py, code:scripts/mutation.sh]
 verified_by: [test:scripts/test_mutation_report.py::ReportBody]
 owner: filip.sajdak
 version: 1

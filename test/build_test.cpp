@@ -106,6 +106,19 @@ const boost::ut::suite<"config-polyfill-parity"> config_polyfill_parity = [] {
     expect(result_bad.error().code == ce::errc::parse_error);
   };
 
+  // The checks above read a const result, which selects the const& overload. A
+  // result held in a non-const variable selects the & overload, a separate
+  // function with its own guard, and the polyfill build has to hand back the
+  // stored error from it as well.
+  "a failed result in a non-const variable yields its error by reference"_test = [] {
+    poly_int bad{ce::v1::detail::poly::unexpected<ce::error>{
+        ce::error{.code = ce::errc::parse_error, .detail = "before"}}};
+    static_assert(std::is_same_v<decltype(bad.error()), ce::error&>);
+    expect(bad.error().code == ce::errc::parse_error);
+    bad.error().detail = "after";
+    expect(bad.error().detail == "after");
+  };
+
   // expected<void, E> once stored a default-constructed E alongside the flag, so
   // error() on a SUCCESS returned errc{0} - a code with no enumerator, printing
   // as "unknown" - while std::expected leaves that read undefined. A misread

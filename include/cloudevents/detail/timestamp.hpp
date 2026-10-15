@@ -55,6 +55,7 @@ class fraction_digits {
                   "a nanosecond instant expresses at most nine fractional digits",
                   std::to_string(count));
     }
+    [[maybe_unused]] const bool near_limit = count >= detail::max_fractional_digits - 1;
     fraction_digits out;
     out.count_ = static_cast<std::uint8_t>(count);
     return out;
@@ -137,10 +138,10 @@ template <class Capture>
   if (!detail::is_valid_date(year, month, day)) {
     return fail(errc::invalid_timestamp, "no such calendar date", std::string{text});
   }
-  if (hour > detail::last_hour || minute > detail::last_minute) {
+  if (detail::last_hour < hour || detail::last_minute < minute) {
     return fail(errc::invalid_timestamp, "hour or minute out of range", std::string{text});
   }
-  if (second > detail::leap_second) {
+  if (detail::leap_second < second) {
     return fail(errc::invalid_timestamp, "second out of range", std::string{text});
   }
 

@@ -1,0 +1,166 @@
+name: mutation
+
+# Mutation testing on the lines a pull request changes (SWR-BUILD-0014,
+# CONTRIBUTING.md "Mutation testing"). It reports and never gates: mutation is
+# advice, so a surviving mutant does not fail the job, and this job is not in
+# the required checks and must not be added to them. Only a run that could not
+# mutate anything fails, because a green job has to mean a mutation run.
+#
+# The result is the job summary and one pull request comment, found again by
+# the hidden marker scripts/mutation_report.py writes on its first line.
+
+on:
+  # Only a change that can move the result runs it; a pull request outside these
+  # paths has no mutable line and no reason to occupy a runner.
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'include/**'
+      - 'mull.yml'
+      - 'scripts/mutation*'
+      - '.github/workflows/mutation.yml'
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Branch, tag or commit whose merge base with the selected ref bounds the changed lines
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  # Mull ships a .deb per Ubuntu release and LLVM version. Ubuntu 24.04's own
+  # clang-18 is 18.1.3, the version the 24.04 package of Mull 18 is built for, so
+  # the compiler needs no third-party apt repository. The checksum is the one
+  # GitHub publishes for the release asset; the download is verified against it.
+  MULL_VERSION: '0.34.1'
+  MULL_LLVM: '18'
+  MULL_DEB: Mull-18-0.34.1-LLVM-18.1.3-ubuntu-amd64-24.04.deb
+  MULL_SHA256: 983ea9c84ecab621414d5442a66c1a1ce4127491b79d42fd5e2fd6fe01d02699
+
+jobs:
+  mutation:
+    name: mutation testing (advisory)
+    runs-on: ubuntu-24.04
+    # The job's whole budget, the one place it is named. It builds every suite
+    # with the plugin and runs Mull on each: 13 minutes measured on the runner,
+    # 24 on an Apple-silicon laptop.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: mutation-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install the compiler and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y "clang-$MULL_LLVM" ninja-build nlohmann-json3-dev
+
+      - name: Restore the Mull package
+        id: mull-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/mull
+          key: mull-${{ env.MULL_SHA256 }}
+
+      # The checksum is checked on a cache hit too: the cache is not a trust root.
+      - name: Install Mull ${{ env.MULL_VERSION }} for LLVM ${{ env.MULL_LLVM }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/mull"
+          deb="$RUNNER_TEMP/mull/$MULL_DEB"
+          if [ ! -f "$deb" ]; then
+            curl -fsSL --retry 3 -o "$deb" \
+              "https://github.com/mull-project/mull/releases/download/$MULL_VERSION/$MULL_DEB"
+          fi
+          echo "$MULL_SHA256  $deb" | sha256sum -c -
+          sudo apt-get install -y "$deb"
+
+      # mutation.sh exits 3 when changed include/ lines got no mutant and 4 when
+      # Mull could not read its configuration. The step records the status and
+      # the later steps decide: this one never fails the job itself, so the
+      # report is always published.
+      - name: Mutate the changed lines
+        id: mutate
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.base_ref }}
+          INPUT_BASE: ${{ inputs.base_ref }}
+          CE_MULL_VERSION: ${{ env.MULL_LLVM }}
+          CE_MULL_LLVM: /usr/lib/llvm-${{ env.MULL_LLVM }}
+          CE_MULL_DIR: /usr
+          CE_MULL_BUILD: ${{ runner.temp }}/mutation
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            base="origin/$PR_BASE"
+          else
+            base="$INPUT_BASE"
+            if git rev-parse -q --verify "origin/$base" > /dev/null; then base="origin/$base"; fi
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          set +e
+          scripts/mutation.sh "$base" > "$RUNNER_TEMP/mutation.out" 2> >(tee "$RUNNER_TEMP/mutation.err" >&2)
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/mutation.out"
+          cat "$RUNNER_TEMP/mutation.err" "$RUNNER_TEMP/mutation.out" > "$RUNNER_TEMP/mutation.log"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Write the report
+        id: report
+        env:
+          STATUS: ${{ steps.mutate.outputs.status }}
+          BASE: ${{ steps.mutate.outputs.base }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 scripts/mutation_report.py --status "${STATUS:-1}" \
+            --base-ref "$BASE" --run-url "$RUN_URL" \
+            "$RUNNER_TEMP/mutation.log" > "$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          case "${STATUS:-1}" in
+            0) ;;
+            3) echo "::notice::Changed lines under include/ got no mutant: they hold no operator Mull mutates, or no suite reaches them."
+               ;;
+            *) echo "::error::scripts/mutation.sh could not mutate anything (status ${STATUS:-none}); the job summary quotes the end of its log."
+               ;;
+          esac
+
+      # One comment per pull request, updated in place. A fork's token is
+      # read-only and cannot comment; its summary is the report.
+      - name: Comment the report on the pull request
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.report.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          id="$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+                  --jq '.[] | select(.body | startswith("<!-- ce-mutation-report -->")) | .id' | head -n 1)"
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$id" \
+              -F body=@"$RUNNER_TEMP/report.md" > /dev/null
+          else
+            gh api --method POST "repos/$REPO/issues/$PR/comments" \
+              -F body=@"$RUNNER_TEMP/report.md" > /dev/null
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-logs
+          path: |
+            ${{ runner.temp }}/mutation.log
+            ${{ runner.temp }}/report.md
+            ${{ runner.temp }}/mutation/*.mull.log
+            ${{ runner.temp }}/mutation/mull.yml
+          if-no-files-found: ignore
+
+      # Status 0 and 3 are results. Anything else means the tool did not run.
+      - name: Fail only if the tool did not run
+        if: steps.mutate.outputs.status != '0' && steps.mutate.outputs.status != '3'
+        run: exit 1

@@ -268,6 +268,18 @@ const boost::ut::suite<"json-document-moves-without-counting"> moves_without_cou
     const auto* const kept = std::get_if<ce::json_document>(&taken.data());
     expect(kept != nullptr && kept->get<mini_codec>() == dom);
   };
+
+  // json_document::operator== never asks the moved-from model to compare, because it
+  // answers before reaching a model whose identity is empty. The model's own
+  // answer is still part of its contract: it equals only itself.
+  "the moved-from model equals only itself"_test = [] {
+    const auto& gone = ce::detail::moved_from_model;
+    const ce::detail::json_document_holder<mini_codec> null_payload{mini_codec::make_null()};
+    expect(gone.equal_value(gone));
+    expect(!gone.equal_value(null_payload)) << "not a JSON null, though it dumps as one";
+    expect(gone.dump() == null_payload.dump());
+    expect(!gone.equal_text("null"sv));
+  };
 };
 
 // spec: SWR-CORE-0033

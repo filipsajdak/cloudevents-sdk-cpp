@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -96,6 +97,11 @@ EXIT_NO_CONFIG = 4
 STUB_SUITE = "stub_test"
 NEW_HEADER = "include/cloudevents/detail/added.hpp"
 OLD_HEADER = "include/cloudevents/detail/kept.hpp"
+# How long the stub awk lingers after it has printed, so its exit lands while the
+# script is blocked writing, and how long the reader waits before it drains the pipe.
+LINGER_SECONDS = 2
+DRAIN_AFTER_SECONDS = 2 * LINGER_SECONDS
+FILL_CHUNK = b"x" * 4096
 STUB_ENV_KEYS = ("CE_MULL_LLVM", "CE_MULL_DIR", "CE_MULL_VERSION", "CE_MULL_BUILD")
 
 
@@ -194,6 +200,59 @@ class ConfigAndWorkingDirectory(Scenario):
         log = (self.build / f"{STUB_SUITE}.mull.log").read_text()
         self.assertIn(f"config={self.build}/mull.yml", log)
         self.assertIn(f"cwd={self.build.resolve()}", log)
+
+
+class InterruptedWrites(Scenario):
+    """A signal that arrives while the script is blocked writing must not fail it.
+
+    A child the script started and did not wait for (a process substitution) exits
+    later and raises SIGCHLD; bash does not restart a write it interrupts, and its
+    echo then reports "write error: Interrupted system call" and exits 1. The stub
+    awk makes that child outlive the script's first writes, and the reader keeps
+    stdout full so the script is blocked in a write when it exits.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.commit_change(OLD_HEADER, "int kept(int a) { return a - 1; }\n")
+        real_awk = shutil.which("awk")
+        assert real_awk
+        executable(self.repo.parent / "bin" / "awk", f'#!/bin/sh\n{real_awk} "$@"\nsleep {LINGER_SECONDS}\n')
+
+    def full_pipe(self) -> tuple[int, int]:
+        reader, writer = os.pipe()
+        os.set_blocking(writer, False)
+        try:
+            while True:
+                os.write(writer, FILL_CHUNK)
+        except BlockingIOError:
+            pass
+        os.set_blocking(writer, True)
+        return reader, writer
+
+    def test_a_child_exiting_while_stdout_is_full_does_not_fail_the_script(self) -> None:
+        # bash 3.2, the macOS /bin/bash, is the one that reports the interrupted write.
+        for shell in dict.fromkeys(["bash", *filter(os.path.exists, ["/bin/bash"])]):
+            with self.subTest(shell=shell):
+                self.run_blocked_on_stdout(shell)
+
+    def run_blocked_on_stdout(self, shell: str) -> None:
+        reader, writer = self.full_pipe()
+        env = {k: v for k, v in os.environ.items() if k not in STUB_ENV_KEYS}
+        env.update(CE_MULL_LLVM=str(self.llvm), CE_MULL_DIR=str(self.mull), CE_MULL_BUILD=str(self.build))
+        env["PATH"] = f"{self.repo.parent / 'bin'}{os.pathsep}{env['PATH']}"
+        script = self.repo / "scripts" / "mutation.sh"
+        with subprocess.Popen(
+            [shell, str(script), self.base, "--dry-run", "--suites", STUB_SUITE],
+            stdout=writer, stderr=subprocess.PIPE, text=True, cwd=self.other_cwd, env=env,
+        ) as proc:
+            os.close(writer)
+            time.sleep(DRAIN_AFTER_SECONDS)
+            while os.read(reader, len(FILL_CHUNK)):
+                pass
+            stderr = proc.stderr.read()
+            self.assertEqual(proc.wait(), 0, stderr)
+        os.close(reader)
 
 
 class BaseRefHandling(Scenario):

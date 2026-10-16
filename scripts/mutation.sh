@@ -97,7 +97,12 @@ changed_lines() {
 }
 
 ref=$(diff_tree)
-read -r n_lines n_files < <(changed_lines "$ref")
+# Read the counts from a variable, not a process substitution: that leaves a child
+# running behind the script, and its exit signals SIGCHLD into whichever echo is
+# blocked in a write, which bash 3.2 does not restart ("echo: write error:
+# Interrupted system call").
+counts=$(changed_lines "$ref")
+read -r n_lines n_files <<< "$counts"
 config_file=$build/mull.yml
 
 # The config Mull reads: the committed mull.yml plus the diff filter.
@@ -154,7 +159,9 @@ logs=()
 export MULL_CONFIG=$config_file
 for suite in "${suite_list[@]}"; do
   log=$build/$suite.mull.log
-  exe=$(find "$build" -type f -name "$suite" -perm -u+x | head -n 1)
+  # sed reads all of find's output; head would close the pipe on the first line
+  # and pipefail would then fail the script on find's SIGPIPE.
+  exe=$(find "$build" -type f -name "$suite" -perm -u+x | sed -n '1p')
   echo "== $suite" >&2
   (cd "$build" && "$runner" --reporters IDE --ide-reporter-show-killed --allow-surviving "$exe") > "$log" 2>&1 || true
   logs+=("$log")

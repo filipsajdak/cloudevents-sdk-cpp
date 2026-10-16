@@ -30,10 +30,10 @@ Test identity is the boost-ext/ut SUITE name, the string literal in
 also indexed, so a requirement may name either, but a spec marker sits above a
 suite declaration and resolves to the suite.
 
-The performance tooling is Python, and its suites are `unittest` classes under
-`bench/perf/`. There the identity is the TestCase class name (a `test_` method name
-also resolves), and a `# spec: <UID>` marker sits above the class. Both directions
-are checked exactly as for ut suites.
+The performance and mutation tooling is Python, and its suites are `unittest`
+classes under `bench/perf/` and `scripts/`. There the identity is the TestCase
+class name (a `test_` method name also resolves), and a `# spec: <UID>` marker sits
+above the class. Both directions are checked exactly as for ut suites.
 
 Exit code 0 when there are no errors, 1 otherwise. Pure stdlib plus reqlib.
 """
@@ -54,8 +54,9 @@ SKIP_DIR_PARTS = {"_build", "build", ".venv", "venv", "_deps", "node_modules", "
 
 CPP_SUFFIXES = {".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".h", ".inl"}
 
-# Python unittest suites, which verify the performance job's tooling.
-PY_TEST_DIRS = [REPO_ROOT / "bench" / "perf"]
+# Python unittest suites, which verify the performance job's tooling and the
+# mutation job's.
+PY_TEST_DIRS = [REPO_ROOT / "bench" / "perf", REPO_ROOT / "scripts"]
 PY_SUFFIXES = {".py"}
 PY_CLASS_RE = re.compile(r"^class\s+(\w+)\s*\([^)]*TestCase[^)]*\)\s*:", re.MULTILINE)
 PY_METHOD_RE = re.compile(r"^\s+def\s+(test_\w+)\s*\(", re.MULTILINE)

@@ -978,8 +978,18 @@ How the script decides, so a failure can be read:
   declaration they can use, so changing or removing one passes, and a private
   field does not count in the order of a class's fields. Making a public member
   private removes it from the public set, and fails.
-- A field or an enumerator appended after the last one passes. One inserted
-  before another, or removed, fails, because it moves what a consumer wrote.
+- A data member appended after the last one **with a default member
+  initialiser** passes: the owner ruled on 2026-10-21 (CR-0005) that it is an
+  addition, as `json::decode_options` gaining `bool parse_binary_body = true`
+  is planned to be. Every initialiser a consumer wrote still compiles and reads
+  the same, and the script needs no allow file for it. An appended member
+  **without** an initialiser fails, and so does one inserted before another, a
+  reorder, a removal, and a changed type or default. An enumerator appended
+  after the last one passes. The method can tell these apart because the syntax
+  tree records each field's name, order and initialiser; the signature lists
+  the fields with a mark for the initialised ones. It cannot tell a structured
+  binding of the class (`auto [limit] = opts;`), which stops compiling when a
+  member is appended; CR-0005 states that case.
 - A generation is frozen when the base tag declares it, so a base of v0.5.0
   freezes `ce::v1` to `ce::v3` and a base of v0.6.0 freezes `ce::v1` to `ce::v4`.
 - Types are compared as the entity they name. Clang prints a name from an inline

@@ -2,7 +2,8 @@
 uid: SWR-BIND-0004
 title: The HTTP binding keeps its behaviour on the shared core
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The extraction is worth nothing if it changes what the HTTP binding does. Error precedence is the part most at risk: a malformed field value is reported before the spec-version check and before the required-triple check, so reordering those changes which error a malformed message returns, and errors_test asserts the `where` string.

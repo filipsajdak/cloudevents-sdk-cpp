@@ -2,7 +2,8 @@
 uid: SWR-JSON-0013
 title: Binary attribute values as base64 strings
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The CloudEvents JSON format clause on type system mapping renders the Binary attribute type as a base64 encoded JSON string, as SPEC 5.3 restates.

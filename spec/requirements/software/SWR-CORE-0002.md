@@ -2,7 +2,8 @@
 uid: SWR-CORE-0002
 title: result alias of std::expected when the standard library provides it
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 3 lists C++23 as a supported standard where `result<T>` becomes

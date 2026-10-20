@@ -2,7 +2,8 @@
 uid: SWR-CORE-0004
 title: fail helper constructing a failed result
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.1 specifies a `fail(errc, detail)` helper so every failure site builds

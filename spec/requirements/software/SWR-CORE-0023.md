@@ -2,7 +2,8 @@
 uid: SWR-CORE-0023
 title: constexpr reserved_name validator
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.1 requires a `constexpr` predicate that recognises the context attribute

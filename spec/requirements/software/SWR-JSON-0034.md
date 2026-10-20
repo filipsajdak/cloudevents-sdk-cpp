@@ -2,7 +2,8 @@
 uid: SWR-JSON-0034
 title: The kind of a JSON number follows its text, not its magnitude
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: medium
 rationale: >
   A codec that reports a large integer as kind::floating makes the format layer diagnose it as a fractional extension value, which SWR-JSON-0024 refuses for a different and wrong reason. Separating the two questions keeps the diagnosis truthful: kind_of answers whether the text was an integer, and as_int answers whether the value fits.

@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0009
 title: Binary mode body is the unmodified event data
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 and the CloudEvents HTTP protocol binding section 3.1.4 define the binary

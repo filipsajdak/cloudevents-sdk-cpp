@@ -2,7 +2,8 @@
 uid: SWR-JSON-0029
 title: base64 decode accepts missing padding
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.3 requires decode to accept missing padding, because producers in the wild omit the trailing equals signs and rejecting them would break interoperability.

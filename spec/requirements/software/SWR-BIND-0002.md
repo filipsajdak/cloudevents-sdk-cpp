@@ -2,7 +2,8 @@
 uid: SWR-BIND-0002
 title: A fixed attribute emission order
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The interop and conformance fixtures compare whole messages, so the order fields are written in is observable. A reordering reads as tidying in review and fails in the fixtures, which is a long way from the change that caused it. Writing the order down makes it a contract rather than an accident of how the code happens to be arranged.

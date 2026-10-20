@@ -2,7 +2,8 @@
 uid: SYS-BUILD-0001
 title: Language-version gating confined to one header
 type: system
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   Scattered version checks are what makes a library expensive to move to a new

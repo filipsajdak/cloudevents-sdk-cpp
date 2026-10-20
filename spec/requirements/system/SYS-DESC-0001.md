@@ -2,7 +2,8 @@
 uid: SYS-DESC-0001
 title: One reflection seam serving typed payloads and typed extensions
 type: system
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   Mapping a user struct to JSON members, to extension attributes and to headers is

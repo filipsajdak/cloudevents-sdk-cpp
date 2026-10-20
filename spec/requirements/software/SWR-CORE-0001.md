@@ -2,7 +2,8 @@
 uid: SWR-CORE-0001
 title: Typed error code enumeration and error value
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.1 makes every failure path in the SDK report a machine-readable code

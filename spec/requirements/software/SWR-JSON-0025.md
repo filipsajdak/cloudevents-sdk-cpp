@@ -2,7 +2,8 @@
 uid: SWR-JSON-0025
 title: Structured and batch media types
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The CloudEvents JSON format clause on content types fixes the two media types the HTTP binding matches on, as SPEC 5.3 restates.

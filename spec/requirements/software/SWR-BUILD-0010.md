@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0010
 title: Optional cloudevents.cppm module wrapper outside the default build
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 3 rule 7 ships a module interface that re-exports the headers, and keeps

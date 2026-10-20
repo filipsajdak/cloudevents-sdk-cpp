@@ -2,7 +2,8 @@
 uid: SWR-EXT-0002
 title: Typed extension read and write through the describe seam
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.5 requires event::get<Ext>() and event::set(const Ext&) to map struct fields

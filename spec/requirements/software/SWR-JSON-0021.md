@@ -2,7 +2,8 @@
 uid: SWR-JSON-0021
 title: data and data_base64 together rejected
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 and the CloudEvents JSON format clause forbid carrying a payload twice, and accepting one of the two silently would let a peer show different payloads to different receivers.

@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0001
 title: Transport-neutral message type with headers and binary body
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 makes the binding produce a plain value rather than a framework request

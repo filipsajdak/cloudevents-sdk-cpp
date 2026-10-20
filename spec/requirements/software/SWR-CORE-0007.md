@@ -2,7 +2,8 @@
 uid: SWR-CORE-0007
 title: Timestamp representation retaining the original UTC offset
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.1 requires `to_string` to reproduce canonical input byte for byte, which

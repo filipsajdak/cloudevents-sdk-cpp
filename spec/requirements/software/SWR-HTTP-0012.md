@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0012
 title: Invalid UTF-8 in a decoded header value is an error
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 makes the decoded octet sequence a UTF-8 string; admitting an ill-formed

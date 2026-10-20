@@ -2,7 +2,8 @@
 uid: SWR-JSON-0002
 title: Codec parse and dump operations
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 names parse and dump as the codec entry points; parse consumes untrusted text, so it returns a result rather than signalling failure out of band.

@@ -2,7 +2,8 @@
 uid: SWR-JSON-0016
 title: Binary data emitted under data_base64
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The CloudEvents JSON format clause on the data_base64 member carries binary payloads, which JSON cannot represent directly, as SPEC 5.3 restates.

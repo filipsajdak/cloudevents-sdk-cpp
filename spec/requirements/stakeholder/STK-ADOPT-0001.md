@@ -2,7 +2,8 @@
 uid: STK-ADOPT-0001
 title: Adoptable by an existing C++20 codebase without imposing dependencies
 type: stakeholder
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The first consumers are existing C++20 services that already pin their own JSON

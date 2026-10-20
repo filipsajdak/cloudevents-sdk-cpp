@@ -2,7 +2,8 @@
 uid: SWR-JSON-0012
 title: Out-of-range or fractional Integer attribute rejected
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 makes an Integer attribute outside int32 or carrying a fraction an error, because silently truncating attacker-supplied JSON numbers would change the decoded event.

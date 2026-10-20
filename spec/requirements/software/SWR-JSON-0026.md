@@ -2,7 +2,8 @@
 uid: SWR-JSON-0026
 title: Empty batch is valid
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.3 and the CloudEvents JSON batch format clause accept an empty JSON array, so a peer delivering nothing is not a protocol error.

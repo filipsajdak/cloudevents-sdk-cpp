@@ -2,7 +2,8 @@
 uid: SYS-ADOPT-0001
 title: Header-only, exception-free, dependency-light distribution
 type: system
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   Consumers compile without exceptions and pin their own JSON library. A header-only

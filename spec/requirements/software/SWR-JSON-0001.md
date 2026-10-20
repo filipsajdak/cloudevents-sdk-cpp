@@ -2,7 +2,8 @@
 uid: SWR-JSON-0001
 title: json_codec concept abstracts a JSON DOM
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 makes the codec seam an abstraction over a JSON document object model rather than over the CloudEvents event, so that the format layer owns every CloudEvents rule and a consuming project can plug in the JSON library it already ships.

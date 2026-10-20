@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0004
 title: Polyfills mirror the standard surface so deletion is a no-op
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 3 rule 3 requires each polyfill to match the standard surface exactly, so

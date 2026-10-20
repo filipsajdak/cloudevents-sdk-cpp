@@ -2,7 +2,8 @@
 uid: SWR-SEC-0005
 title: Interoperability goldens produced by the Go and Java SDKs
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   SPEC 6 makes cross-SDK goldens the external correctness measure, because this SDK

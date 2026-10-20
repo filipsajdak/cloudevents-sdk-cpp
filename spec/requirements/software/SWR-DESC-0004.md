@@ -2,7 +2,8 @@
 uid: SWR-DESC-0004
 title: C++20 macro backend describing up to thirty-two members
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 makes the macro the backend for the C++20 toolchain floor, generating

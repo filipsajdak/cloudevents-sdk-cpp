@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0002
 title: Headers as an ordered multimap with case-insensitive lookup
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 requires header order to survive a round trip while HTTP field names are

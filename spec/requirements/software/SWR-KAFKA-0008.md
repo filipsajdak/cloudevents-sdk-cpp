@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0008
 title: Key mapping is opt-in and defaults to no key
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: medium
 rationale: >
   The Kafka binding specification section 3.1 states that every implementation SHOULD provide an opt-in Key Mapper that maps the `partitionkey` attribute to the record key. Opt-in is structural here rather than a runtime flag: the mapper is a defaulted template parameter whose default produces no key, so a caller who has not asked gets the specification's default behaviour and pays nothing for the one they did not choose.

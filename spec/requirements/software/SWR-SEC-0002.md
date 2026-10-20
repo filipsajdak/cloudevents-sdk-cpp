@@ -2,7 +2,8 @@
 uid: SWR-SEC-0002
 title: Address and undefined-behaviour sanitizers run the whole suite
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 6 requires a sanitizer job over the full suite. Fuzzing explores inputs the

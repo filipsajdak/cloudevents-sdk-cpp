@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0002
 title: content-type carries datacontenttype and takes no prefix
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The Kafka binding specification section 3.2.2 states that in binary mode the `content-type` header MUST be mapped directly to the CloudEvents `datacontenttype` attribute. Emitting it under the prefix as well would present the same attribute twice, and a receiver has no rule for which one wins.

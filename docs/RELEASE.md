@@ -69,6 +69,9 @@ Run every command from a clean `main` at the commit being tagged.
 - [ ] `CHANGELOG.md` has a section for it, naming what changed rather than
       which pull requests changed it.
 - [ ] Tag on `main`, signed.
+- [ ] `python3 spec/tools/derive_delivered_in.py --write` run after the tag
+      exists, and its edits committed: requirements the release delivered gain
+      `delivered_in` (D-SPEC-4).
 - [ ] The tag builds from a clean clone with no network access beyond the
       dependency fetch.
 

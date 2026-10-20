@@ -2,7 +2,8 @@
 uid: SWR-JSON-0032
 title: A null attribute value decodes as unset
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   CloudEvents JSON format section 2.2 states that a null value encountered while decoding an attribute MUST be treated as the equivalent of unset or omitted. The format specification's own structured example carries an "unsetextension": null member for exactly this reason, so a decoder that rejects it fails on the published example.

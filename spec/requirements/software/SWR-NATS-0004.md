@@ -2,7 +2,8 @@
 uid: SWR-NATS-0004
 title: NATS cannot distinguish a foreign payload from a malformed one
 type: software
-status: approved
+status: implemented
+delivered_in: v0.3.0
 priority: medium
 rationale: >
   The HTTP and Kafka bindings answer `errc::not_a_cloudevent` because each has a content type or a specversion header to consult before parsing. A bare NATS payload carries neither, so an unrelated JSON document is indistinguishable from a corrupt event. Stating the limitation is the requirement, because the alternative is a bug report asking for a distinction the transport cannot support. It applies to the payload entry points only: a binary-mode message carries `ce-specversion`, so the distinction exists there.

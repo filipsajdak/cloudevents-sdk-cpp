@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0004
 title: Record header keys compare byte for byte
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   A Kafka record header key is an opaque byte string, so there is no case-folding rule to apply and none is specified. HTTP's case-insensitive comparison would therefore be wrong twice over: reading, it would accept `CE_ID` as the id attribute, which the producer did not send; writing, it would erase a `CE_ID` header a caller had deliberately set alongside.

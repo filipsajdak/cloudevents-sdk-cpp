@@ -2,7 +2,8 @@
 uid: SWR-BIND-0001
 title: A binding is described by a traits type
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   A traits type rather than function parameters, because attribute_prefix and case_sensitive_names are needed in constant expressions, and a std::function would allocate and add an indirect call per field in a header-only SDK that supports -fno-exceptions. The concept is what turns a missing or wrongly typed member into a diagnostic at the binding, rather than a template error inside the core.

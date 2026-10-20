@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0013
 title: Binary-mode extension values decode as strings
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.4 notes that a binary-mode header carries no type information, so the receiver

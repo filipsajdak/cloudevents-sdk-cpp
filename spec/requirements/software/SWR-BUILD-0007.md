@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0007
 title: No deprecated or removed-in-C++26 library features
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 3 rule 5 bars deprecated and removed-in-C++26 library facilities and makes

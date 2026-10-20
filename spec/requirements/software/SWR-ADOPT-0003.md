@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0003
 title: Library code compiles with exceptions disabled
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 9 decision D4 commits the SDK to supporting -fno-exceptions builds. This is

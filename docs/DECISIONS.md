@@ -201,6 +201,39 @@ reader of the tree would have to learn for one suite. A suite with five
 requirements would meet the limit again and should be split then. The unittest
 variant of the lookahead is unchanged, because no Python suite carries four.
 
+## D-SPEC-4: `delivered_in` is derived from the release tags, and an amended requirement waits for the next one
+
+`delivered_in` names the first release tag whose tree holds the requirement's
+current statement and `version` (in the requirement's own file at that tag) and
+resolves every `verified_by` target the way `check_references.py` does: the test
+file exists and declares the named suite, a file with no suite (a fuzz target) by
+existing, a CMake file by containing the name. `spec/tools/derive_delivered_in.py`
+reads the tags through git (SWR-BUILD-0016), prints one row per requirement, and
+`--write` turns an `approved` requirement with a tag into `implemented` by editing
+its status line and adding `delivered_in` after it. `--check` exits 1 when
+`--write` would change a file; it is not in CI yet, and one line in
+`.github/workflows/spec.yml` would add it. Run `--write` at each release, after the
+tag exists.
+
+Two choices follow from measuring it on the 70 requirements already marked
+`implemented`:
+
+- The first tag that contains the requirement's file is wrong, because the spec
+  precedes the code, so the file exists for releases that delivered nothing.
+- `satisfied_by` is not a condition. With the files it names as a condition, nine
+  of the 70 disagreed with the tag a person recorded, each because a header moved
+  or gained a sibling after the release. Without it all 70 agree.
+
+A requirement whose statement or `version` changed after a release is not
+delivered by that release, so it stays `approved` (D-EXT-6 does the same by hand
+for an amended `implemented` requirement). A requirement whose `verified_by` gained
+a test after the last tag also stays `approved`, because the new evidence is not in
+any tag. Both gain `delivered_in` at the next release that holds them, and the tool
+gives that tag. SWR-HTTP-0005 and SWR-NATS-0004 are impacted by CR-0004, but its
+analysis records an unchanged statement for both, so they were delivered at
+v0.5.0 and v0.3.0, and v0.6.0 added the defaulted `decode_options` parameter that
+SWR-BIND-0009 states.
+
 ## D-BUILD-1: boost-ext/ut is patched for GCC on macOS
 
 ut 2.3.1 captures `argc`/`argv` from a function marked

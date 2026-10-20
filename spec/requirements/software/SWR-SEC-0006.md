@@ -2,7 +2,8 @@
 uid: SWR-SEC-0006
 title: Round-trip property holds for generated events in every mode
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 6 requires decode(encode(e)) to equal e for generated events across all modes.

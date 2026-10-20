@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0004
 title: Installed package is consumable through find_package
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 7 milestone M0 makes a consumer project the acceptance test for packaging.

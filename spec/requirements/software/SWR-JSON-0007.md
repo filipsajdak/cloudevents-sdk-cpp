@@ -2,7 +2,8 @@
 uid: SWR-JSON-0007
 title: nlohmann_codec parses without exceptions
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 pins the nlohmann parse to allow_exceptions=false and maps failure to errc::parse_error, which keeps the codec usable in the -fno-exceptions builds that decision D4 keeps open.

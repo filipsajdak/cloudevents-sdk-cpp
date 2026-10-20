@@ -2,7 +2,8 @@
 uid: SWR-EXT-0004
 title: Typed view over an event payload
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.5 requires event_of<T> as a thin typed view whose data() returns result<T>,

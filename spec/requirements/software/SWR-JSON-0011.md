@@ -2,7 +2,8 @@
 uid: SWR-JSON-0011
 title: Integer attribute values encoded as JSON numbers
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The CloudEvents JSON format clause on type system mapping renders the Integer attribute type as a JSON number, and SPEC 5.3 restates the int32 range that the CloudEvents core type system defines.

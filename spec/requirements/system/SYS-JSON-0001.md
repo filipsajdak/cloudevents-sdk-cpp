@@ -2,7 +2,8 @@
 uid: SYS-JSON-0001
 title: JSON event format, structured and batch
 type: system
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The JSON format is the interchange representation every other CloudEvents SDK

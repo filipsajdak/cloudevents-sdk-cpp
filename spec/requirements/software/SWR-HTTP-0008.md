@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0008
 title: datacontenttype maps to Content-Type and never to a ce- header
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 and the CloudEvents HTTP protocol binding section 3.1.3 carve

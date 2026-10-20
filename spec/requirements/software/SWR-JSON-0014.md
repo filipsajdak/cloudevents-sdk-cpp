@@ -2,7 +2,8 @@
 uid: SWR-JSON-0014
 title: URI, URI-reference and Timestamp attributes as strings
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The CloudEvents JSON format clause on type system mapping renders URI, URI-reference and Timestamp attribute values as JSON strings, as SPEC 5.3 restates.

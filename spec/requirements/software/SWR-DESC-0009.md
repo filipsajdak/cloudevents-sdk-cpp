@@ -2,7 +2,8 @@
 uid: SWR-DESC-0009
 title: Supported described member types
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 enumerates the member types the seam maps to JSON members, extension

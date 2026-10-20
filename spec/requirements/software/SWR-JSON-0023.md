@@ -2,7 +2,8 @@
 uid: SWR-JSON-0023
 title: Documented extension type loss on decode
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 records that JSON loses the CloudEvents attribute type, fixes the mapping the decoder uses, and points at typed extension structs for recovering richer types.

@@ -2,7 +2,8 @@
 uid: SWR-CORE-0011
 title: Prohibition on std::chrono::parse in timestamp handling
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.1 forbids `std::chrono::parse` because its availability and locale

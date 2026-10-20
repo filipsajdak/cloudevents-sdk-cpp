@@ -2,7 +2,8 @@
 uid: SWR-SEC-0003
 title: Every error code has a negative test
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 6 requires a negative test per errc value. An error code that is never

@@ -2,7 +2,8 @@
 uid: SWR-JSON-0027
 title: Constexpr base64 encode and decode per RFC 4648 section 4
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 requires base64 in the header so it is usable at compile time, and RFC 4648 section 4 is the alphabet the CloudEvents JSON format names for data_base64 and Binary attributes.

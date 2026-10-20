@@ -2,7 +2,8 @@
 uid: SWR-DESC-0007
 title: Reflection backend describes public members only
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 limits the C++26 backend to public members so that the field set of a type is

@@ -2,7 +2,8 @@
 uid: SWR-DESC-0001
 title: The described concept identifies types carrying field metadata
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 makes the reflection seam a customization point, so every consumer needs one

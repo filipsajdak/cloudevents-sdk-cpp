@@ -2,7 +2,8 @@
 uid: SWR-JSON-0004
 title: Codec object and array mutation
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 lists set and push as the mutation surface the encoder uses to assemble an event object and a batch array.

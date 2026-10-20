@@ -2,7 +2,8 @@
 uid: SYS-KAFKA-0001
 title: Events map to and from Kafka records
 type: system
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   Kafka is the transport the other major CloudEvents SDKs ship after HTTP, and an event produced by the Go or Java SDK onto a topic has to be readable here. The binding needs no Kafka client library: a record is header fields plus an opaque value, which is the message shape the SDK already has.

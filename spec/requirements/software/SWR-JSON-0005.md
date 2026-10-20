@@ -2,7 +2,8 @@
 uid: SWR-JSON-0005
 title: Codec member lookup and traversal
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 lists find, for_each_member and for_each_element as the read surface the decoder uses to locate known attributes and to walk unknown members and batch entries.

@@ -2,7 +2,8 @@
 uid: SWR-EXT-0006
 title: Typed payload accessors live outside the core target
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.3 permits the typed payload accessors to be free functions in the format

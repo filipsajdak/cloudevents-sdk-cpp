@@ -2,7 +2,8 @@
 uid: SWR-JSON-0008
 title: nlohmann types confined to the nlohmann codec header
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 states that no nlohmann type appears in any other header, which is what lets a consuming project supply its own codec without linking nlohmann at all.

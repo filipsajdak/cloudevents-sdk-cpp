@@ -2,7 +2,8 @@
 uid: SWR-JSON-0030
 title: Building without the default codec pulls in no nlohmann
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 4 and SPEC 5.3 make the nlohmann codec an opt-out build component, so a consuming project supplying its own codec takes on no nlohmann dependency.

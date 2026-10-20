@@ -2,7 +2,8 @@
 uid: SWR-EXT-0005
 title: Typed payload read and write for described types
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 names event::data_as<T>(codec) and event::set_data(const T&, codec) as the

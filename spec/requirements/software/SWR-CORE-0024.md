@@ -2,7 +2,8 @@
 uid: SWR-CORE-0024
 title: constexpr is_json_content_type validator
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.1 and the CloudEvents JSON format specification section 3.1 decide

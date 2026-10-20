@@ -2,7 +2,8 @@
 uid: SWR-JSON-0036
 title: A codec header names only its own JSON library
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   SPEC 4 fixes the dependency direction, and ADR-0004 makes the codec the only place a JSON library may appear. A codec header that reached for a second library would compile on any machine that has both installed and fail only in a job that deliberately installs one, so the check reads the headers rather than waiting for a build to notice.

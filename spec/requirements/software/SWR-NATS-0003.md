@@ -2,7 +2,8 @@
 uid: SWR-NATS-0003
 title: The subject is the application's
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: medium
 rationale: >
   The NATS binding specification defines no mapping from an event to a subject; it shows an example subject and says nothing about how it was chosen. Inventing a derivation, from `type` or `source`, would produce subjects no other SDK publishes to, which is worse than having none.

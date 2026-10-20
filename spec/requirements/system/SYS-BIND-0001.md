@@ -2,7 +2,8 @@
 uid: SYS-BIND-0001
 title: One shared core for the rules every binding repeats
 type: system
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   CloudEvents describes HTTP, Kafka, AMQP, MQTT, NATS and WebSockets the same way: attributes become named fields under a prefix, the payload becomes the body, and structured mode puts the whole event in the body under a content type. Copying that per binding would put the attribute set, the emission order, the error precedence and the extension-name rule in as many places as there are transports, and a spec correction would then have to find all of them.

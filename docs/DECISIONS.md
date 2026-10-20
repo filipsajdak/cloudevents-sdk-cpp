@@ -945,6 +945,62 @@ The test enforces exactly that distinction: a block containing code, or an
 `#else`, still fails. Both were checked by introducing them and watching the
 suite catch each.
 
+## D-BUILD-4: Before 1.0 a break bumps the minor version, and a break goes to a new generation
+
+Until 1.0, a change that breaks a consumer bumps the minor version; an addition
+or a fix bumps the patch. A break is a changed or removed declaration, or a
+change to behaviour the published documentation states: the owner ruled on
+2026-09-28 (CR-0004) that the second breaks the API as the first does, and that
+change went to `ce::v4` in v0.6.0. A break is never made inside a generation
+that a tag has published. It goes to a new generation, as `docs/SPEC.md`
+section 3 rule 4 and SWR-BUILD-0006 require, and the minor version moves with
+it: v0.4.0 (`ce::v2`), v0.5.0 (`ce::v3`) and v0.6.0 (`ce::v4`).
+
+An addition leaves every declaration and every documented behaviour alone: a
+new function, a new enumerator, a field added after the last one, a body fixed.
+SWR-BUILD-0015 makes the declaration half mechanical, through
+`scripts/frozen_api_diff.py`: CI fails a pull request that removes or changes a
+declaration of `ce::v1` to `ce::v4` compared with the latest tag, and passes an
+addition. The behaviour half has no tool; it is the reviewer's question, and
+`docs/RELEASE.md` asks it again before a tag.
+
+How the script decides, so a failure can be read:
+
+- It compares declarations, not text. A text diff would refuse a body fix
+  (SWR-BUILD-0011 allows one) and would see a declaration that moved between
+  headers as removed in one and added in another, as the v3 entities were when
+  v0.6.0 moved them into `include/cloudevents/v3/`.
+- A signature holds the kind, qualified name, type, access, template parameters,
+  base classes, default arguments, default member initialisers, enumerator
+  values, attributes, `explicit` and the order of a class's fields. It leaves
+  out bodies, constructor initialiser lists, comments and parameter names.
+- Only what a consumer can reach is compared: a private member is not a
+  declaration they can use, so changing or removing one passes, and a private
+  field does not count in the order of a class's fields. Making a public member
+  private removes it from the public set, and fails.
+- A field or an enumerator appended after the last one passes. One inserted
+  before another, or removed, fails, because it moves what a consumer wrote.
+- A generation is frozen when the base tag declares it, so a base of v0.5.0
+  freezes `ce::v1` to `ce::v3` and a base of v0.6.0 freezes `ce::v1` to `ce::v4`.
+- Types are compared as the entity they name. Clang prints a name from an inline
+  namespace without it, so `ce::event` was `ce::v3::event` in v0.5.0 and is
+  `ce::v4::event` now; the script writes the inline generation out and follows
+  using-declarations and namespace aliases, so `ce::v4::result` and
+  `ce::v1::result` are one type. The
+  exception specification and `constexpr` of a defaulted member are ignored,
+  because the compiler deduces them only for a member the translation unit uses.
+- The reflection backend `detail/describe_reflection.hpp` is not parsed: only
+  GCC 16 with `-freflection` can. `detail/describe_macro.hpp` declares the same
+  names for the other backend.
+
+It does not see that a class stopped being trivially copyable, an ABI change that
+leaves every declaration alone, or a change in a function's documented result.
+Those stay with the reviewer and the suites that pin each generation.
+
+A declaration that must change for a reason the owner approves has no
+exception in the script. It is declared in a new generation, or the owner changes
+the rule here first.
+
 ## D-KAFKA-1: The Kafka binding has no batch mode
 
 The Kafka protocol binding defines binary and structured mode and says nothing

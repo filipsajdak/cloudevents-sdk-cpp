@@ -167,8 +167,28 @@ if(Python3_Interpreter_FOUND)
   # neither Mull nor a compiler: scripts/mutation.sh --dry-run builds nothing.
   add_test(NAME mutation_tools
     COMMAND Python3::Interpreter -m unittest discover
-            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_*.py")
+            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_mutation_*.py")
   set_tests_properties(mutation_tools PROPERTIES LABELS "tools")
+  # The frozen-API diff (SWR-BUILD-0015). Its verdict suites need a clang++ and
+  # its release suites also the tags and the dependencies' headers; each skips
+  # when one is missing, so a shallow clone or a GCC-only host still passes.
+  # The dependency directories are the ones this build resolved, joined with the
+  # path separator the script splits on.
+  add_test(NAME frozen_api_tools
+    COMMAND Python3::Interpreter -m unittest discover
+            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_frozen_*.py")
+  set_tests_properties(frozen_api_tools PROPERTIES LABELS "tools")
+  if(NOT WIN32 AND TARGET ctre::ctre)
+    set(ce_frozen_isystem "$<JOIN:$<TARGET_PROPERTY:ctre::ctre,INTERFACE_INCLUDE_DIRECTORIES>,:>")
+    if(TARGET nlohmann_json::nlohmann_json)
+      string(APPEND ce_frozen_isystem ":$<JOIN:$<TARGET_PROPERTY:nlohmann_json::nlohmann_json,INTERFACE_INCLUDE_DIRECTORIES>,:>")
+    endif()
+    if(CE_RAPIDJSON_INCLUDE_DIR)
+      string(APPEND ce_frozen_isystem ":${CE_RAPIDJSON_INCLUDE_DIR}")
+    endif()
+    set_tests_properties(frozen_api_tools PROPERTIES
+      ENVIRONMENT "CE_FROZEN_API_ISYSTEM=${ce_frozen_isystem}")
+  endif()
 endif()
 
 # The performance probe's malloc counting (SWR-PERF-0002, SWR-PERF-0003), linked

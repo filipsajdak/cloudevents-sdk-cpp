@@ -1,0 +1,100 @@
+name: frozen-api
+
+# A pull request may not remove or change a declaration of a frozen generation
+# (SWR-BUILD-0015, SWR-BUILD-0006, CONTRIBUTING.md "Frozen API"). The script
+# compares the headers of this checkout with the latest v* tag; it fails on a
+# removed or changed declaration and passes an addition or a body-only fix.
+#
+# It runs on every pull request, with no path filter: a required check that a
+# path filter skips stays pending for ever, and the job takes about a minute.
+# It is meant to become a required check once it has gone green on a few pull
+# requests, because nothing in it varies between runs: the compiler, the
+# standard library and CTRE are pinned below, and both revisions are parsed by
+# the same install, so a drifting apt package moves both sides alike.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Release tag to compare with (empty means the latest v* tag)
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CLANG: clang++-18
+  # The libstdc++ the C++20 floor is proven against (SPEC section 8); without it
+  # clang 18 would take the runner's newest.
+  GCC_DIR: /usr/lib/gcc/x86_64-linux-gnu/13
+  # Pinned by commit like cmake/CeDependencies.cmake pins it: v3.9.0.
+  CTRE_COMMIT: 78c5c3ef0e562f2ef0fea9ee3de743cdcf99e6f2
+  CTRE_URL: https://github.com/hanickadot/compile-time-regular-expressions.git
+
+jobs:
+  frozen-api:
+    name: frozen API (no declaration removed or changed since the last tag)
+    runs-on: ubuntu-24.04
+    # Measured on the runner: the installs take most of it, the two parses a
+    # few seconds each. Anything near this limit is a hang.
+    timeout-minutes: 15
+    concurrency:
+      group: frozen-api-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      # Every tag, so the latest one is there to compare with.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install the compiler and the headers the codecs include
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y "$CLANG" g++-13 nlohmann-json3-dev rapidjson-dev libboost-json-dev
+
+      - name: Fetch CTRE at its pinned commit
+        run: |
+          git init --quiet "$RUNNER_TEMP/ctre"
+          git -C "$RUNNER_TEMP/ctre" fetch --quiet --depth 1 "$CTRE_URL" "$CTRE_COMMIT"
+          git -C "$RUNNER_TEMP/ctre" checkout --quiet FETCH_HEAD
+
+      # Exit 1 is the result this job exists for; exit 2 means the check could
+      # not run. Either fails the job, and the report is published first.
+      - name: Compare the public declarations with the last tag
+        env:
+          BASE: ${{ inputs.base }}
+          CE_FROZEN_API_CLANG: ${{ env.CLANG }}
+          CE_FROZEN_API_ISYSTEM: ${{ runner.temp }}/ctre/include
+        run: |
+          args=(--cxxflag="--gcc-install-dir=$GCC_DIR")
+          if [ -n "$BASE" ]; then args+=(--base "$BASE"); fi
+          set +e
+          python3 scripts/frozen_api_diff.py "${args[@]}" > "$RUNNER_TEMP/frozen.out" 2> "$RUNNER_TEMP/frozen.err"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/frozen.err" "$RUNNER_TEMP/frozen.out"
+          {
+            echo '### Frozen API'
+            echo '```'
+            cat "$RUNNER_TEMP/frozen.err" "$RUNNER_TEMP/frozen.out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$status" in
+            0) ;;
+            1) echo "::error::A declaration of a frozen generation was removed or changed. A break belongs in a new generation (SWR-BUILD-0006); the job summary lists it."
+               ;;
+            *) echo "::error::scripts/frozen_api_diff.py could not run (status $status); the job summary quotes why."
+               ;;
+          esac
+          exit "$status"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frozen-api-report
+          path: |
+            ${{ runner.temp }}/frozen.out
+            ${{ runner.temp }}/frozen.err
+          if-no-files-found: ignore

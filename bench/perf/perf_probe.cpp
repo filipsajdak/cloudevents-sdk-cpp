@@ -28,12 +28,15 @@
 
 #include <array>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <expected>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <cloudevents/binding/http.hpp>
@@ -270,6 +273,57 @@ struct nats_binding {
   }
 };
 
+// --- a binary-mode receive of a body that is not JSON --------------------------
+//
+// A body whose media type is not JSON is not parsed: read_body copies its bytes into
+// the event's binary payload, once, whatever the codec. The codec is therefore a
+// type argument only (nlohmann here), and these operations carry one row, not six.
+// An empty body, with the same headers, is the reference: the difference to a sized
+// body is the copy a receive that takes the message by rvalue could hand over.
+
+/// A body small enough that the headers still dominate the receive.
+inline constexpr std::size_t small_body_bytes = 256;
+/// A body large enough that the copy dominates it: the size of the large document.
+inline constexpr std::size_t large_body_bytes = 64 * 1024;
+inline constexpr std::size_t empty_body_bytes = 0;
+/// An arbitrary non-zero octet, so the body is not a run of zeros.
+inline constexpr std::byte body_fill{0x5A};
+
+struct octet_stream {
+  static constexpr std::string_view media_type = "application/octet-stream";
+};
+struct text_plain {
+  static constexpr std::string_view media_type = "text/plain";
+};
+
+template<class Binding, class Media, std::size_t Size>
+[[nodiscard]] auto body_message() -> const ce::message& {
+  static const ce::message subject = laid_out([]() -> ce::result<ce::message> {
+    using namespace ce::literals;
+    auto media = ce::datacontenttype::make(Media::media_type);
+    if (!media) {
+      return std::unexpected{std::move(media).error()};
+    }
+    return Binding::template to_message<nlohmann_codec>(
+        ce::event{"A234-1234-1234"_id,
+                  "https://example.test/orders/eu-west"_source,
+                  "com.example.order.placed"_type,
+                  {.datacontenttype = std::move(*media), .data = ce::binary(Size, body_fill)}},
+        ce::content_mode::binary_mode);
+  });
+  return subject;
+}
+
+template<class Binding, class Media, std::size_t Size>
+auto decode_binary_body() -> bool {
+  auto event = Binding::template from_message<nlohmann_codec>(body_message<Binding, Media, Size>());
+  escape(event);
+  // The path under measurement keeps the bytes as a binary payload; a message that
+  // took another path would be measuring something else.
+  return event.has_value() &&
+         std::holds_alternative<ce::binary>(event->data()) == (Size != empty_body_bytes);
+}
+
 template<class Binding, class C>
 auto decode_binary_typed() -> bool {
   const auto event = Binding::template from_message<C>(typed_binary_message<Binding>());
@@ -406,12 +460,53 @@ auto operations_for(std::string_view codec) {
   });
 }
 
-using codec_operations = decltype(operations_for<nlohmann_codec>(""));
+/// The operations that do not depend on the codec: the non-JSON path never parses.
+auto body_operations() {
+  using octet = octet_stream;
+  return std::to_array<operation>({
+      {.id = "http_decode_binary_octet_empty/nlohmann",
+       .run = decode_binary_body<http_binding, octet, empty_body_bytes>},
+      {.id = "http_decode_binary_octet_small/nlohmann",
+       .run = decode_binary_body<http_binding, octet, small_body_bytes>},
+      {.id = "http_decode_binary_octet_large/nlohmann",
+       .run = decode_binary_body<http_binding, octet, large_body_bytes>},
+      {.id = "http_decode_binary_text_empty/nlohmann",
+       .run = decode_binary_body<http_binding, text_plain, empty_body_bytes>},
+      {.id = "http_decode_binary_text_small/nlohmann",
+       .run = decode_binary_body<http_binding, text_plain, small_body_bytes>},
+      {.id = "http_decode_binary_text_large/nlohmann",
+       .run = decode_binary_body<http_binding, text_plain, large_body_bytes>},
+      {.id = "kafka_decode_binary_octet_empty/nlohmann",
+       .run = decode_binary_body<kafka_binding, octet, empty_body_bytes>},
+      {.id = "kafka_decode_binary_octet_small/nlohmann",
+       .run = decode_binary_body<kafka_binding, octet, small_body_bytes>},
+      {.id = "kafka_decode_binary_octet_large/nlohmann",
+       .run = decode_binary_body<kafka_binding, octet, large_body_bytes>},
+      {.id = "nats_decode_binary_octet_empty/nlohmann",
+       .run = decode_binary_body<nats_binding, octet, empty_body_bytes>},
+      {.id = "nats_decode_binary_octet_small/nlohmann",
+       .run = decode_binary_body<nats_binding, octet, small_body_bytes>},
+      {.id = "nats_decode_binary_octet_large/nlohmann",
+       .run = decode_binary_body<nats_binding, octet, large_body_bytes>},
+  });
+}
 
-/// One row per codec, its size deduced like the operations'. nlohmann has
-/// one row because the bench measures the shipped codec itself.
+using codec_operations = decltype(operations_for<nlohmann_codec>(""));
+using operation_table = std::span<const operation>;
+
+template<std::size_t... Codec>
+[[nodiscard]] auto tables_of(const std::array<codec_operations, sizeof...(Codec)>& per_codec,
+                             operation_table codec_free,
+                             std::index_sequence<Codec...>)
+    -> std::array<operation_table, sizeof...(Codec) + 1> {
+  return {operation_table{per_codec[Codec]}..., codec_free};
+}
+
+/// One table per codec, its size deduced like the operations', then the table of the
+/// operations that need no codec. nlohmann has one row because the bench measures the
+/// shipped codec itself.
 [[nodiscard]] auto all_operations() -> const auto& {
-  static const auto table = std::to_array<codec_operations>({
+  static const auto per_codec = std::to_array<codec_operations>({
       operations_for<nlohmann_codec>("nlohmann"),
       operations_for<shipped_rapidjson_codec>("rapidjson.shipped"),
       operations_for<shipped_boost_codec>("boost.json.shipped"),
@@ -419,6 +514,8 @@ using codec_operations = decltype(operations_for<nlohmann_codec>(""));
       operations_for<boost_codec>("boost.json"),
       operations_for<glaze_codec>("glaze"),
   });
+  static const auto codec_free = body_operations();
+  static const auto table = tables_of(per_codec, codec_free, std::make_index_sequence<6>{});
   return table;
 }
 

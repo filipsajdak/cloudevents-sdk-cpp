@@ -11,6 +11,9 @@ The operations are decode of a minimal, a full and a large event, encode of the 
 The typed paths are a read of a payload `set_data` wrote with the same codec, a read of a document that codec built, a write, and the typed entry points: `decode_as` of the full and the large event, `decode_batch_as` of the batch, and `encode_as` of the full event.
 Six more go through the bindings with the full event: HTTP binary-mode decode and encode, HTTP structured decode and encode, and Kafka and NATS binary-mode decode.
 Three more decode a binary-mode message carrying a typed payload and then read it with `data_as`, over HTTP, Kafka and NATS (`http_decode_binary_typed` and its siblings): the receive and the read together, because a decoder that keeps the body as text and one that keeps a document trade cost between those two steps.
+Twelve more, with one codec each, receive a binary-mode message whose body is not JSON (`application/octet-stream` over HTTP, Kafka and NATS, and `text/plain` over HTTP) with an empty, a 256 byte and a 64 KiB body (`http_decode_binary_octet_small` and its siblings).
+A body that is not JSON is never parsed: the receive copies its bytes into the event's binary payload whichever codec is named, so these ids carry `nlohmann` and the other five codecs would only repeat them.
+The empty body is the reference: the headers and the media type are the same, so the difference to a sized body is the copy of the bytes, which is what a receive that takes the message by rvalue could move instead.
 The first fourteen are the operations `bench/codec_bench.cpp` times, over the documents in `bench/documents.hpp` and the payload types in `bench/typed_documents.hpp`.
 
 The shipped codecs are measured because they are what a consumer runs.

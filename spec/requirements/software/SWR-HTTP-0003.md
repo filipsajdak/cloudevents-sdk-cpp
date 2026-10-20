@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0003
 title: Event to message conversion in a caller-selected content mode
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 names `http::to_message(event, mode, codec)` as the single send-side entry

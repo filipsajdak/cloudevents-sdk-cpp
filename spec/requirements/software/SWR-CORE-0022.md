@@ -2,7 +2,8 @@
 uid: SWR-CORE-0022
 title: constexpr valid_attribute_name validator
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.1 requires the name grammar to be a `constexpr` predicate and SPEC 6

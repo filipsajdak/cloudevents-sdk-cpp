@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0001
 title: Standard detection through feature-test macros only
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 3 rule 1 forbids deducing capabilities from compiler or standard version

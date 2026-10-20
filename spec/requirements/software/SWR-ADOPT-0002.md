@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0002
 title: The core depends on no third-party library except CTRE
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   A consumer that already vendors its own JSON library cannot absorb a second one.

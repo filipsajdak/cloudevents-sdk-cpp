@@ -2,7 +2,8 @@
 uid: SWR-JSON-0018
 title: data_base64 decodes to binary data
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 and the CloudEvents JSON format clause on data_base64 fix the decode direction for binary payloads arriving from an untrusted peer.

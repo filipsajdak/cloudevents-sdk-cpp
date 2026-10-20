@@ -2,7 +2,8 @@
 uid: SWR-DESC-0011
 title: One parity suite runs against both backends
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 makes backend parity the whole point of the seam, and parity claimed in prose

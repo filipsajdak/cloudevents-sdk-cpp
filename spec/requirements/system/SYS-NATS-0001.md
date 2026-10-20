@@ -2,7 +2,8 @@
 uid: SYS-NATS-0001
 title: Events map to and from NATS message payloads
 type: system
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: medium
 rationale: >
   NATS is the fifth transport the CloudEvents project specifies and the cheapest one to support, because the protocol carries no headers and the binding is therefore the JSON event format and nothing else. An event published by another SDK onto a subject has to be readable here.

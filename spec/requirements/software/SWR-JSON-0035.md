@@ -2,7 +2,8 @@
 uid: SWR-JSON-0035
 title: An extension integer beyond int64 is refused end to end
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   SWR-JSON-0033 states the codec's obligation; this states the one a user observes. Before it held, a document carrying 18446744073709551615 as an extension decoded successfully into an event whose extension value was -1, with no error anywhere in the chain.

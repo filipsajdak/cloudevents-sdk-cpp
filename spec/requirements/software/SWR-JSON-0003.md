@@ -2,7 +2,8 @@
 uid: SWR-JSON-0003
 title: Codec value constructors for every JSON kind
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 enumerates the constructors the format layer calls when it builds an encoded event, covering every JSON kind the CloudEvents JSON format uses.

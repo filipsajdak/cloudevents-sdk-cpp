@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0005
 title: The Kafka binding refuses batch mode in both directions
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The Kafka binding specification defines binary and structured mode and no batch mode. A record carrying an array under a batch content type is something no other SDK's consumer reads, so producing one would be an interoperability defect rather than an extension. On receive the batch content type must be recognised before the structured one, because `application/cloudevents-batch+json` also starts with `application/cloudevents` and would otherwise reach the format layer as a malformed structured document.

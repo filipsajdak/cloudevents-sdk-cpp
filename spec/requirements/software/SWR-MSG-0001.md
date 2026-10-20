@@ -2,7 +2,8 @@
 uid: SWR-MSG-0001
 title: Byte-exact header lookup alongside the case-insensitive one
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   SWR-HTTP-0002 makes ce::headers match case-insensitively, which is correct for HTTP field names and over-permissive everywhere else. Kafka, AMQP and MQTT key comparison is byte-exact, so a binding using set would erase a differently-cased header a caller had deliberately kept, and find would answer with one the transport considers unrelated.

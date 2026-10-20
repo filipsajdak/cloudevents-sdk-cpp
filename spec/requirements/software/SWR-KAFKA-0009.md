@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0009
 title: partitionkey still travels when it becomes the record key
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The Kafka binding specification section 3.1 states that the `partitionkey` attribute MUST still be included with the transmitted event if present. Moving it to the record key instead of copying it would lose the attribute for every consumer that reads the event rather than the record, and the mistake is invisible in a test that only inspects the key.

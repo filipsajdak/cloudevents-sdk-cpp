@@ -2,7 +2,8 @@
 uid: SWR-SEC-0007
 title: Line coverage floor for core, format and binding
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 6 sets a ninety percent line coverage target for the three layers that carry

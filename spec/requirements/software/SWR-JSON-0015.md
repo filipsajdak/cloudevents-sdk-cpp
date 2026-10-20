@@ -2,7 +2,8 @@
 uid: SWR-JSON-0015
 title: json_text data emitted under data
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 and the CloudEvents JSON format clause on the data member place already-JSON payloads inline under data so that a consumer parses the event once.

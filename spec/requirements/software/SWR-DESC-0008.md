@@ -2,7 +2,8 @@
 uid: SWR-DESC-0008
 title: A macro description keeps precedence under the reflection backend
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 requires that upgrading a project from C++20 to C++26 cannot silently change

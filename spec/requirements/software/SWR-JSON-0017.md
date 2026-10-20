@@ -2,7 +2,8 @@
 uid: SWR-JSON-0017
 title: std::string data emitted under data as a JSON string
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 distinguishes a textual, non-JSON payload from a json_text payload, and the CloudEvents JSON format clause carries the former as a JSON string under data.

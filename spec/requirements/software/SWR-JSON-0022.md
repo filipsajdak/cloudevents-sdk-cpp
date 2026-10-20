@@ -2,7 +2,8 @@
 uid: SWR-JSON-0022
 title: Unknown top-level members become extensions
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The CloudEvents JSON format clause treats every top-level member that is not a defined context attribute or a payload member as an extension attribute, as SPEC 5.3 restates.

@@ -2,7 +2,8 @@
 uid: SWR-SEC-0004
 title: Conformance fixtures taken verbatim from the specification documents
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 6 requires every example from the core, JSON and HTTP specification documents

@@ -2,7 +2,8 @@
 uid: SWR-JSON-0037
 title: One set of format rules for shipped and measured codecs alike
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: medium
 rationale: >
   A benchmark of codecs that disagree measures nothing, so bench/codec_check.cpp had

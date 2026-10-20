@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0005
 title: Batched conversion variants over event sequences
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: medium
 rationale: >
   SPEC 5.4 requires batched variants of both conversions so the batched content mode of

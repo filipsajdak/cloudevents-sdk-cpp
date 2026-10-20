@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0002
 title: All capability gating confined to detail/config.hpp
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   SPEC 3 rule 1 and SPEC 10 place every capability test in one header, so raising

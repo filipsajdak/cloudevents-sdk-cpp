@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0001
 title: Attributes travel as ce_-prefixed record headers
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The Kafka binding specification section 3.2.3 states that CloudEvent attributes are prefixed with `ce_` for use in the message-headers section. The underscore is the whole difference from HTTP's `ce-`, which makes it the easiest thing to carry over by accident and the hardest to see in review.

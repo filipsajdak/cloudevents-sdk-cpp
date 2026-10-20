@@ -2,7 +2,8 @@
 uid: SYS-MSG-0001
 title: One transport-neutral message shape for every binding
 type: system
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   A Kafka record, an AMQP message, an MQTT PUBLISH and an HTTP request are all a name/value list plus an opaque payload, so one shape serves them all and a caller that keeps every binding behind one seam does not need a type per transport. The shapes differ in one respect the SDK must not paper over: HTTP field names are case-insensitive and the others are not.

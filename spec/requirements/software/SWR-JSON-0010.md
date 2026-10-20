@@ -2,7 +2,8 @@
 uid: SWR-JSON-0010
 title: json_format encode and decode entry points
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 fixes the four json_format operations that the HTTP structured and batched content modes build on.

@@ -2,7 +2,8 @@
 uid: SWR-NATS-0001
 title: NATS carries the JSON event format and nothing else
 type: software
-status: approved
+status: implemented
+delivered_in: v0.3.0
 priority: medium
 rationale: >
   The binding used to say NATS "will only support structured data mode at this time", because the protocol had no message headers. NATS 2.2 introduced them and the specification now says "Every compliant implementation SHOULD support both structured and binary modes", with binary mode mapping every attribute to a `ce-` prefixed header. Version 1 of this requirement forbade what the specification now asks for, which is what a requirement written against a frozen tag does when the tag moves.

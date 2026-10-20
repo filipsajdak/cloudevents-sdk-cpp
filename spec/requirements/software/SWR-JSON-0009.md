@@ -2,7 +2,8 @@
 uid: SWR-JSON-0009
 title: test::mini_codec as a second in-tree codec
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.3 requires a second, tiny in-tree codec used only by tests, because a concept exercised by a single implementation is a concept shaped around that implementation.

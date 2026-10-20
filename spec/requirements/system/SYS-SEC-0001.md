@@ -2,7 +2,8 @@
 uid: SYS-SEC-0001
 title: Decode paths withstand hostile input
 type: system
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The decode surface (timestamp parsing, base64, percent-decoding, UTF-8 validation

@@ -2,7 +2,8 @@
 uid: SWR-BIND-0003
 title: One flag decides field-name case in both directions
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   A binding that lowered a field name while reading but preserved it while writing would not round-trip, and the two halves are far enough apart in the code that the pair could be set inconsistently. Deriving both from one traits member removes the inconsistent state rather than testing for it. HTTP field names are case-insensitive (RFC 9110 section 5.1); Kafka record headers, AMQP application-properties and MQTT user properties are not.

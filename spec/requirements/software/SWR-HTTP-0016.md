@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0016
 title: An opt-in literal value policy for the HTTP binding
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The HTTP binding specification section 3.1.3.2 requires space, double-quote, percent and

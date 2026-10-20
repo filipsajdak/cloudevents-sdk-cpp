@@ -2,7 +2,8 @@
 uid: SYS-HTTP-0001
 title: HTTP protocol binding in three content modes
 type: system
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   HTTP is the transport the CloudEvents ecosystem standardised first and the one

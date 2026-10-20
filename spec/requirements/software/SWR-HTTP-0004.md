@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0004
 title: Message to event conversion on receive
 type: software
-status: approved
+status: implemented
+delivered_in: v0.5.0
 priority: high
 rationale: >
   SPEC 5.4 names `http::from_message(message, codec)` as the single receive-side entry

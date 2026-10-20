@@ -2,7 +2,8 @@
 uid: SWR-JSON-0020
 title: Non-JSON datacontenttype with a string data yields std::string
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 names the one case where a data member is not JSON payload: the producer declared a non-JSON content type and carried the payload as a JSON string.

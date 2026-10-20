@@ -2,7 +2,8 @@
 uid: SWR-CORE-0005
 title: Core attribute type aliases
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.1 and CloudEvents v1.0.2 core specification section 3.1 fix the

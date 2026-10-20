@@ -2,7 +2,8 @@
 uid: SWR-NATS-0002
 title: The payload is the whole message
 type: software
-status: approved
+status: implemented
+delivered_in: v0.3.0
 priority: medium
 rationale: >
   A pre-2.2 NATS message has a subject and a payload and no header section, so the structured entry points exchange text: returning the shared `message` type there would hand the caller a header map that cannot be transmitted, and someone would eventually set a field in it and wonder where the value went. Binary mode needs headers by definition, so its entry points use `message` and say in their name that they do.

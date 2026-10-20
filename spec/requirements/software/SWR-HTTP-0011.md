@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0011
 title: Percent-decoding accepts any percent-encoded octet
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 and the CloudEvents HTTP protocol binding section 3.1.3.1 require a receiver

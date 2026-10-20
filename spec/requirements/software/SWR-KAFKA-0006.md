@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0006
 title: A record that is not a CloudEvent is distinct from a malformed one
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   A topic carries whatever its producers put there, and a consumer subscribing to one is far more likely to meet a plain record than a corrupt CloudEvent. Reporting both the same way forces the consumer to treat an ordinary message as an error, so the two outcomes stay distinct here exactly as they are in the HTTP binding.

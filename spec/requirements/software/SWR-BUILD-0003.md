@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0003
 title: Capabilities exposed as CE_HAS constants
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 3 rule 1 requires each detected capability to surface as a `CE_HAS_*`

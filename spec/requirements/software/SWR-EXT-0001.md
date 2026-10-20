@@ -2,7 +2,8 @@
 uid: SWR-EXT-0001
 title: One described struct per documented CloudEvents extension
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.5 requires the five documented extensions to be reachable as typed structs

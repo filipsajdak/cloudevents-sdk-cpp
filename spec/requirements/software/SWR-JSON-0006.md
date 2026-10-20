@@ -2,7 +2,8 @@
 uid: SWR-JSON-0006
 title: Codec kind inspection and checked accessors
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 requires kind inspection plus as_ accessors returning a result, so a decoder reading untrusted JSON discovers a type mismatch as a returned error instead of undefined behaviour.

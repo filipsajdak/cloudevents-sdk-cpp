@@ -2,7 +2,8 @@
 uid: SWR-JSON-0028
 title: base64 decode rejects invalid input
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 requires the decoder to reject invalid input, which matters because base64 text on a decode path arrives from an untrusted peer.

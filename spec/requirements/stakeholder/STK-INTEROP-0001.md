@@ -2,7 +2,8 @@
 uid: STK-INTEROP-0001
 title: Events interoperate with the other CloudEvents SDKs
 type: stakeholder
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   No official C++ CloudEvents SDK exists, so this implementation has no reference

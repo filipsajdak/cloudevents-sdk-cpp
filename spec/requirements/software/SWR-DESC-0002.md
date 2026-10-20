@@ -2,7 +2,8 @@
 uid: SWR-DESC-0002
 title: Field enumeration in declaration order over const and non-const objects
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 fixes the callback shape `f(std::string_view, member&)` and declaration order

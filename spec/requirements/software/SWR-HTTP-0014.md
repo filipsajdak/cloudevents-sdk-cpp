@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0014
 title: Non-CloudEvents request reported as not_a_cloudevent
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 separates "this request was never an event" from "this event is broken" so a

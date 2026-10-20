@@ -2,7 +2,8 @@
 uid: SWR-EXT-0003
 title: Typed extensions recover their types from a lossy decoder
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.3 and 5.4 both note that the JSON and HTTP binary wire forms lose the

@@ -2,7 +2,8 @@
 uid: SWR-SEC-0001
 title: Fuzz targets for every untrusted-input parser
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   SPEC 6 names timestamp parsing, JSON decode, HTTP message decode and base64 decode

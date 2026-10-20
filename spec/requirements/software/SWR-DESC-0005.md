@@ -2,7 +2,8 @@
 uid: SWR-DESC-0005
 title: Macro rename form decoupling wire names from member names
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.2 provides `CE_FIELD` because a wire name such as `data_base64` or a name that

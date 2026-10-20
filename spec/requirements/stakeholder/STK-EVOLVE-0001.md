@@ -2,7 +2,8 @@
 uid: STK-EVOLVE-0001
 title: Newer C++ standards are a recompile, not a port
 type: stakeholder
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   The SDK is expected to outlive several C++ standard revisions. Consumers must be

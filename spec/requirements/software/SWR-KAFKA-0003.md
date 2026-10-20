@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0003
 title: Header values are UTF-8 strings, not percent-encoded
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   The Kafka binding specification section 3.2.1 states that both header keys and header values MUST be encoded as UTF-8 strings. There is no escaping layer, so percent-encoding a value here would put literal percent escapes in front of every other SDK's consumer. A broker passes header bytes through unexamined, so nothing downstream would reject a value that is not well-formed UTF-8 either; this binding refuses it rather than emitting it.

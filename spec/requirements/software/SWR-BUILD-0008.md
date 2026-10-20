@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0008
 title: Headers free of anonymous-namespace entities
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 3 rule 7 keeps the headers module-ready, and an entity with internal

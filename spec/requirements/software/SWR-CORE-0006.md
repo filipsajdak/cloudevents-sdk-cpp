@@ -2,7 +2,8 @@
 uid: SWR-CORE-0006
 title: attribute_value variant over the specified attribute types
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.1 defines `attribute_value` as the closed set of value types permitted

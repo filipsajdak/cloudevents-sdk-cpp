@@ -2,7 +2,8 @@
 uid: SWR-CORE-0003
 title: result polyfill surface on the C++20 floor
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 3 names C++20 as the floor with full functionality, so SPEC 5.1 requires a

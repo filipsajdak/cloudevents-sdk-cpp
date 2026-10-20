@@ -2,7 +2,8 @@
 uid: SWR-DESC-0006
 title: C++26 backend built on static reflection with annotations
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 pins the C++26 backend to `nonstatic_data_members_of` with an explicit access

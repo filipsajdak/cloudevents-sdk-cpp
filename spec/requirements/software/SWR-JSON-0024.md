@@ -2,7 +2,8 @@
 uid: SWR-JSON-0024
 title: Floating-point extension value rejected
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 9 decision D6 rejects floating-point extension values on decode because the CloudEvents type system has no such attribute type, so accepting one would invent a type the rest of the SDK cannot carry.

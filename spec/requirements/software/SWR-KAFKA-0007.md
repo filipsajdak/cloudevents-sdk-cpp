@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0007
 title: A record carries an optional key beside the message
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: medium
 rationale: >
   A Kafka record has a key, which decides its partition, and the message type deliberately has only header fields and a body. Adding a key member to `message` would change a type every binding shares and that SWR-HTTP-0001 pins by static assertion, so the key is carried by composition instead.

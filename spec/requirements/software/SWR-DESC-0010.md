@@ -2,7 +2,8 @@
 uid: SWR-DESC-0010
 title: Unsupported member type diagnosed at compile time
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.2 requires a member outside the supported list to stop the build with a

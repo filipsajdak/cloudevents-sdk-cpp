@@ -2,7 +2,8 @@
 uid: STK-TRUST-0001
 title: Defined behaviour on malformed input from an untrusted peer
 type: stakeholder
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   Every decode path parses an envelope that arrived over a network from a peer the

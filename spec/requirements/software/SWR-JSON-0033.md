@@ -2,7 +2,8 @@
 uid: SWR-JSON-0033
 title: An integer beyond the codec's range never yields a value
 type: software
-status: approved
+status: implemented
+delivered_in: v0.2.0
 priority: high
 rationale: >
   nlohmann's get<std::int64_t>() reinterprets an out-of-range unsigned value rather than refusing it, so 18446744073709551615 arrived as -1. That is inside the CloudEvents Integer range, so the format layer's own bounds check did not catch it and the caller was handed a number that was not the one on the wire. The defect was found while writing a second codec whose accessor range-checks.

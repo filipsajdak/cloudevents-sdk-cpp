@@ -2,7 +2,8 @@
 uid: SWR-HTTP-0006
 title: Content mode detection from the Content-Type header
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: high
 rationale: >
   SPEC 5.4 and the CloudEvents HTTP protocol binding sections 3.1 to 3.3 select the

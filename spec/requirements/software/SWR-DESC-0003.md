@@ -2,7 +2,8 @@
 uid: SWR-DESC-0003
 title: Field count and field names available at compile time
 type: software
-status: approved
+status: implemented
+delivered_in: v0.1.0
 priority: medium
 rationale: >
   SPEC 5.2 requires the field count and the wire names to be usable in constant

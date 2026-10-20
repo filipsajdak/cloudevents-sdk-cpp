@@ -113,8 +113,13 @@ class Unusable(Exception):
 INLINE = {"generation": None}
 QUALIFIED_RE = re.compile(r"\bce(?:::\w+)+")
 ALIAS_DEPTH = 8
+# How much of the compiler's complaint, and of one side of a changed signature, a report quotes.
+STDERR_TAIL = 2000
+DETAIL_WIDTH = 300
 # Signature entries that are an ordered list a later release may extend at the end.
 APPENDABLE = ("fields", "order")
+# Marks a field that has a default member initialiser, in a class's list of fields.
+INITIALISED = "="
 UNQUALIFIED_RE = re.compile(r"\bce::(?!v[0-9]+::)")
 
 
@@ -288,7 +293,7 @@ class Collector:
                 continue
             if child.get("isImplicit") and kind != "UsingShadowDecl":
                 continue
-            if access == "private":
+            if access == "private" and kind != "FriendDecl":
                 continue
             self.member(scope, child, access)
 
@@ -377,7 +382,7 @@ class Collector:
             if child.get("kind") == "AccessSpecDecl":
                 access = child.get("access", access)
             elif child.get("kind") == "FieldDecl" and not child.get("isImplicit") and access != "private":
-                names.append(child.get("name", ""))
+                names.append(child.get("name", "") + (INITIALISED if child.get("hasInClassInitializer") else ""))
         return names
 
     def function(self, scope: str, node: dict, access: str | None, parameters: list) -> None:
@@ -420,16 +425,16 @@ class Collector:
             self.add(f"{scope}::{name}::{constant.get('name', '')} [EnumConstantDecl]", {"value": strip(constant.get("inner", []))})
 
     def friend(self, scope: str, node: dict) -> None:
+        """A friend function is found by argument-dependent lookup whichever section declares it.
+
+        A friend class grants access and is nothing a consumer calls, so it is not compared.
+        """
         for child in node.get("inner", []):
             kind = child.get("kind", "")
             if kind in FUNCTION_KINDS:
                 self.function(f"{scope} friend", child, None, [])
             elif kind == "FunctionTemplateDecl":
                 self.template(f"{scope} friend", child, None)
-            elif kind in ("CXXRecordDecl", "ClassTemplateDecl"):
-                self.add(f"{scope} friend [{kind}] {child.get('name', '')}", {})
-        if node.get("type"):
-            self.add(f"{scope} friend [type] {type_of(node)}", {})
 
 
 def header_paths(root: Path) -> list[str]:
@@ -455,7 +460,7 @@ def dump(root: Path, clang: str, isystem: list[str], flags: list[str], work: Pat
     ]
     done = subprocess.run(command, capture_output=True, text=True, errors="replace", check=False)
     if done.returncode != 0:
-        raise Unusable(f"{clang} could not parse the headers of {root}:\n{done.stderr[-2000:]}")
+        raise Unusable(f"{clang} could not parse the headers of {root}:\n{done.stderr[-STDERR_TAIL:]}")
     return collect(done.stdout)
 
 
@@ -501,15 +506,20 @@ def generation_of(key: str) -> str | None:
 def kept(was: dict, now: dict) -> dict:
     """The head's signature, with fields it appended to a class left out.
 
-    A field added after the last one leaves every initialiser and every access a
-    consumer wrote working. One inserted before another moves them, and a removed
-    one is gone; both stay in the signature and fail.
+    A field appended after the last one, with a default member initialiser, leaves
+    every initialiser and every access a consumer wrote working (owner ruling
+    2026-10-21, CR-0005). One appended without an initialiser makes every
+    initialiser that omits it ill-formed under -Werror, one inserted before
+    another moves what a consumer wrote, and a removed one is gone; those stay
+    in the signature and fail. An enumerator appended passes.
     """
     result = dict(now)
     for ordered in APPENDABLE:
         if isinstance(was.get(ordered), list) and isinstance(now.get(ordered), list):
             count = len(was[ordered])
-            if now[ordered][:count] == was[ordered]:
+            appended = now[ordered][count:]
+            needs_initialiser = ordered == "fields"
+            if now[ordered][:count] == was[ordered] and all(not needs_initialiser or item.endswith(INITIALISED) for item in appended):
                 result[ordered] = was[ordered]
     return result
 
@@ -534,7 +544,7 @@ def describe(was, now) -> list[str]:
     lines = []
     for field in sorted(set(was) | set(now)):
         if was.get(field) != now.get(field):
-            lines.append(f"    {field}: {json.dumps(was.get(field), sort_keys=True)[:300]}  ->  {json.dumps(now.get(field), sort_keys=True)[:300]}")
+            lines.append(f"    {field}: {json.dumps(was.get(field), sort_keys=True)[:DETAIL_WIDTH]}  ->  {json.dumps(now.get(field), sort_keys=True)[:DETAIL_WIDTH]}")
     return lines
 
 

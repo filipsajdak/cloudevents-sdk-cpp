@@ -125,7 +125,19 @@ class Verdicts(unittest.TestCase):
         ).replace("}  // namespace ce::v3", "auto made_twice(int n) -> widget;\nstruct added { int x; };\n}  // namespace ce::v3")
         self.assertEqual(self.verdict(added)[0], frozen_api_diff.EXIT_OK)
 
-    def test_a_member_added_after_the_last_field_of_an_aggregate_passes(self) -> None:
+    def test_a_member_appended_to_an_aggregate_without_a_default_initialiser_fails(self) -> None:
+        self.assertEqual(self.verdict(BASE.replace("bool strict = false; };", "bool strict = false; int extra; };"))[0], frozen_api_diff.EXIT_BROKEN)
+
+    def test_aggregate_members_reordered_removed_or_retyped_fail(self) -> None:
+        for name, text in {
+            "reordered": BASE.replace("int limit; bool strict = false;", "bool strict = false; int limit;"),
+            "removed": BASE.replace("int limit; bool strict = false;", "bool strict = false;"),
+            "retyped": BASE.replace("int limit;", "long limit;"),
+        }.items():
+            with self.subTest(name):
+                self.assertEqual(self.verdict(text)[0], frozen_api_diff.EXIT_BROKEN)
+
+    def test_a_member_appended_to_an_aggregate_with_a_default_initialiser_passes(self) -> None:
         self.assertEqual(self.verdict(BASE.replace("bool strict = false; };", "bool strict = false; int extra = 0; };"))[0], frozen_api_diff.EXIT_OK)
 
     def test_a_removed_declaration_fails_and_names_it(self) -> None:
@@ -156,6 +168,15 @@ class Verdicts(unittest.TestCase):
 
     def test_a_private_member_is_not_a_declaration_a_consumer_can_use(self) -> None:
         self.assertEqual(self.verdict(BASE.replace("  int n_;", "  long n_;\n  int spare_;"))[0], frozen_api_diff.EXIT_OK)
+
+    def test_a_hidden_friend_declared_in_a_private_section_is_still_found_by_lookup(self) -> None:
+        friend = "  friend auto operator==(const widget&, const widget&) -> bool { return true; }\n"
+        with_friend = BASE.replace(" private:\n", " private:\n" + friend)
+        self.write(self.base, HEADER, with_friend)
+        self.assertEqual(self.verdict(with_friend)[0], frozen_api_diff.EXIT_OK)
+        status, out = self.verdict(BASE)
+        self.assertEqual(status, frozen_api_diff.EXIT_BROKEN)
+        self.assertIn("friend", out)
 
     def test_a_removed_noexcept_fails(self) -> None:
         self.assertEqual(self.verdict(BASE.replace("const noexcept -> int", "const -> int"))[0], frozen_api_diff.EXIT_BROKEN)

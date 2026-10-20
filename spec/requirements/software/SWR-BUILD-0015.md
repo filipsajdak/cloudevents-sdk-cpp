@@ -15,7 +15,7 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
-satisfied_by: []
+satisfied_by: [code:scripts/frozen_api_diff.py, code:.github/workflows/frozen-api.yml]
 verified_by: [test:scripts/test_frozen_api_diff.py::Verdicts, test:scripts/test_frozen_api_diff.py::AgainstReleases]
 owner: filip.sajdak
 version: 1

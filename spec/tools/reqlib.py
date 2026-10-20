@@ -42,7 +42,11 @@ class FrontmatterError(Exception):
 
 
 def parse_requirement_file(path: pathlib.Path) -> Requirement:
-    text = path.read_text(encoding="utf-8")
+    return parse_requirement_text(path, path.read_text(encoding="utf-8"))
+
+
+def parse_requirement_text(path: pathlib.Path, text: str) -> Requirement:
+    """Parse requirement text read from anywhere (a file, a tag's blob)."""
     if not text.startswith("---\n"):
         raise FrontmatterError(f"{path}: file does not start with '---' frontmatter")
     try:

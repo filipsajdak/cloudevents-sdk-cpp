@@ -89,6 +89,17 @@ def _ut_names_in(text: str) -> set[str]:
     return set(UT_SUITE_RE.findall(text)) | set(UT_TEST_RE.findall(text))
 
 
+def names_in_file(path: str, text: str) -> set[str]:
+    """Every suite or case name a `verified_by` entry may name in the file at
+    `path` with this `text`: ut names in C++ files, unittest names in Python."""
+    suffix = "." + path.rpartition(".")[2]
+    if suffix in CPP_SUFFIXES:
+        return _ut_names_in(text)
+    if suffix in PY_SUFFIXES:
+        return _py_names_in(text)
+    return set()
+
+
 def _walk(root, suffixes):
     if not root.is_dir():
         return
@@ -112,13 +123,13 @@ def index_ut_tests() -> dict[str, set[str]]:
     for directory in TEST_DIRS:
         for path in _walk(directory, CPP_SUFFIXES):
             text = path.read_text(encoding="utf-8", errors="ignore")
-            names = _ut_names_in(text)
+            names = names_in_file(path.name, text)
             if names:
                 index[str(path.relative_to(REPO_ROOT))] = names
     for directory in PY_TEST_DIRS:
         for path in _walk(directory, PY_SUFFIXES):
             text = path.read_text(encoding="utf-8", errors="ignore")
-            names = _py_names_in(text)
+            names = names_in_file(path.name, text)
             if names:
                 index[str(path.relative_to(REPO_ROOT))] = names
     return index

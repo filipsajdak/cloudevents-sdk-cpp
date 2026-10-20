@@ -25,4 +25,4 @@ Neutral), `## References`. Start from `template.md`.
 | [0010](./0010-events-keep-their-json-document.md) | An event keeps its JSON document, in a third generation | Accepted |
 | [0011](./0011-deterministic-performance-gates.md) | Performance is gated on deterministic measures, measured against main in the same job | Accepted |
 | [0012](./0012-a-fourth-generation-for-the-moving-document.md) | A fourth generation for the moving document | Accepted |
-| [0013](./0013-a-binary-body-opt-in-and-moving-entry-points.md) | A binary-body opt-in and moving entry points, as additions to a frozen generation | Proposed |
+| [0013](./0013-a-binary-body-opt-in-and-moving-entry-points.md) | A binary-body opt-in and moving entry points, as additions to a frozen generation | Accepted (opt-in); moving entry points deferred |

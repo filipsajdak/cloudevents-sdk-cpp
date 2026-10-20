@@ -85,7 +85,7 @@ class json_document {
 
 using data_t = std::variant<std::monostate, std::string, binary, json_text, json_document>;
 
-class event {
+struct event {
  public:
   using extension_map = std::map<extension_name, attribute_value, std::less<>>;
 

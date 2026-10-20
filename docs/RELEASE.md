@@ -3,10 +3,21 @@
 Everything here is a gate that a machine can run. A step that reads "check that
 ..." without a command is not a step.
 
-A generation's API is fixed at its first tag: `ce::v1` at `v0.1.0`, `ce::v2` at
-`v0.4.0`. `SWR-BUILD-0006` requires a new version namespace for any breaking
-change after that. A later tag may add to a generation and may not remove from it,
-so anything that should go has to go before the *first* tag of a namespace.
+A generation's API is fixed at the tag that published it: `ce::v1` is what
+`v0.3.0` published, `ce::v2` what `v0.4.0` published, `ce::v3` what `v0.5.0`
+published and `ce::v4` what `v0.6.0` published. `SWR-BUILD-0006` requires a new
+version namespace for any breaking change after that, and the break bumps the
+minor version before 1.0 (`D-BUILD-4`). A later tag may add to a generation and
+may not remove from it, so anything that should go has to go before the *first*
+tag of a namespace.
+
+The version a tag takes follows from what changed since the previous one, until
+1.0:
+
+| Change since the previous tag | Version | Where it goes |
+|---|---|---|
+| A declaration removed or changed, or documented behaviour changed | minor | a new generation (`ce::vN+1`) |
+| A declaration added, or a defect fixed with every declaration and documented behaviour kept | patch | the current generation, and every earlier one the fix applies to |
 
 Run every command from a clean `main` at the commit being tagged.
 
@@ -49,8 +60,16 @@ Run every command from a clean `main` at the commit being tagged.
 
 ## The API is frozen at the tag
 
-- [ ] Diff the headers against the previous tag with comments stripped: no
-      declaration in an already-tagged generation changed (`SWR-BUILD-0006`).
+- [ ] `python3 scripts/frozen_api_diff.py --base <previous tag>` exits 0: no
+      declaration of `ce::v1` to `ce::v4` was removed or changed since that tag
+      (`SWR-BUILD-0006`, `SWR-BUILD-0015`). The `frozen-api` workflow runs it on
+      every pull request against the latest tag, so this is the same check run
+      once more on the commit being tagged. Exit 1 lists what moved; exit 2
+      means it did not run, which is not a pass. It needs clang and the
+      dependencies' headers (see `CONTRIBUTING.md`, "Frozen API").
+- [ ] No documented behaviour changed in a generation a tag has published. The
+      script sees declarations only, so read the diff of the guide and of the
+      doc comments for a changed result, default or error (`D-BUILD-4`).
 - [ ] No entity in the current generation is one you would rather remove. Check the `errc`
       enumerators in particular: a code nothing can produce is dead surface, and
       `SWR-SEC-0003` requires a negative test for every one of them.
@@ -85,3 +104,10 @@ mention them will generate the same questions repeatedly.
   translation unit may also include (`D-MODULE-1`).
 - Given the same non-JSON payload, the Java SDK writes `data_base64` where Go
   and this SDK write a JSON string. Both are legal (`D-INTEROP-1`).
+- A binary-mode body under a JSON media type is parsed once on receive in
+  `ce::v4`, and `retain_document_up_to = 0` does not skip the parse. A service
+  that only forwards events pays for it: on the HTTP full-event path the receive
+  alone costs 15% to 54% more instructions, by codec (v0.6.0 `CHANGELOG.md`,
+  Known limitations); staying on `ce::v3` avoids it.
+- The module interface exports `ce::v4` only: not `ce::v3`, and not `from_v3`
+  or `to_v3`.

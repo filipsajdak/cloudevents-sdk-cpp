@@ -89,6 +89,25 @@ Run it by hand from the Actions tab with a `base_ref` to see numbers for any bra
   To move it, change the four `MULL_*` values in the workflow together.
 - The run uses the whole job budget (`timeout-minutes` in the workflow) because it builds every suite with the plugin; cancel a superseded run rather than waiting.
 
+## Frozen API
+
+A generation (`ce::v1` to `ce::v4`) is frozen once a tag has published it: a pull request may add to it and fix a body, and may not remove or change a declaration (SWR-BUILD-0006, `docs/SPEC.md` section 3 rule 4).
+The `frozen-api` workflow (`.github/workflows/frozen-api.yml`, SWR-BUILD-0015) checks that on every pull request, by running `scripts/frozen_api_diff.py` against the latest `v*` tag.
+The script parses every header under `include/cloudevents/` with clang at the tag and in the tree, and compares the declarations, so a moved declaration or a fixed body passes and a removed or changed one fails with the declaration named.
+`D-BUILD-4` says what a signature holds and what the script cannot see.
+
+```bash
+python3 scripts/frozen_api_diff.py                 # against the latest v* tag
+python3 scripts/frozen_api_diff.py --base v0.5.0   # against any tag
+```
+
+It needs `git fetch --tags`, a clang++ (`CE_FROZEN_API_CLANG`, default `clang++`), and the headers of CTRE, nlohmann/json, RapidJSON and Boost.JSON on `CE_FROZEN_API_ISYSTEM` (a `:`-separated list, or `--isystem` once per directory).
+Exit 0 means nothing frozen moved, 1 means a declaration was removed or changed, and 2 means the check did not run, which is not a pass.
+The suites run as the CTest `frozen_api_tools` and skip where clang, the tags or those headers are missing.
+
+- **A failure means the change belongs in a new generation.** Do not edit the frozen declaration to make the job pass; declare the changed entity in the next generation (D-BUILD-4: before 1.0 a break bumps the minor version, an addition or a fix the patch).
+- **Required check.** It is meant to be one: the toolchain it uses is pinned and both revisions are parsed by the same install, so a run does not vary. It stays advisory until it has run green on a few pull requests without a failure that was not a real break; then the owner adds `frozen API` to branch protection.
+
 ## Spec first
 
 Every behaviour of the SDK traces to a requirement in [spec/requirements/](spec/requirements/).

@@ -1,6 +1,6 @@
 # cloudevents-cpp — work specification
 
-Status: approved for implementation. Version 0.1 scope. Audience: Claude Code agent.
+Status: approved for implementation. Written for the v0.1 scope in section 1; what later releases delivered is in `CHANGELOG.md` and `spec/requirements/`, and the API generation has since moved to `ce::v4` (section 3 rule 4). Audience: Claude Code agent.
 
 ## 1. Goal and scope
 

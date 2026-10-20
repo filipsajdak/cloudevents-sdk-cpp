@@ -2,7 +2,7 @@
 uid: SWR-BUILD-0016
 title: The release that delivered a requirement is derived from the tags
 type: software
-status: draft
+status: approved
 priority: low
 rationale: >
   A requirement is delivered by the first release whose tree holds its current statement and the tests that verify it.
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:spec/tools/derive_delivered_in.py]
+verified_by: [test:scripts/test_derive_delivered_in.py::FirstTagThatHoldsEverything, test:scripts/test_derive_delivered_in.py::NoTagQualifies, test:scripts/test_derive_delivered_in.py::WriteMode, test:scripts/test_derive_delivered_in.py::CheckMode]
 owner: filip.sajdak
 version: 1
 ---

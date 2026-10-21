@@ -406,6 +406,7 @@ std::printf("document: %d, text: %d\n",
 
 `from_value` always keeps a document, copying the member out of the DOM you passed, which it leaves as it was.
 A binding's binary-mode body is the payload itself, and it is read under the same limit: a JSON body arrives as a `ce::json_document` within it and as `ce::json_text` holding the body's bytes exactly as received above it, and `from_message` fails with `parse_error` when a non-empty body under a JSON media type is not JSON.
+A receiver that never reads the payload can skip that parse with `parse_binary_body = false` (see [Forwarding a binary-mode message without parsing it](#forwarding-a-binary-mode-message-without-parsing-it)).
 An empty body is no payload, whatever its media type.
 
 ### What decoding loses
@@ -600,6 +601,36 @@ std::printf("%s / %zu headers\n", payload ? payload->c_str() : "failed",
 
 Choosing a NATS subject is up to you, because the binding defines no mapping from an event to one.
 `from_payload` cannot answer `not_a_cloudevent`: a bare payload has no header to consult, so an unrelated JSON document looks exactly like a malformed event.
+
+### Forwarding a binary-mode message without parsing it
+
+A forwarder or router that never reads the payload pays, by default, to parse a binary-mode JSON body it only passes along.
+Set `parse_binary_body` to `false` in the decode options, and `from_message` keeps the body's bytes exactly as received in a `ce::json_text`, without parsing or validating them, whatever their length and the retention limit:
+
+```cpp body
+const ce::message request{
+    .header_fields = {
+        {"ce-specversion", "1.0"},
+        {"ce-id", "A2"},
+        {"ce-source", "/orders"},
+        {"ce-type", "com.example.order.placed"},
+        {"Content-Type", "application/json"},
+    },
+    .body = ce::to_bytes(R"({"total":42})"),
+};
+
+auto passed_on = ce::http::from_message<codec>(request, {.parse_binary_body = false});
+if (passed_on) {
+  if (const auto* text = std::get_if<ce::json_text>(&passed_on->data())) {
+    std::printf("forwarding %zu bytes untouched\n", text->raw.size());
+  }
+}
+```
+
+The default is `true`, which parses the body, fails with `parse_error` on invalid JSON and keeps a document within the retention limit.
+With `false` the caller takes over validation: a body that is not JSON is accepted and stored as it came.
+An empty body is still no payload, and a body under another media type is still `ce::binary`.
+The option covers binary mode only, and only the v4 `from_message` of HTTP, Kafka and NATS honours it: structured and batched decode, `nats::from_payload` and `json_format::decode` still parse the JSON they are given, and `ce::v3` already stores a binary-mode body unparsed.
 
 ## 7. Typed extensions
 
@@ -807,7 +838,7 @@ The types rule out an invalid event, but they cannot rule out these.
 | mistake | what happens | what to do |
 |---|---|---|
 | A text payload with no `datacontenttype` | It is decoded as `json_text` holding `"hello"`, quotes included, because absent means JSON. | Always set `datacontenttype` for text. |
-| Receiving a large JSON body in binary mode | It is parsed on receive, so a malformed body fails `from_message` with `parse_error`, and a body above the retention limit is kept as `json_text` holding its bytes. | Pass `ce::json::decode_options` to `from_message` to set the limit for untrusted input. |
+| Receiving a large JSON body in binary mode | It is parsed on receive, so a malformed body fails `from_message` with `parse_error`, and a body above the retention limit is kept as `json_text` holding its bytes. | Pass `ce::json::decode_options` to `from_message` to set the limit for untrusted input, or `{.parse_binary_body = false}` to forward the body without parsing it. |
 | Comparing an extension after a round trip | A `ce::uri` extension comes back as `std::string`, so the events differ. | Read it with a typed extension. |
 | Reading a payload as the wrong struct | Absent members default, so it succeeds with empty fields. | Switch on `type` before choosing the struct. |
 | Holding the pointer `extension()` returned | It dangles after `set_extension`, `remove_extension`, `set`, or the event's destruction. | Copy the value if you need it longer. |

@@ -36,6 +36,7 @@ function(ce_add_v3_codec_test name)
 endfunction()
 
 ce_add_v3_test(generation_test SOURCES v3_generation_test.cpp)
+ce_add_v3_test(decode_options_test SOURCES v3_decode_options_test.cpp)
 ce_add_v3_test(core_test SOURCES core_test.cpp)
 ce_add_v3_test(static_error_test SOURCES static_error_test.cpp)
 ce_add_v3_test(attribute_types_test SOURCES attribute_types_test.cpp)

@@ -2,7 +2,7 @@
 uid: SWR-BIND-0013
 title: Only the binary-mode body reader honours the opt-in; every other entry point and ce::v3 ignore it
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Structured decode, http::from_batch_message, nats::from_payload and the json_format decoders read
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/decode_options.hpp]
+verified_by: [test:test/typed_payload_test.cpp::parse-binary-body-has-no-effect-on-structured-decode, test:test/http_binding_test.cpp::from-batch-message-ignores-parse-binary-body, test:test/http_binding_test.cpp::http-from-message-ignores-parse-binary-body-in-structured-mode, test:test/kafka_binding_test.cpp::kafka-from-message-ignores-parse-binary-body-in-structured-mode, test:test/nats_binding_test.cpp::nats-from-message-ignores-parse-binary-body-in-structured-mode, test:test/nats_binding_test.cpp::from-payload-ignores-parse-binary-body, test:test/v3/v3_decode_options_test.cpp::v3-ignores-parse-binary-body]
 owner: filip.sajdak
 version: 1
 ---

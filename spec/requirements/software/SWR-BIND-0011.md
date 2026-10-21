@@ -2,7 +2,7 @@
 uid: SWR-BIND-0011
 title: The decode options carry an opt-in to skip the binary-mode parse, defaulting to the parse
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   CR-0005 reverses the owner's ruling of 2026-10-11 and adds an option to skip the parse of a binary-
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/decode_options.hpp]
+verified_by: [test:test/binding_core_test.cpp::decode-options-parse-binary-body-defaults-to-true, test:test/binding_core_test.cpp::decode-options-designated-initializer-still-builds]
 owner: filip.sajdak
 version: 1
 ---

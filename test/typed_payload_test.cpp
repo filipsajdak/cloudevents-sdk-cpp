@@ -985,6 +985,39 @@ const boost::ut::suite<"typed-payload-layering"> payload_layering = [] {
   };
 };
 
+// spec: SWR-BIND-0013
+const boost::ut::suite<"parse-binary-body-has-no-effect-on-structured-decode"> ignores_opt_in = [] {
+  using namespace boost::ut;
+  using format = ce::json_format<nlohmann_codec>;
+
+  "the decoders give the same event with the field false, at every limit"_test = [] {
+    const std::string text = sample_event_text();
+    for (const auto limit : {ce::json::decode_options::default_retention_limit, std::size_t{0}}) {
+      const auto kept = format::decode(text, {.retain_document_up_to = limit});
+      const auto ignored =
+          format::decode(text, {.retain_document_up_to = limit, .parse_binary_body = false});
+      expect(kept.has_value() && ignored.has_value());
+      if (kept && ignored) {
+        expect(bool{*kept == *ignored});
+        expect(kept->data().index() == ignored->data().index());
+      }
+      const auto typed = ce::decode_as<reading, nlohmann_codec>(
+          text, {.retain_document_up_to = limit, .parse_binary_body = false});
+      expect(typed.has_value() && same(typed->payload, sample()));
+    }
+  };
+
+  "a malformed structured text still fails with the field false"_test = [] {
+    const auto refused = format::decode("{not json", {.parse_binary_body = false});
+    expect(!refused.has_value());
+    if (!refused) {
+      expect(refused.error().code == ce::errc::parse_error);
+    }
+    const auto batch = format::decode_batch("[{not json", {.parse_binary_body = false});
+    expect(!batch.has_value());
+  };
+};
+
 }  // namespace
 
 int main() {}

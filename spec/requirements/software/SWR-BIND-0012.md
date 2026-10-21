@@ -2,7 +2,7 @@
 uid: SWR-BIND-0012
 title: With the opt-in off, a binary-mode JSON body is kept as its own unparsed text
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   A forwarder that sets parse_binary_body to false wants the body untouched and no parse, so the body
@@ -15,8 +15,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp]
+verified_by: [test:test/binding_core_test.cpp::unparsed-binary-json-body-keeps-the-bytes, test:test/binding_core_test.cpp::unparsed-binary-json-body-never-fails-to-parse, test:test/binding_core_test.cpp::unparsed-binary-json-body-ignores-the-retention-limit, test:test/http_binding_test.cpp::http-binary-body-not-parsed, test:test/kafka_binding_test.cpp::kafka-binary-body-not-parsed, test:test/nats_binding_test.cpp::nats-binary-body-not-parsed]
 owner: filip.sajdak
 version: 1
 ---

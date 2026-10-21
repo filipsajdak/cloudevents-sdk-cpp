@@ -12,6 +12,19 @@ Notable changes per release. Dates are the tag date.
   No CMake change: the build already looked CTRE up with `find_package` before it fetched it, and the recipes make a missed lookup an error.
   The consumer gained a round-trip program that runs the library through the installed package.
   A check fails a release that leaves the vcpkg manifest on the old version (`SWR-ADOPT-0006` to `SWR-ADOPT-0008`, `D-ADOPT-2`).
+- **`json::decode_options{.parse_binary_body = false}` keeps a binary-mode JSON body unparsed.**
+  A receiver that never reads the payload, such as a forwarder or router, no longer pays to parse it: `from_message` of the HTTP, Kafka and NATS bindings stores the body's exact bytes as `json_text`, without parsing or validating them, whatever their length and the retention limit.
+  v0.6.0 parses that body on receive, which costs 15% to 54% more instructions (RapidJSON +15%, Boost.JSON +18%, Glaze +29%, nlohmann +54%) and 8 to 27 more allocations on the HTTP full-event path, by codec; measured by the perf job (x86-64, g++-14), the receive of the full event over HTTP costs 35.6k instructions and 10 allocations (675 bytes) with the option, against 41.5k to 55.7k instructions, 16 to 37 allocations and 1.1 to 2.2 KiB with the parse (RapidJSON -14%, Boost.JSON -16%, Glaze -24%, nlohmann -36% in instructions); Kafka and NATS show the same shape.
+  The member is a trailing `bool` that defaults to `true`, so every call and every initializer written before compiles and behaves as it did.
+  It applies to binary mode only: structured and batched decode, `nats::from_payload` and `json_format::decode` accept it and ignore it, as does every `ce::v3` entry point.
+  With it set the caller takes over validation: a body that is not JSON is accepted as it came.
+  *Use:*
+
+  ```cpp
+  auto passed_on = ce::http::from_message<codec>(request, {.parse_binary_body = false});
+  ```
+
+  It is an addition to `ce::v4`, so it needs no new namespace (CR-0005, SWR-BIND-0011 to SWR-BIND-0013).
 
 ## v0.6.0 - 2026-10-11
 

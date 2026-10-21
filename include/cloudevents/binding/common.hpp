@@ -293,6 +293,7 @@ inline void write_body(const event& cloud_event, message& into) {
 // spec: SWR-BIND-0007
 // spec: SWR-BIND-0008
 // spec: SWR-BIND-0010
+// spec: SWR-BIND-0012
 template<json::json_codec Codec>
 [[nodiscard]] auto read_body(const binary& body,
                              const std::optional<datacontenttype>& media_type,
@@ -305,6 +306,10 @@ template<json::json_codec Codec>
     return data_t{body};
   }
   const std::string_view text = detail::text_of(body);
+  if (!options.parse_binary_body) {
+    // The body stays the message's, so its bytes are copied once, unparsed.
+    return data_t{json_text{.raw = std::string{text}}};
+  }
   auto parsed = Codec::parse(text);
   if (!parsed) {
     return ce::v4::detail::forward_failure(std::move(parsed).error());

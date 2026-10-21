@@ -688,15 +688,16 @@ void check_invalid_utf8_rejected(std::string_view label) {
 
   // The literal policy takes the octets as they are, so it is the policy that has
   // to refuse them: nothing was percent-decoded before they reached it.
-  const std::string_view ill_formed_literals[] = {"\xC0\x80"sv, "\xED\xA0\x80"sv, "\xE2\x82"sv,
-                                                  "\x80"sv};
+  const std::string_view ill_formed_literals[] = {
+      "\xC0\x80"sv, "\xED\xA0\x80"sv, "\xE2\x82"sv, "\x80"sv};
   for (const std::string_view literal : ill_formed_literals) {
     auto refused_literal = ce::http::from_message<C, ce::http::literal_values>(
         binary_message_with({"ce-subject", std::string{literal}}));
     expect(!refused_literal.has_value()) << label << ": a literal policy admitted ill-formed text";
     if (!refused_literal) {
       expect(refused_literal.error().code == ce::errc::invalid_utf8) << label;
-      expect(refused_literal.error().where == "subject"sv) << label << ": " << refused_literal.error().where;
+      expect(refused_literal.error().where == "subject"sv)
+          << label << ": " << refused_literal.error().where;
     }
   }
 

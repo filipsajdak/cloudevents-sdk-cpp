@@ -2,16 +2,23 @@
 
 Notable changes per release. Dates are the tag date.
 
-## Unreleased
+## v0.6.1 - 2026-10-21
+
+A forwarder can keep a binary-mode JSON body unparsed, and a receiver that is done with its message can move a non-JSON binary-mode body instead of copying it.
+Around the SDK, a gate now fails a pull request that changes a frozen declaration, `delivered_in` is derived from the tags, Kafka records are checked against the Go and Java SDKs, vcpkg and Conan recipes are built in CI, and an advisory mutation report runs on pull requests.
+
+**There are no breaking changes, so this is a patch release** (D-BUILD-4: before 1.0 a break bumps the minor version, an addition or a fix the patch).
+Everything below is an addition to `ce::v4` or a change outside the library, and `ce::v1` to `ce::v4` keep every declaration and every documented behaviour they had at v0.6.0: `python3 scripts/frozen_api_diff.py --base v0.6.0` finds no frozen declaration removed or changed.
+Two additions have a consequence that the rule accepts (CR-0005, rule 4 of `docs/SPEC.md` section 3):
+
+- `json::decode_options` gains a trailing member, so its size grows from 8 to 16 bytes and a structured binding `auto [limit] = options;` stops compiling.
+  Every call and every initializer written for v0.6.0 (`{.retain_document_up_to = n}`, `{n}`, `{}`) compiles and behaves as before.
+- `decode_options` is shared with `ce::v3`, so a v3 call accepts the member and ignores it.
+
+The moving entry points are new names, so no existing call changes.
 
 ### Added
 
-- A vcpkg overlay port (`packaging/vcpkg/ports/cloudevents-cpp`) and a Conan recipe (`packaging/conan`), each built and tested against `test/consumer` in CI.
-  The nlohmann codec is the default feature or option; RapidJSON is the other one CI builds, and Boost.JSON is declared and not built there.
-  Install from a clone with `vcpkg install cloudevents-cpp --overlay-ports=...` or `conan create packaging/conan`; **neither is submitted to the vcpkg registry or to ConanCenter**, and that is not decided.
-  No CMake change: the build already looked CTRE up with `find_package` before it fetched it, and the recipes make a missed lookup an error.
-  The consumer gained a round-trip program that runs the library through the installed package.
-  A check fails a release that leaves the vcpkg manifest on the old version (`SWR-ADOPT-0006` to `SWR-ADOPT-0008`, `D-ADOPT-2`).
 - **`json::decode_options{.parse_binary_body = false}` keeps a binary-mode JSON body unparsed.**
   A receiver that never reads the payload, such as a forwarder or router, no longer pays to parse it: `from_message` of the HTTP, Kafka and NATS bindings stores the body's exact bytes as `json_text`, without parsing or validating them, whatever their length and the retention limit.
   v0.6.0 parses that body on receive, which costs 15% to 54% more instructions (RapidJSON +15%, Boost.JSON +18%, Glaze +29%, nlohmann +54%) and 8 to 27 more allocations on the HTTP full-event path, by codec; measured by the perf job (x86-64, g++-14), the receive of the full event over HTTP costs 35.6k instructions and 10 allocations (675 bytes) with the option, against 41.5k to 55.7k instructions, 16 to 37 allocations and 1.1 to 2.2 KiB with the parse (RapidJSON -14%, Boost.JSON -16%, Glaze -24%, nlohmann -36% in instructions); Kafka and NATS show the same shape.
@@ -45,6 +52,56 @@ Notable changes per release. Dates are the tag date.
   A 256 B body costs about the same instructions (HTTP -0.7%, Kafka -0.9%, NATS +0.6%), against an upper bound of 5% to 8% estimated before the code existed: building the event without the payload and moving the media type out and back costs nearly what the 256 B copy did.
   It still makes one allocation fewer of four and allocates 72% to 75% fewer bytes, so the saving is in memory and in large bodies, not in instructions at small sizes.
   It is an addition to `ce::v4`, and `ce::v3` has none of the new names (CR-0005 stage 2, `SWR-BIND-0014` to `SWR-BIND-0018`, `SWR-HTTP-0018`, `SWR-HTTP-0019`, `SWR-KAFKA-0010`, `SWR-NATS-0005`, `SWR-NATS-0006`).
+
+### Tooling
+
+None of this changes what the library does.
+
+- **A frozen-API gate** (`scripts/frozen_api_diff.py`, the `frozen-api` workflow): clang parses every public header at the latest `v*` tag and in the tree, and a pull request that removes or changes a declaration of `ce::v1` to `ce::v4` fails with the declaration named.
+  A declaration that moved between headers or a body that was fixed passes, and so does a defaulted member appended to an aggregate (D-BIND-3).
+  Exit 2 means it did not run, which is not a pass (`SWR-BUILD-0015`, D-BUILD-4).
+  `docs/RELEASE.md` carries the versioning rule it supports: a break goes to a new generation and bumps the minor version, an addition or a fix bumps the patch.
+- **`delivered_in` is derived from the release tags**, not typed (`spec/tools/derive_delivered_in.py`, `SWR-BUILD-0016`, D-SPEC-4).
+  `--write` runs once the tag exists, and `--check` reports what it would change; 195 of 222 requirements read `implemented` with a tag, and the 27 changed or added since v0.6.0 stay `approved` until the next tag holds them.
+- **Kafka records are checked against sdk-go and sdk-java** the way HTTP and NATS documents already were: both SDKs decode every record this one writes, in binary and structured mode, and this one decodes theirs, in the ctest suite and in the `interop` job (`SWR-SEC-0008`, D-INTEROP-5).
+- **vcpkg and Conan recipes** (`packaging/vcpkg/ports/cloudevents-cpp`, `packaging/conan`), each built and tested against `test/consumer` in the `packaging` workflow.
+  The nlohmann codec is the default feature or option; RapidJSON is the other one CI builds, and Boost.JSON is declared and not built there.
+  Install from a clone with `vcpkg install cloudevents-cpp --overlay-ports=...` or `conan create packaging/conan`; **neither is submitted to the vcpkg registry or to ConanCenter**, and that is not decided.
+  No CMake change: the build already looked CTRE up with `find_package` before it fetched it, and the recipes make a missed lookup an error.
+  The consumer gained a round-trip program that runs the library through the installed package, and a check fails a release that leaves the vcpkg manifest on the old version (`SWR-ADOPT-0006` to `SWR-ADOPT-0008`, D-ADOPT-2).
+- **An advisory mutation report** (`scripts/mutation.sh`, the `mutation` workflow): Mull mutates the lines a pull request changes and the report is commented on the pull request.
+  It never blocks a merge.
+  Tests were added for what it found surviving in the timestamp, the `result<T>` polyfill and the v4 document.
+- **The perf job measures forty-four operations**, up from twenty-three: a non-JSON binary-mode receive (empty, 256 B and 64 KiB, over HTTP, Kafka and NATS), the same for a text body over HTTP, the receive that leaves a binary-mode body unparsed, and the moving receive.
+
+### Measured
+
+- **Coverage, from the `coverage floor` job on `main` at `48f0eb1`, the merge of the last change before this release** (run 39632669677; GCC 13, C++20, Debug): lines 96.2% (4456 of 4630), functions 91.9% (2143 of 2331), branches 60.9% (4958 of 8146), against a floor of 90% lines.
+- **CI toolchains** are those of v0.6.0: GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17 at C++23, AppleClang at C++20 and C++23, MSVC 19 (Windows 2022), a C++26 static-reflection job on GCC 15 (GCC 14 if 15 is unavailable; allowed to fail), plus the forced polyfill, exceptions disabled, no default codec, RapidJSON alone, Boost.JSON alone, every codec on Linux and macOS at C++20 and C++23, ASan with UBSan and TSan on Clang 17, the clang-tidy gate on Homebrew LLVM, install-and-consume, the examples, and interop with the Go and Java SDKs, now including Kafka records.
+  New since v0.6.0: the `frozen-api` workflow (Clang 18 against the latest tag), the `packaging` workflow (g++-14; the vcpkg port and the Conan recipe, each in three variants: default, core and RapidJSON), and the advisory `mutation` workflow (Mull on Clang 18).
+- **Fuzzing:** 28 targets, seven for each of the four generations, run on every pull request at one minute each against the checked-in seed corpus, and nightly at fifteen minutes.
+  The ten-minute run on the release commit is recorded in the change that dates this release, before the tag.
+- **What the opt-in saves** (perf job, x86-64, g++-14, the receive of a full event over HTTP, instructions with the default against `parse_binary_body = false`): nlohmann 55,708 to 35,647 (-36%), Glaze 46,742 to 35,664 (-24%), Boost.JSON 42,584 to 35,649 (-16%), RapidJSON 41,537 to 35,647 (-14%); allocations 16 to 37 down to 10 and bytes 1.1 to 2.2 KiB down to 675 B.
+  Kafka (-17% to -41%) and NATS (-14% to -36%) show the same shape.
+- **What moving saves** (the receive alone, nlohmann as the codec argument, against the copying receive of the same body): a 64 KiB `application/octet-stream` body costs 84% to 88% fewer instructions and 99.9% fewer allocated bytes, and every size makes one allocation fewer of four.
+  A 256 B body saves one allocation and 72% to 75% of the allocated bytes, **and no instructions to speak of**: HTTP -0.7%, Kafka -0.9%, NATS +0.6%.
+  The copying entry points measured within 2% of `main` before the change, and none went over its budget.
+
+### Known limitations
+
+- libc++ 17 and 18 implement `std::format` without defining `__cpp_lib_format`; the SDK carves them out by version (D-CI-1).
+- Clang 16 cannot compile libstdc++ 13 or 14 in C++23 mode, so the C++23 Clang job uses libc++ (D-CI-1).
+- The module interface is usable, with constraints on what an importing translation unit may also include (D-MODULE-1), and it exports `ce::v4` only: not `ce::v3`, and not `from_v3` or `to_v3`.
+  It exports the moving entry points.
+- Given the same non-JSON payload, the Java SDK writes `data_base64` where Go and this SDK write a JSON string. Both are legal (D-INTEROP-1).
+- HTTP binary mode percent-encodes header values as the binding requires; the Go and Java SDKs do not, so talking to them needs `ce::http::literal_values` (D-HTTP-1).
+- **The binary-mode parse is the default, and a forwarder turns it off.** A binary-mode body under a JSON media type is parsed once on receive unless `json::decode_options{.parse_binary_body = false}` is passed, and `.retain_document_up_to = 0` alone still parses to validate (SWR-BIND-0007, SWR-BIND-0008).
+  With the option set nothing validates the body: it is accepted as it came.
+  The option applies to binary mode only; structured and batched decode ignore it, and so does `ce::v3`.
+- **Moving saves nothing for a JSON body or a small one.** A JSON body takes the copying path because the parse reads the bytes, and a `std::string` cannot adopt a `std::vector<std::byte>`; a 256 B body saves memory and an allocation, not instructions.
+  `http::from_batch_message_moving` and `nats::from_payload_moving` exist for symmetry and save nothing, because a batch and a NATS payload are JSON.
+- **Kafka header names are case-sensitive here, as in sdk-java and not as in sdk-go.** A record whose headers read `CE_id` or `Content-Type` is read by the Go SDK and refused by this one and by the Java SDK; no SDK writes such a name, so a producer that capitalises them reaches a Go consumer and not a C++ one (D-KAFKA-2, D-INTEROP-5).
+- Kafka records of this SDK carry an empty value, not a null one, for an event with no payload, so it cannot write a tombstone; the Go and Java SDKs can (D-INTEROP-5).
 
 ## v0.6.0 - 2026-10-11
 

@@ -148,6 +148,12 @@ if(CE_CODEC_NLOHMANN)
     LIBS ce::codec_nlohmann)
   target_compile_definitions(interop_test
     PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
+  # The Kafka records of the Go, Java and C++ SDKs (SWR-SEC-0008), over every codec.
+  ce_add_codec_test(interop_kafka_test
+    SOURCES interop_kafka_test.cpp
+    LIBS ce::codec_nlohmann ce::binding_kafka)
+  target_compile_definitions(interop_kafka_test
+    PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 endif()
 
 add_subdirectory(v1)

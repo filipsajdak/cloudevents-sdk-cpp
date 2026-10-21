@@ -2,7 +2,7 @@
 uid: SWR-BIND-0015
 title: After a successful moving call a moved body is empty with no capacity and any other body is left intact
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A caller of a moving entry point gives up a body the call moves, and the contract says what remains:

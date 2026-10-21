@@ -2,7 +2,7 @@
 uid: SWR-HTTP-0018
 title: The HTTP binding offers a moving receive entry point
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The HTTP binding receives a binary-mode body that can be large and not JSON, such as an image or an

@@ -632,6 +632,65 @@ With `false` the caller takes over validation: a body that is not JSON is accept
 An empty body is still no payload, and a body under another media type is still `ce::binary`.
 The option covers binary mode only, and only the v4 `from_message` of HTTP, Kafka and NATS honours it: structured and batched decode, `nats::from_payload` and `json_format::decode` still parse the JSON they are given, and `ce::v3` already stores a binary-mode body unparsed.
 
+### Receiving a message you are done with: the moving entry points
+
+`from_message` copies a binary-mode body that is not JSON into the event, because the message is the caller's.
+A receiver that is done with each message, such as a gateway handing frames on, can give it up with `from_message_moving`, which takes the message by rvalue reference and adopts the body's buffer instead of copying it: one allocation and one copy of the body fewer.
+The names are `http::from_message_moving<Codec, Values>`, `kafka::from_message_moving<Codec>`, `nats::from_message_moving<Codec>` and `binding::read_body_moving<Codec>`, and they exist in `ce::v4` only.
+
+```cpp body
+std::vector<ce::message> inbox;
+inbox.push_back(ce::message{
+    .header_fields = {
+        {"ce-specversion", "1.0"},
+        {"ce-id", "A3"},
+        {"ce-source", "/cameras/7"},
+        {"ce-type", "com.example.frame.captured"},
+        {"Content-Type", "image/png"},
+    },
+    .body = ce::binary(4096, std::byte{0x89}),
+});
+inbox.push_back(ce::message{
+    .header_fields = {
+        {"ce-specversion", "1.0"},
+        {"ce-id", "A4"},
+        {"ce-source", "/orders"},
+        {"ce-type", "com.example.order.placed"},
+        {"Content-Type", "application/json"},
+    },
+    .body = ce::to_bytes(R"({"total":42})"),
+});
+inbox.push_back(ce::message{
+    .header_fields = {{"ce-specversion", "1.0"}, {"Content-Type", "image/png"}},
+    .body = ce::binary(4096, std::byte{0x89}),
+});
+
+for (ce::message& delivered : inbox) {
+  auto received = ce::http::from_message_moving<codec>(std::move(delivered));
+  if (!received) {
+    // A refused message is exactly as it arrived, so it can still go to a dead-letter queue.
+    std::printf("refused: %zu bytes kept\n", delivered.body.size());
+    continue;
+  }
+  if (const auto* frame = std::get_if<ce::binary>(&received->data())) {
+    // Moved: the event owns the bytes, and the message gave its buffer up.
+    std::printf("moved %zu bytes, the message holds %zu\n", frame->size(), delivered.body.capacity());
+  } else {
+    // Copied: the message is untouched.
+    std::printf("copied, the message still holds %zu bytes\n", delivered.body.size());
+  }
+}
+```
+
+A body is **moved** only when it is non-empty, the message is in binary mode and its media type is absent or not one `is_json_content_type` accepts.
+After a call that moved it, `message.body.size()` is 0 and `message.body.capacity()` is 0, and `header_fields` is as it was; that is a promise, not an implementation detail, and a copy of the headers you still need is not required.
+Every other body is read as `from_message` reads it, and the message is left byte for byte as it was: a JSON body (whatever the decode options say), a structured message, a batch and an empty body, which keeps the capacity it had.
+A call that fails leaves the message unchanged whatever its body, because the body is taken only after the event has passed its last check.
+`from_message` itself never modifies its message, with `std::move` or without.
+
+A JSON body gains nothing from a move, because the parse reads the bytes and a `std::string` cannot adopt a `std::vector<std::byte>`; a forwarder of JSON events saves the parse with `parse_binary_body = false` instead.
+`http::from_batch_message_moving` and `nats::from_payload_moving` (which takes a `std::string&&`) exist so that every receive has a moving form, and they save nothing: they read the JSON they are given and never modify it.
+
 ## 7. Typed extensions
 
 The five documented CloudEvents extensions ship as structs in `<cloudevents/extensions.hpp>`:
@@ -839,6 +898,7 @@ The types rule out an invalid event, but they cannot rule out these.
 |---|---|---|
 | A text payload with no `datacontenttype` | It is decoded as `json_text` holding `"hello"`, quotes included, because absent means JSON. | Always set `datacontenttype` for text. |
 | Receiving a large JSON body in binary mode | It is parsed on receive, so a malformed body fails `from_message` with `parse_error`, and a body above the retention limit is kept as `json_text` holding its bytes. | Pass `ce::json::decode_options` to `from_message` to set the limit for untrusted input, or `{.parse_binary_body = false}` to forward the body without parsing it. |
+| Reading a message after `from_message_moving` | A body that was moved is gone: `body.size()` and `body.capacity()` are 0. | Read the payload from the event, and keep what you still need of the headers. A refused message, or one whose body was copied, is untouched. |
 | Comparing an extension after a round trip | A `ce::uri` extension comes back as `std::string`, so the events differ. | Read it with a typed extension. |
 | Reading a payload as the wrong struct | Absent members default, so it succeeds with empty fields. | Switch on `type` before choosing the struct. |
 | Holding the pointer `extension()` returned | It dangles after `set_extension`, `remove_extension`, `set`, or the event's destruction. | Copy the value if you need it longer. |

@@ -16,13 +16,14 @@ rationale: >
   SWR-BIND-0007 states the limit, SWR-BIND-0008 the refusal of a body that is not JSON and SWR-BIND-0010 the empty body.
   The reader returns a result because the parse can fail.
   The parse is the default and not the only behaviour: with parse_binary_body false in the decode options the reader returns the body's bytes as json_text without parsing them (SWR-BIND-0012).
+  A caller that gives the body up uses read_body_moving, which moves a non-empty body under a media type that is absent or not JSON into the binary payload and reads any other body as this reader does (SWR-BIND-0014).
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
 satisfied_by: [code:include/cloudevents/binding/common.hpp]
 verified_by: [test:test/binding_core_test.cpp::binding-core-round-trip, test:test/http_binding_test.cpp::http-binary-mode-json-body]
 owner: filip.sajdak
-version: 3
+version: 4
 ---
 The binding core shall provide a body reader that takes the message body, the media type describing it, the decoding codec and the decode options as arguments and returns a result holding the payload.
 When the media type is one that `is_json_content_type` accepts and the body is non-empty, the payload shall be a json_document built by the codec within the retention limit, unless `parse_binary_body` is false, when it is `json_text` (SWR-BIND-0012); otherwise the body is carried as bytes, and an empty body as no payload.

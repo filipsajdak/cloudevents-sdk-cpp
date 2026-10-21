@@ -2,7 +2,7 @@
 uid: SWR-NATS-0005
 title: The NATS binding offers a moving receive entry point
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A NATS message in binary mode can carry a large non-JSON body, and moving it on receive saves a

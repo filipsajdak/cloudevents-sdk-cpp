@@ -2,7 +2,7 @@
 uid: SWR-HTTP-0019
 title: The HTTP binding offers a moving batch receive entry point
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The owner chose on 2026-10-21 that the batch entry point has a moving counterpart beside the

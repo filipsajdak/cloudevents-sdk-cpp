@@ -2,7 +2,7 @@
 uid: SWR-BIND-0018
 title: The batch and payload moving entry points return what the copying ones return and never modify their input
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The owner ruled on 2026-10-21 that http::from_batch_message and nats::from_payload get moving

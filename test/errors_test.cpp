@@ -184,8 +184,8 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
     }
 
     // The same text arriving in a JSON document, where it is a string member.
-    const auto from_document =
-        format::decode(R"({"specversion":"1.0","id":"1","source":"/s","type":"t","time":"yesterday"})");
+    const auto from_document = format::decode(
+        R"({"specversion":"1.0","id":"1","source":"/s","type":"t","time":"yesterday"})");
     fails_with(from_document, ce::errc::invalid_timestamp, "a time member that is not a date-time");
     if (!from_document) {
       expect(from_document.error().where == "time"sv) << from_document.error().where;
@@ -203,22 +203,26 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
                                                      {"ce-source", "/s"},
                                                      {"ce-type", "t"},
                                                      {"Content-Type", "not a media type"}}};
-    fails_with(ce::http::from_message<codec>(http_request), ce::errc::invalid_content_type,
+    fails_with(ce::http::from_message<codec>(http_request),
+               ce::errc::invalid_content_type,
                "a malformed Content-Type header");
     ce::message http_given = http_request;
     fails_with(ce::http::from_message_moving<codec>(std::move(http_given)),
-               ce::errc::invalid_content_type, "a malformed Content-Type header, moving");
+               ce::errc::invalid_content_type,
+               "a malformed Content-Type header, moving");
 
     const ce::message kafka_record{.header_fields = {{"ce_specversion", "1.0"},
                                                      {"ce_id", "1"},
                                                      {"ce_source", "/s"},
                                                      {"ce_type", "t"},
                                                      {"content-type", "not a media type"}}};
-    fails_with(ce::kafka::from_message<codec>(kafka_record), ce::errc::invalid_content_type,
+    fails_with(ce::kafka::from_message<codec>(kafka_record),
+               ce::errc::invalid_content_type,
                "a malformed content-type record header");
     ce::message kafka_given = kafka_record;
     fails_with(ce::kafka::from_message_moving<codec>(std::move(kafka_given)),
-               ce::errc::invalid_content_type, "a malformed content-type record header, moving");
+               ce::errc::invalid_content_type,
+               "a malformed content-type record header, moving");
   };
 
   "parse_error"_test = [] {

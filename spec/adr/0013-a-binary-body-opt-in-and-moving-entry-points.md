@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed 2026-10-20, on CR-0005.
-It becomes Accepted when the owner answers the open questions of CR-0005.
+Accepted 2026-10-21 for the opt-in, on CR-0005.
+The moving entry points are **deferred until a measurement** of a non-JSON binary-mode receive and a further owner decision; the decision below about them is a recommendation, not an accepted decision.
 It does not change ADR-0012: `ce::v4` and `ce::v3` stay frozen, and this decision adds to v4 only.
 
 ## Context
@@ -39,20 +39,25 @@ Structured decode, `http::from_batch_message`, `nats::from_payload` and the `jso
 v3 ignores the field: its binary entry points cannot receive options, and its reader already behaves as `false` would make v4's.
 The field's doc comment says so.
 
-**The member is an addition under rule 4 (recommended; the owner confirms).**
+**The member is an addition under rule 4 (the owner ruled so on 2026-10-21).**
 The documentation states the 16 KiB default and the designated-initializer spelling, and `D-JSON-5` says the aggregate "gains members without breaking a call".
 It states nothing about the struct's arity or decomposition, and no behaviour a program can observe changes at the default.
 The one source form that stops compiling, `auto [limit] = options;`, is documented nowhere and used nowhere in the tree.
 CR-0005 gives the counter-argument and the evidence.
-The frozen-API diff job treats a trailing defaulted member on a documented growing aggregate as an addition through a named allowlist entry that cites CR-0005.
+The owner accepted the consequences: `decode_options` grows from 8 to 16 bytes, `auto [limit] = options;` stops compiling, and v3 ignores the field.
+The counter-argument, that the struct definition is itself a published declaration whose size and decomposition a data member changes, was weighed and not adopted.
 
-**The moving entry point has a new name, not an overload (recommended; the owner decides).**
+**The rule this sets for aggregates (owner, 2026-10-21):** a trailing data member with a default member initializer, appended to an aggregate, is an addition under rule 4.
+The frozen-API diff job is told the same, so it needs no per-member allowlist entry.
+`SWR-BUILD-0006` is not amended by this decision; CR-0005 proposes wording as a follow-up.
+
+**Deferred: the moving entry point has a new name, not an overload (recommended; the owner chose on 2026-10-21 to measure first).**
 A same-name `from_message(message&&)` would make `from_message<C>(std::move(m))` move from `m` where today it binds to `const message&` and leaves `m` intact, the class of change the owner ruled a break on 2026-09-28, and would make `&from_message<C>` ambiguous.
 `from_message_moving<Codec>(message&&, decode_options = {})` in the HTTP, Kafka and NATS bindings, with `binding::read_body_moving` under them, changes no existing call.
 It returns what `from_message` returns, moves the body into a `ce::binary` payload for a non-JSON body, leaves `header_fields` unchanged and the body valid and unspecified after success, and leaves the message unchanged after a failure.
 `from_batch_message` and `from_payload` get no moving form: they keep no bytes of the input to move.
 v3 gets none, v4 only.
-The working name is the owner's to change.
+The working name is the owner's to change, and the whole entry point waits for the measurement.
 
 ## Consequences
 
@@ -60,18 +65,18 @@ The working name is the owner's to change.
 - A forwarder of binary-mode events pays no parse and cannot be refused for a body it never reads, with a measured cost near v3's.
 - No existing call changes meaning, in either addition.
 - v3 is untouched.
-- A non-JSON binary-mode body is received without a second copy.
+- If the moving entry points go ahead, a non-JSON binary-mode body is received without a second copy.
 
 ### Negative
 - `decode_options` grows from 8 to 16 bytes, and v3 callers of `json_format::decode` can write a field that does nothing.
 - A caller who opts in takes over validation of the body.
 - The move saves nothing for a JSON body, so the forwarder case gains from the opt-in alone.
-- A second name per binding, and a longer export list in the module.
+- If the moving entry points go ahead, a second name per binding and a longer export list in the module.
 
 ### Neutral
 - The default stays "validate and parse", and `SWR-BIND-0008` becomes the default behaviour rather than the only one.
 - Structured mode is unchanged: a forwarder that needs no parse uses binary mode.
-- `ce::v4` stays the inline namespace, and v0.6.1 is a patch release only if the owner confirms both verdicts.
+- `ce::v4` stays the inline namespace, and v0.6.1 is a patch release: the owner ruled the opt-in an addition.
 
 ## Alternatives considered
 
@@ -87,5 +92,5 @@ The working name is the owner's to change.
 
 - `spec/requirements/change-request/CR-0005.md`
 - ADR-0012 (the frozen generations), ADR-0011 (the perf gates)
-- `SWR-BIND-0006` to `SWR-BIND-0017`, `SWR-HTTP-0018`, `SWR-KAFKA-0010`, `SWR-NATS-0005`, `SWR-JSON-0040`, `SWR-BUILD-0006`
+- `SWR-BIND-0006` to `SWR-BIND-0013`, `SWR-JSON-0040`, `SWR-BUILD-0006`
 - `docs/SPEC.md` section 3 rule 4, `docs/DECISIONS.md` `D-JSON-5`, `D-CORE-11`

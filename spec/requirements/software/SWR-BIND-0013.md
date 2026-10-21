@@ -10,8 +10,7 @@ rationale: >
   nothing to skip there. They accept the shared decode_options, as SWR-BIND-0009 requires, and ignore
   the field. ce::v3 binary entry points take no options and already store the body unparsed, and the
   v3 structured decoders that accept the struct ignore the field, so no v3 behaviour changes.
-  json_format::from_value and from_value_as take no options. A forwarder in structured mode still pays
-  the parse; CR-0005 records that as an open question.
+  json_format::from_value and from_value_as take no options. A forwarder in structured mode still pays the parse: the owner ruled on 2026-10-21 that the opt-in applies to binary mode only.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]

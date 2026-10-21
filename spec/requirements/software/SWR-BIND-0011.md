@@ -10,9 +10,7 @@ rationale: >
   limitations). The option is one trailing member of the shared decode_options, and the default stays
   today's behaviour, so no call changes. A member with a default member initializer keeps every
   designated, positional and empty initializer compiling without a warning under -Wextra -Werror
-  (checked on GCC 16, Apple clang 21 and clang 23 in CR-0005). The rule 4 analysis of CR-0005 argues
-  that this is an addition; it is recorded there, and the owner confirms it before the requirement is
-  approved.
+  (checked on GCC 16, Apple clang 21 and clang 23 in CR-0005). The owner ruled on 2026-10-21 (CR-0005) that appending this member is an addition, so it needs no new version namespace.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]

@@ -6,8 +6,8 @@ status: reviewed
 priority: medium
 rationale: >
   A NATS message in binary mode can carry a large non-JSON body, and moving it on receive saves a
-  copy. nats::from_payload and from_batch_message get no moving form because they keep no bytes of
-  their input. SWR-BIND-0014 states the shared contract.
+  copy. nats::from_payload has a moving counterpart of its own, SWR-NATS-0006, for the payload that is
+  not a message. SWR-BIND-0014 states the shared contract.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-NATS-0001]

@@ -358,10 +358,20 @@
       "allocations": 5,
       "instructions": 84825
     },
+    "http_decode_binary_octet_large_moving/nlohmann": {
+      "allocated_bytes": 102,
+      "allocations": 4,
+      "instructions": 12784
+    },
     "http_decode_binary_octet_small/nlohmann": {
       "allocated_bytes": 383,
       "allocations": 5,
       "instructions": 12548
+    },
+    "http_decode_binary_octet_small_moving/nlohmann": {
+      "allocated_bytes": 102,
+      "allocations": 4,
+      "instructions": 12672
     },
     "http_decode_binary_text_empty/nlohmann": {
       "allocated_bytes": 74,
@@ -568,10 +578,20 @@
       "allocations": 5,
       "instructions": 81784
     },
+    "kafka_decode_binary_octet_large_moving/nlohmann": {
+      "allocated_bytes": 95,
+      "allocations": 4,
+      "instructions": 9781
+    },
     "kafka_decode_binary_octet_small/nlohmann": {
       "allocated_bytes": 377,
       "allocations": 5,
       "instructions": 9512
+    },
+    "kafka_decode_binary_octet_small_moving/nlohmann": {
+      "allocated_bytes": 95,
+      "allocations": 4,
+      "instructions": 9668
     },
     "kafka_decode_binary_typed/boost.json": {
       "allocated_bytes": 480,
@@ -673,10 +693,20 @@
       "allocations": 5,
       "instructions": 85579
     },
+    "nats_decode_binary_octet_large_moving/nlohmann": {
+      "allocated_bytes": 108,
+      "allocations": 4,
+      "instructions": 13538
+    },
     "nats_decode_binary_octet_small/nlohmann": {
       "allocated_bytes": 390,
       "allocations": 5,
       "instructions": 13320
+    },
+    "nats_decode_binary_octet_small_moving/nlohmann": {
+      "allocated_bytes": 108,
+      "allocations": 4,
+      "instructions": 13427
     },
     "nats_decode_binary_typed/boost.json": {
       "allocated_bytes": 510,

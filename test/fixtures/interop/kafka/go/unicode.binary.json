@@ -1,0 +1,30 @@
+{
+  "key": null,
+  "headers": [
+    [
+      "ce_id",
+      "aWQtdW5pY29kZS3DqeaWhw=="
+    ],
+    [
+      "ce_source",
+      "L2ludGVyb3AvZ28vJUMzJUE5diVDMyVBOW5lbWVudA=="
+    ],
+    [
+      "ce_specversion",
+      "MS4w"
+    ],
+    [
+      "ce_subject",
+      "5pel5pys6KqeIPCfmIA="
+    ],
+    [
+      "ce_type",
+      "Y29tLmV4YW1wbGUudW5pY29kZQ=="
+    ],
+    [
+      "content-type",
+      "YXBwbGljYXRpb24vanNvbg=="
+    ]
+  ],
+  "value": "eyJ0ZXh0Ijoiw6nmlocg8J+YgCJ9"
+}

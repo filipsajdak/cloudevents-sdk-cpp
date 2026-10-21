@@ -503,6 +503,30 @@ def generation_of(key: str) -> str | None:
     return None
 
 
+INIT_LIST = "InitListExpr"
+FIELD_DEFAULT = "CXXDefaultInitExpr"
+
+
+def without_defaulted_tail(was, now):
+    """`now` with the members an initialiser list gained at its end, each taking its default, dropped.
+
+    `= {}` as a default argument spells every member of the aggregate, so an
+    aggregate that gained a defaulted member changes the tree of every default
+    argument that value-initialises it, though no call reads differently.
+    Anything else that differs is left in place and fails.
+    """
+    if isinstance(was, dict) and isinstance(now, dict):
+        result = {key: without_defaulted_tail(was[key], value) if key in was else value for key, value in now.items()}
+        if now.get("kind") == INIT_LIST and was.get("kind") == INIT_LIST:
+            held, grown = was.get("inner", []), result.get("inner", [])
+            if grown[:len(held)] == held and all(item.get("kind") == FIELD_DEFAULT for item in grown[len(held):]):
+                result["inner"] = held
+        return result
+    if isinstance(was, list) and isinstance(now, list) and len(was) == len(now):
+        return [without_defaulted_tail(old, new) for old, new in zip(was, now)]
+    return now
+
+
 def kept(was: dict, now: dict) -> dict:
     """The head's signature, with fields it appended to a class left out.
 
@@ -521,6 +545,9 @@ def kept(was: dict, now: dict) -> dict:
             needs_initialiser = ordered == "fields"
             if now[ordered][:count] == was[ordered] and all(not needs_initialiser or item.endswith(INITIALISED) for item in appended):
                 result[ordered] = was[ordered]
+    for initialised in ("arguments", "init"):
+        if initialised in was and initialised in now:
+            result[initialised] = without_defaulted_tail(was[initialised], now[initialised])
     return result
 
 

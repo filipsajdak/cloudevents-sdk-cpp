@@ -6,10 +6,11 @@ status: reviewed
 priority: medium
 rationale: >
   A forwarder that cannot decode a message may still need to send its bytes elsewhere, for example to
-  a dead-letter queue, so a refusal must not have consumed the body. The body is therefore taken only
-  after the last step that can fail. CR-0005 asks the implementing stage to show that this order is
-  possible, and the owner decides between this guarantee and an unspecified state if it is not. The
-  guarantee itself is a proposal the owner has not ruled (CR-0005, open question 1).
+  a dead-letter queue, so a refusal must not have consumed the body. The owner ruled on 2026-10-21
+  that a failed call leaves the message unchanged, for every body. The body is therefore taken only after the last
+  step that can fail, and the implementing stage must order the take after the event's final
+  validation; if that cannot be done without a copy, the stage reports it and the owner decides
+  (CR-0005).
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]

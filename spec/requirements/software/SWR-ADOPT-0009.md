@@ -15,8 +15,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-ADOPT-0001]
-satisfied_by: []
-verified_by: [test:scripts/test_vcpkg_release_guard.py::Decide, test:scripts/test_vcpkg_release_guard.py::Parse]
+satisfied_by: [code:scripts/check_vcpkg_release_guard.py]
+verified_by: [test:scripts/test_vcpkg_release_guard.py::Decide, test:scripts/test_vcpkg_release_guard.py::Parse, test:scripts/test_vcpkg_release_guard.py::GitRepository]
 owner: filip.sajdak
 version: 1
 ---

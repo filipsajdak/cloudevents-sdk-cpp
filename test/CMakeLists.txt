@@ -184,6 +184,13 @@ if(Python3_Interpreter_FOUND)
     COMMAND Python3::Interpreter -m unittest discover
             -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_packaging_*.py")
   set_tests_properties(packaging_tools PROPERTIES LABELS "tools")
+  # The guard that tells the vcpkg released-source job whether the release the
+  # port names is tagged and its archive hash committed (SWR-ADOPT-0009). Its
+  # git suites build throwaway repositories, so they need git and no network.
+  add_test(NAME vcpkg_release_guard_tools
+    COMMAND Python3::Interpreter -m unittest discover
+            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_vcpkg_release_*.py")
+  set_tests_properties(vcpkg_release_guard_tools PROPERTIES LABELS "tools")
   # The frozen-API diff (SWR-BUILD-0015). Its verdict suites need a clang++ and
   # its release suites also the tags and the dependencies' headers; each skips
   # when one is missing, so a shallow clone or a GCC-only host still passes.

@@ -1433,7 +1433,8 @@ const boost::ut::suite<"decode-keeps-the-payloads-own-text"> payloads_own_text =
     expect(!data_member_text("{}").has_value()) << "an empty object";
     expect(!data_member_text("{1:2}").has_value()) << "a member name that is not a string";
     expect(!data_member_text(R"({"data" 1})").has_value()) << "a member with no colon";
-    expect(!data_member_text(R"({"data":["open]})").has_value()) << "an unclosed string in an array";
+    expect(!data_member_text(R"({"data":["open]})").has_value())
+        << "an unclosed string in an array";
     expect(!data_member_text(R"({"data":[tru]})").has_value()) << "a misspelt literal in an array";
     expect(!data_member_text(R"({"data":[1,2)").has_value()) << "an array the text ends inside";
     expect(!data_member_text(R"({"data":{"a":)").has_value()) << "an object the text ends inside";

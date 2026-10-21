@@ -110,6 +110,7 @@ using ce::v4::binding::decode_structured;
 using ce::v4::binding::encode_structured;
 using ce::v4::binding::read_attributes;
 using ce::v4::binding::read_body;
+using ce::v4::binding::read_body_moving;
 using ce::v4::binding::render_attribute;
 using ce::v4::binding::write_attributes;
 using ce::v4::binding::write_body;
@@ -118,7 +119,9 @@ using ce::v4::binding::write_body;
 namespace http {
 using ce::v4::http::detect_content_mode;
 using ce::v4::http::from_batch_message;
+using ce::v4::http::from_batch_message_moving;
 using ce::v4::http::from_message;
+using ce::v4::http::from_message_moving;
 using ce::v4::http::to_batch_message;
 using ce::v4::http::to_message;
 }  // namespace http
@@ -126,6 +129,7 @@ using ce::v4::http::to_message;
 namespace kafka {
 using ce::v4::kafka::detect_content_mode;
 using ce::v4::kafka::from_message;
+using ce::v4::kafka::from_message_moving;
 using ce::v4::kafka::key_mapper;
 using ce::v4::kafka::no_key_mapper;
 using ce::v4::kafka::partitionkey_mapper;
@@ -137,7 +141,9 @@ using ce::v4::kafka::to_record;
 namespace nats {
 using ce::v4::nats::detect_content_mode;
 using ce::v4::nats::from_message;
+using ce::v4::nats::from_message_moving;
 using ce::v4::nats::from_payload;
+using ce::v4::nats::from_payload_moving;
 using ce::v4::nats::to_message;
 using ce::v4::nats::to_payload;
 }  // namespace nats

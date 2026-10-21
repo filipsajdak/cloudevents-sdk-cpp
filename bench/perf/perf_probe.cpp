@@ -31,6 +31,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <expected>
 #include <span>
 #include <string>
@@ -283,6 +284,19 @@ struct http_binding {
   static auto from_message(const ce::message& incoming) {
     return ce::http::from_message<C>(incoming);
   }
+  /// `from_message_moving` exists from v0.6.1. The perf job measures the merge base with this
+  /// probe, so where the name is absent the call falls back to the copying one: the name is
+  /// looked up unqualified with a dependent argument, which is false, not an error, when it
+  /// is not declared.
+  template<class C, class Message>
+  static auto receive_moving(Message&& incoming) {
+    using namespace ce::http;
+    if constexpr (requires { from_message_moving<C>(std::forward<Message>(incoming)); }) {
+      return from_message_moving<C>(std::forward<Message>(incoming));
+    } else {
+      return ce::http::from_message<C>(incoming);
+    }
+  }
   template<class C>
   static auto to_message(const ce::event& subject, ce::content_mode mode) {
     return ce::http::to_message<C>(subject, mode);
@@ -293,6 +307,19 @@ struct kafka_binding {
   static auto from_message(const ce::message& incoming) {
     return ce::kafka::from_message<C>(incoming);
   }
+  /// `from_message_moving` exists from v0.6.1. The perf job measures the merge base with this
+  /// probe, so where the name is absent the call falls back to the copying one: the name is
+  /// looked up unqualified with a dependent argument, which is false, not an error, when it
+  /// is not declared.
+  template<class C, class Message>
+  static auto receive_moving(Message&& incoming) {
+    using namespace ce::kafka;
+    if constexpr (requires { from_message_moving<C>(std::forward<Message>(incoming)); }) {
+      return from_message_moving<C>(std::forward<Message>(incoming));
+    } else {
+      return ce::kafka::from_message<C>(incoming);
+    }
+  }
   template<class C>
   static auto to_message(const ce::event& subject, ce::content_mode mode) {
     return ce::kafka::to_message<C>(subject, mode);
@@ -302,6 +329,19 @@ struct nats_binding {
   template<class C>
   static auto from_message(const ce::message& incoming) {
     return ce::nats::from_message<C>(incoming);
+  }
+  /// `from_message_moving` exists from v0.6.1. The perf job measures the merge base with this
+  /// probe, so where the name is absent the call falls back to the copying one: the name is
+  /// looked up unqualified with a dependent argument, which is false, not an error, when it
+  /// is not declared.
+  template<class C, class Message>
+  static auto receive_moving(Message&& incoming) {
+    using namespace ce::nats;
+    if constexpr (requires { from_message_moving<C>(std::forward<Message>(incoming)); }) {
+      return from_message_moving<C>(std::forward<Message>(incoming));
+    } else {
+      return ce::nats::from_message<C>(incoming);
+    }
   }
   template<class C>
   static auto to_message(const ce::event& subject, ce::content_mode mode) {
@@ -356,6 +396,31 @@ auto decode_binary_body() -> bool {
   escape(event);
   // The path under measurement keeps the bytes as a binary payload; a message that
   // took another path would be measuring something else.
+  return event.has_value() &&
+         std::holds_alternative<ce::binary>(event->data()) == (Size != empty_body_bytes);
+}
+
+/// How many fresh messages one run of the probe can take: the warm-up, the allocation samples
+/// and the measured loop (1000 iterations, see measure.py) each take one, with room to spare.
+inline constexpr std::size_t message_pool_size = 1100;
+
+/// A moving receive consumes its message, so each call takes a fresh one from a pool that the
+/// first call, in the warm-up and outside every measurement, fills with copies of the
+/// message the copying operation reads. What is measured is then the receive alone, as the
+/// copying operation measures it: the transport that produced the message is not part of it.
+/// A pool that runs out aborts the probe instead of measuring a message already moved from.
+template<class Binding, class Media, std::size_t Size>
+auto decode_binary_body_moving() -> bool {
+  static std::vector<ce::message> pool(message_pool_size, body_message<Binding, Media, Size>());
+  static std::size_t next = 0;
+  if (next == pool.size()) {
+    // The measured loop ignores what an operation returns, so a pool that ran dry there would
+    // be counted as a receive that cost nothing.
+    std::fprintf(stderr, "perf_probe: the pool of %zu messages is used up\n", pool.size());
+    std::abort();
+  }
+  auto event = Binding::template receive_moving<nlohmann_codec>(std::move(pool[next++]));
+  escape(event);
   return event.has_value() &&
          std::holds_alternative<ce::binary>(event->data()) == (Size != empty_body_bytes);
 }
@@ -527,6 +592,18 @@ auto body_operations() {
        .run = decode_binary_body<nats_binding, octet, small_body_bytes>},
       {.id = "nats_decode_binary_octet_large/nlohmann",
        .run = decode_binary_body<nats_binding, octet, large_body_bytes>},
+      {.id = "http_decode_binary_octet_small_moving/nlohmann",
+       .run = decode_binary_body_moving<http_binding, octet, small_body_bytes>},
+      {.id = "http_decode_binary_octet_large_moving/nlohmann",
+       .run = decode_binary_body_moving<http_binding, octet, large_body_bytes>},
+      {.id = "kafka_decode_binary_octet_small_moving/nlohmann",
+       .run = decode_binary_body_moving<kafka_binding, octet, small_body_bytes>},
+      {.id = "kafka_decode_binary_octet_large_moving/nlohmann",
+       .run = decode_binary_body_moving<kafka_binding, octet, large_body_bytes>},
+      {.id = "nats_decode_binary_octet_small_moving/nlohmann",
+       .run = decode_binary_body_moving<nats_binding, octet, small_body_bytes>},
+      {.id = "nats_decode_binary_octet_large_moving/nlohmann",
+       .run = decode_binary_body_moving<nats_binding, octet, large_body_bytes>},
   });
 }
 

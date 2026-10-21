@@ -37,6 +37,8 @@ endfunction()
 
 ce_add_v3_test(generation_test SOURCES v3_generation_test.cpp)
 ce_add_v3_test(decode_options_test SOURCES v3_decode_options_test.cpp)
+# The moving entry points are ce::v4 only (CR-0005); this suite names every frozen generation.
+ce_add_v3_test(moving_absent_test SOURCES v3_moving_absent_test.cpp)
 ce_add_v3_test(core_test SOURCES core_test.cpp)
 ce_add_v3_test(static_error_test SOURCES static_error_test.cpp)
 ce_add_v3_test(attribute_types_test SOURCES attribute_types_test.cpp)

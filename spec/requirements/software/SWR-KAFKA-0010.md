@@ -2,7 +2,7 @@
 uid: SWR-KAFKA-0010
 title: The Kafka binding offers a moving receive entry point
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A Kafka record's value can be a large non-JSON payload, and the consumer that forwards it benefits
@@ -10,8 +10,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-KAFKA-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/kafka.hpp]
+verified_by: [test:test/kafka_binding_test.cpp::kafka-from-message-moving-agrees-with-from-message]
 owner: filip.sajdak
 version: 1
 ---

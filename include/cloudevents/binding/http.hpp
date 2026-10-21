@@ -167,6 +167,7 @@ template <json::json_codec Codec>
 // spec: SWR-HTTP-0014
 // spec: SWR-HTTP-0015
 // spec: SWR-BIND-0009
+// spec: SWR-BIND-0017
 template<json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto from_message(const message& request, json::decode_options options = {})
     -> result<event> {
@@ -208,7 +209,52 @@ template<json::json_codec Codec, value_policy Values = percent_encoded_values>
   return std::move(*under_construction).build();
 }
 
+// spec: SWR-HTTP-0018
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+// spec: SWR-BIND-0016
+/// `from_message` for a caller that gives the message up. A non-empty binary-mode body whose media
+/// type is absent or not JSON is moved into the event: after a successful call it has size 0 and
+/// capacity 0, and the headers are as they were. Any other body is copied and the message is left
+/// as it was, as is the message after a failed call.
+template<json::json_codec Codec, value_policy Values = percent_encoded_values>
+// NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+[[nodiscard]] auto from_message_moving(message&& request, json::decode_options options = {})
+    -> result<event> {
+  const content_mode mode = detect_content_mode(request);
+
+  if (mode == content_mode::structured) {
+    return binding::decode_structured<Codec>(request, options);
+  }
+  if (mode == content_mode::batched) {
+    return fail(errc::invalid_argument, "this message is a batch; use from_batch_message");
+  }
+
+  if (!request.header_fields.contains("ce-specversion")) {
+    return fail(errc::not_a_cloudevent, "no ce-specversion header and no CloudEvents content type");
+  }
+
+  auto under_construction =
+      binding::read_attributes<detail::http_traits<Values>>(request.header_fields);
+  if (!under_construction) {
+    return ce::v4::detail::forward_failure(std::move(under_construction).error());
+  }
+
+  if (const std::string* declared = request.header_fields.find(detail::content_type_header);
+      declared != nullptr) {
+    auto media_type = datacontenttype::make(*declared);
+    if (!media_type) {
+      return ce::v4::detail::forward_failure(std::move(media_type).error());
+    }
+    under_construction->rest.datacontenttype = std::move(*media_type);
+  }
+
+  return binding::detail::build_taking_body<Codec>(
+      std::move(*under_construction), request.body, options);
+}
+
 // spec: SWR-BIND-0009
+// spec: SWR-BIND-0017
 template<json::json_codec Codec>
 [[nodiscard]] auto from_batch_message(const message& request, json::decode_options options = {})
     -> result<std::vector<event>> {
@@ -216,6 +262,17 @@ template<json::json_codec Codec>
     return fail(errc::not_a_cloudevent, "the content type is not a CloudEvents batch");
   }
   return json_format<Codec>::decode_batch(detail::text_of(request.body), options);
+}
+
+// spec: SWR-HTTP-0019
+// spec: SWR-BIND-0018
+/// `from_batch_message` for a caller that gives the message up. A batch is JSON, which a call reads
+/// and does not adopt, so the message is never modified.
+template<json::json_codec Codec>
+// NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+[[nodiscard]] auto from_batch_message_moving(message&& request, json::decode_options options = {})
+    -> result<std::vector<event>> {
+  return from_batch_message<Codec>(request, options);
 }
 
 }  // namespace ce::inline v4::http

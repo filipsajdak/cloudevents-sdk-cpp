@@ -2,7 +2,7 @@
 uid: SWR-NATS-0006
 title: The NATS binding offers a moving payload receive entry point
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The owner chose on 2026-10-21 that nats::from_payload has a moving counterpart, so that the payload
@@ -15,8 +15,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-NATS-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/nats_binding_test.cpp::payload-moving-agrees-with-the-copying-payload, test:test/nats_binding_test.cpp::payload-moving-never-modifies-the-string]
 owner: filip.sajdak
 version: 1
 ---

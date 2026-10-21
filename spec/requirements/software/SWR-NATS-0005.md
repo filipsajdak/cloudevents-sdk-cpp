@@ -2,7 +2,7 @@
 uid: SWR-NATS-0005
 title: The NATS binding offers a moving receive entry point
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A NATS message in binary mode can carry a large non-JSON body, and moving it on receive saves a
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-NATS-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/nats_binding_test.cpp::nats-from-message-moving-agrees-with-from-message]
 owner: filip.sajdak
 version: 1
 ---

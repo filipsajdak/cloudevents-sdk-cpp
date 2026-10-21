@@ -2,7 +2,7 @@
 uid: SWR-BIND-0016
 title: A failed moving call leaves the message unchanged
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A forwarder that cannot decode a message may still need to send its bytes elsewhere, for example to
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp, code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/binding_core_test.cpp::failed-moving-call-leaves-the-message-unchanged, test:test/http_binding_test.cpp::http-moving-call-failure-keeps-the-message, test:test/kafka_binding_test.cpp::kafka-moving-call-failure-keeps-the-message, test:test/nats_binding_test.cpp::nats-moving-call-failure-keeps-the-message]
 owner: filip.sajdak
 version: 1
 ---

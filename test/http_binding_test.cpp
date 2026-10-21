@@ -24,6 +24,7 @@
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "moving_entry_points.hpp"
 #include "payload.hpp"
 
 // The binding is a template over the JSON codec, exactly as json_format is. So
@@ -1918,5 +1919,263 @@ const boost::ut::suite<"from-batch-message-ignores-parse-binary-body"> http_batc
     };
   });
 };
+
+// --- CR-0005: the moving entry points -----------------------------------------
+
+namespace {
+
+/// The HTTP entry points under the shared checks of moving_entry_points.hpp.
+template<class C>
+struct http_under_test {
+  static constexpr std::string_view prefix = "ce-";
+  static constexpr std::string_view media_header = "Content-Type";
+
+  [[nodiscard]] static auto lay_out(const ce::event& subject, ce::content_mode mode)
+      -> ce::result<ce::message> {
+    return ce::http::to_message<C>(subject, mode);
+  }
+
+  template<class Message>
+  [[nodiscard]] static auto copying(Message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::http::from_message<C>(std::forward<Message>(given), options);
+  }
+
+  [[nodiscard]] static auto moving(ce::message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::http::from_message_moving<C>(std::move(given), options);
+  }
+};
+
+/// Whether a moving entry point accepts a message of this value category.
+template<class M>
+constexpr bool http_moving_accepts =
+    requires(M&& given) { ce::http::from_message_moving<mini_codec>(std::forward<M>(given)); };
+}  // namespace
+
+// spec: SWR-HTTP-0018
+// spec: SWR-BIND-0014
+const boost::ut::suite<"from-message-moving-agrees-with-from-message"> http_moving_agrees = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_moving_agrees_with_copying<http_under_test<C>>(codec);
+    };
+  });
+
+  "the value policy is a template parameter, as in from_message"_test = [] {
+    const ce::message plain = binary_message_with({"ce-subject", "caf\xC3\xA9"});
+    const auto by_copy = ce::http::from_message<mini_codec, ce::http::literal_values>(plain);
+    ce::message given = plain;
+    const auto by_move =
+        ce::http::from_message_moving<mini_codec, ce::http::literal_values>(std::move(given));
+    expect(ce_test::moving::agree(by_copy, by_move));
+    expect(by_copy.has_value() && by_move.has_value());
+  };
+
+  "the entry point takes a message by rvalue reference and returns a result of an event"_test = [] {
+    static_assert(std::is_same_v<decltype(ce::http::from_message_moving<mini_codec>(
+                                     std::declval<ce::message>())),
+                                 ce::result<ce::event>>);
+    static_assert(http_moving_accepts<ce::message>);
+    static_assert(!http_moving_accepts<ce::message&>);
+    static_assert(!http_moving_accepts<const ce::message&>);
+  };
+};
+
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+const boost::ut::suite<"http-moving-call-releases-a-moved-body"> http_moving_releases = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_moved_body_is_released<http_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0015
+const boost::ut::suite<"http-moving-call-leaves-an-unmoved-body-intact"> http_moving_unmoved = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_unmoved_body_is_left_intact<http_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0016
+const boost::ut::suite<"http-moving-call-failure-keeps-the-message"> http_moving_failure = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_failed_call_leaves_the_message<http_under_test<C>>(codec);
+    };
+  });
+
+  "a batch given to the single-event moving entry point is refused and left alone"_test = [] {
+    ce::message given{
+        .header_fields = {{"Content-Type", "application/cloudevents-batch+json"}},
+        .body = ce::binary(ce_test::moving::small_body_bytes, ce_test::moving::body_fill)};
+    const auto before = ce_test::moving::take(given);
+    const auto refused = ce::http::from_message_moving<mini_codec>(std::move(given));
+    expect(!refused.has_value());
+    // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
+    expect(ce_test::moving::unchanged(given, before));
+  };
+};
+
+// spec: SWR-BIND-0017
+const boost::ut::suite<"from-message-leaves-the-message-intact"> http_copying_intact = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_copying_entry_point_leaves_the_message<http_under_test<C>>(codec);
+    };
+  });
+};
+
+namespace {
+
+template<class M>
+constexpr bool http_batch_moving_accepts = requires(M&& given) {
+  ce::http::from_batch_message_moving<mini_codec>(std::forward<M>(given));
+};
+
+/// A batch of two events.
+template<class C>
+[[nodiscard]] auto batch_message() -> ce::result<ce::message> {
+  const std::vector<ce::event> batch{ce_test::options_event(), ce_test::options_event()};
+  return ce::http::to_batch_message<C>(batch);
+}
+
+}  // namespace
+
+// spec: SWR-HTTP-0019
+// spec: SWR-BIND-0018
+const boost::ut::suite<"batch-moving-agrees-with-the-copying-batch"> http_batch_moving_agrees = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      auto laid_out = batch_message<C>();
+      expect(laid_out.has_value()) << codec;
+      if (!laid_out) {
+        return;
+      }
+      static_assert(http_batch_moving_accepts<ce::message>);
+      static_assert(!http_batch_moving_accepts<ce::message&>);
+      static_assert(!http_batch_moving_accepts<const ce::message&>);
+      static_assert(std::is_same_v<decltype(ce::http::from_batch_message_moving<C>(
+                                       std::declval<ce::message>())),
+                                   ce::result<std::vector<ce::event>>>);
+      for (const auto& options : {ce::json::decode_options{},
+                                  ce::json::decode_options{.retain_document_up_to = 0},
+                                  ce::json::decode_options{.parse_binary_body = false}}) {
+        ce::message given = *laid_out;
+        const auto by_copy = ce::http::from_batch_message<C>(*laid_out, options);
+        const auto by_move = ce::http::from_batch_message_moving<C>(std::move(given), options);
+        expect(by_copy.has_value() && by_move.has_value()) << codec;
+        if (by_copy && by_move) {
+          expect(bool{*by_copy == *by_move}) << codec;
+          expect(by_move->size() == 2U) << codec;
+        }
+      }
+
+      ce::message malformed = *laid_out;
+      malformed.body = ce::to_bytes("[{not json");
+      const auto refused_by_copy = ce::http::from_batch_message<C>(malformed);
+      const auto refused_by_move = ce::http::from_batch_message_moving<C>(ce::message{malformed});
+      expect(!refused_by_copy.has_value() && !refused_by_move.has_value()) << codec;
+      if (!refused_by_copy && !refused_by_move) {
+        expect(refused_by_copy.error().code == refused_by_move.error().code) << codec;
+      }
+
+      const auto single =
+          ce::http::to_message<C>(ce_test::options_event(), ce::content_mode::binary_mode);
+      expect(single.has_value()) << codec;
+      if (single) {
+        const auto wrong_mode = ce::http::from_batch_message_moving<C>(ce::message{*single});
+        expect(!wrong_mode.has_value() && wrong_mode.error().code == ce::errc::not_a_cloudevent)
+            << codec;
+      }
+    };
+  });
+};
+
+// spec: SWR-HTTP-0019
+// spec: SWR-BIND-0018
+const boost::ut::suite<"batch-moving-never-modifies-the-message"> http_batch_moving_intact = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      auto laid_out = batch_message<C>();
+      expect(laid_out.has_value()) << codec;
+      if (!laid_out) {
+        return;
+      }
+      const auto leaves = [&codec](ce::message given, std::string_view what) {
+        const auto before = ce_test::moving::take(given);
+        const auto read = ce::http::from_batch_message_moving<C>(std::move(given));
+        (void)read;
+        // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
+        expect(ce_test::moving::unchanged(given, before)) << codec << ": " << what;
+      };
+      leaves(*laid_out, "a batch");
+      ce::message malformed = *laid_out;
+      malformed.body = ce::to_bytes("[{not json");
+      leaves(std::move(malformed), "a malformed batch");
+      leaves(ce::message{.header_fields = {{"Content-Type", "text/plain"}},
+                         .body = ce::binary(ce_test::moving::small_body_bytes,
+                                            ce_test::moving::body_fill)},
+             "a message that is no batch");
+      auto large = *laid_out;
+      large.body.reserve(ce_test::moving::large_body_bytes);
+      leaves(std::move(large), "a batch in a larger buffer");
+    };
+  });
+};
+
+// spec: SWR-BIND-0017
+const boost::ut::suite<"from-batch-message-leaves-the-message-intact"> http_batch_copying_intact =
+    [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          auto laid_out = batch_message<C>();
+          expect(laid_out.has_value()) << codec;
+          if (!laid_out) {
+            return;
+          }
+          const auto check = [&codec](const ce::message& original, std::string_view what) {
+            ce::message given = original;
+            const auto before = ce_test::moving::take(given);
+            const auto by_lvalue = ce::http::from_batch_message<C>(given);
+            expect(ce_test::moving::unchanged(given, before)) << codec << ": " << what;
+            const ce::message& by_const = given;
+            const auto by_reference = ce::http::from_batch_message<C>(by_const);
+            expect(ce_test::moving::unchanged(given, before)) << codec << ": " << what;
+            // The pin of SWR-BIND-0017: a std::move to a const reference must leave it alone.
+            // NOLINTNEXTLINE(performance-move-const-arg)
+            const auto by_move = ce::http::from_batch_message<C>(std::move(given));
+            // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
+            expect(ce_test::moving::unchanged(given, before)) << codec << ": " << what;
+            expect(by_lvalue.has_value() == by_move.has_value() &&
+                   by_lvalue.has_value() == by_reference.has_value())
+                << codec << ": " << what;
+          };
+          check(*laid_out, "a batch");
+          laid_out->body = ce::to_bytes("[{not json");
+          check(*laid_out, "a malformed batch");
+        };
+      });
+    };
 
 int main() {}

@@ -74,6 +74,12 @@ INSTR_ITERATIONS = {
     "nats_decode_binary_octet_empty": 1000,
     "nats_decode_binary_octet_small": 1000,
     "nats_decode_binary_octet_large": 1000,
+    "http_decode_binary_octet_small_moving": 1000,
+    "http_decode_binary_octet_large_moving": 1000,
+    "kafka_decode_binary_octet_small_moving": 1000,
+    "kafka_decode_binary_octet_large_moving": 1000,
+    "nats_decode_binary_octet_small_moving": 1000,
+    "nats_decode_binary_octet_large_moving": 1000,
 }
 DEFAULT_ITERATIONS = 200
 

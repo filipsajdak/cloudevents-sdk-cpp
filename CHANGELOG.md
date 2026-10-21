@@ -26,6 +26,26 @@ Notable changes per release. Dates are the tag date.
 
   It is an addition to `ce::v4`, so it needs no new namespace (CR-0005, SWR-BIND-0011 to SWR-BIND-0013).
 
+- **Moving entry points: `from_message_moving` takes a non-JSON binary-mode body instead of copying it.**
+  A receiver that is done with its message, such as a gateway or a forwarder of images, archives or protobuf, hands it over with `std::move`, and the call adopts the body's buffer as the event's `ce::binary` payload: one allocation and one copy of the body fewer.
+  Six new names, in `ce::v4` only, each taking the message (or the payload) by rvalue reference and otherwise identical to its copying sibling: `http::from_message_moving<Codec, Values>`, `kafka::from_message_moving<Codec>`, `nats::from_message_moving<Codec>`, `binding::read_body_moving<Codec>`, and, for symmetry, `http::from_batch_message_moving<Codec>` and `nats::from_payload_moving<Codec>` (which takes a `std::string&&`).
+  A body is **moved** only when it is non-empty, binary-mode, and its media type is absent or not one `is_json_content_type` accepts.
+  After a successful call that moved the body, `message.body.size() == 0` **and** `message.body.capacity() == 0` (the buffer is released), and `header_fields` is unchanged; that is a permanent promise, not an implementation detail.
+  Every other body takes the copying path exactly as the copying entry point does and leaves the message byte for byte intact: a JSON body (parsed or not, whatever `decode_options` say), a structured message, a batch, a `nats` payload string and an empty body, which keeps whatever capacity it had.
+  A failed call leaves the message unchanged for every body, so it can still go to a dead-letter queue: the body is taken only after the event has passed its final validation.
+  The copying entry points are unchanged and never modify their message, with `std::move` or without (`SWR-BIND-0017`).
+  A JSON body saves nothing from a move, because the parse reads the bytes and a `std::string` cannot adopt a `std::vector<std::byte>`; for a forwarder of JSON events the opt-in above is the saving.
+  *Use:*
+
+  ```cpp
+  auto received = ce::kafka::from_message_moving<codec>(std::move(record.value));
+  ```
+
+  Measured by the perf job (x86-64, g++-14, nlohmann as the codec argument, the receive alone) against the copying receive of the same body: a 64 KiB `application/octet-stream` body costs 84% to 88% fewer instructions (HTTP 77.4k to 11.6k, Kafka 74.6k to 8.9k, NATS 77.9k to 12.3k), one allocation fewer of four and 99.9% fewer allocated bytes (65.6 KB to under 100 B).
+  A 256 B body costs about the same instructions (HTTP -0.7%, Kafka -0.9%, NATS +0.6%), against an upper bound of 5% to 8% estimated before the code existed: building the event without the payload and moving the media type out and back costs nearly what the 256 B copy did.
+  It still makes one allocation fewer of four and allocates 72% to 75% fewer bytes, so the saving is in memory and in large bodies, not in instructions at small sizes.
+  It is an addition to `ce::v4`, and `ce::v3` has none of the new names (CR-0005 stage 2, `SWR-BIND-0014` to `SWR-BIND-0018`, `SWR-HTTP-0018`, `SWR-HTTP-0019`, `SWR-KAFKA-0010`, `SWR-NATS-0005`, `SWR-NATS-0006`).
+
 ## v0.6.0 - 2026-10-11
 
 `ce::v4` opens: a `json_document` can move, a typed write refuses a media type that is not JSON, and a JSON body received in binary mode keeps the document it was parsed into.

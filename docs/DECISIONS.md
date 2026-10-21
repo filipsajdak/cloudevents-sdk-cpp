@@ -1715,6 +1715,46 @@ the clang-tidy gate with them (D-TIDY-5). The perf probe builds its options thro
 a helper that names the member through a template parameter, so it also compiles
 against a base that lacks it.
 
+## D-BIND-4: A moving call builds the event without the payload and installs the body last
+
+`from_message_moving` has to leave the message unchanged when it fails (SWR-BIND-0016),
+and at `main` the event's final validation, `event::builder::build()`, ran after the
+body had been read. Reading the body first and moving it into the builder would have
+consumed the caller's bytes before `build()` could refuse the event. `build()` does not
+read the payload, so a moved body is installed afterwards: the builder is built with no
+payload, and on success `event::set_data` takes the body out of the message and the media
+type that was moved out of the builder before it. No byte and no string is copied for it.
+A body that is not moved goes through the copying order of `from_message` (read, then
+build), so its error order is the copying one. `binding::detail::build_taking_body` holds
+both orders and the three bindings share it.
+
+The take is `binding::detail::release_bytes`, a swap with an empty vector, and not
+`std::move` or `std::exchange`: a moved-from `std::vector` is valid and unspecified, and
+the owner's promise is capacity 0 (CR-0005 ruling 21), which a swap gives and a move does
+not guarantee.
+
+Two things were measured in the perf job and shaped the code. Moving the preamble of
+`from_message` (header checks, attribute read, media type) into a helper returning
+`result<event::builder>` added one move of the builder to every copying receive, +2.2% to
++2.7% instructions over main against a limit of +2%; the copying `from_message` therefore
+keeps its body as it was, the moving entry points repeat the preamble, and the tests hold
+the two to equal results and errors. And `build_moving_body` names one variable in every
+return, because GCC does not construct a result in place when a function returns a named
+local on one path and other expressions on the others.
+
+`from_batch_message_moving` and `from_payload_moving` call their copying siblings: their
+input is JSON, which is read and not adopted, so the message and the string are untouched
+(SWR-BIND-0018). The perf operations are `*_decode_binary_octet_{small,large}_moving`, not
+the `*_octets_moving` pair CR-0005 sketched, so that each sits beside the copying
+`*_decode_binary_octet_{small,large}` it is read against. A moving receive consumes its
+message, so the probe takes each one from a pool the warm-up fills, and falls back to the
+copying call where the moving name does not exist, because the perf job measures `main`
+with the pull request's probe. The measured saving is real for a large body and about zero
+in instructions for a 256 B one, below the 5% to 8% upper bound of the estimate in
+CR-0005: the moving path pays for building without the payload and moving the media type
+out and back, which nearly equals the copy it avoids at that size, and it still saves an
+allocation and 73% of the bytes.
+
 ## D-CODEC-4: A codec takes over a string through `adopt_string`
 
 The encoder builds the RFC 3339 text of a timestamp and the base64 text of

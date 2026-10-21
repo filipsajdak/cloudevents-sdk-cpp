@@ -2,7 +2,7 @@
 uid: SWR-BIND-0014
 title: A moving entry point returns what the copying entry point returns, taking a non-JSON body without a copy
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   CR-0005 adds entry points that move a message's body so a receive does not copy it. They are new
@@ -20,8 +20,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp, code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/binding_core_test.cpp::moving-reader-agrees-with-the-copying-reader, test:test/binding_core_test.cpp::moving-reader-takes-a-non-json-body-without-a-copy, test:test/binding_core_test.cpp::moving-reader-takes-the-copying-path-for-a-json-body, test:test/http_binding_test.cpp::from-message-moving-agrees-with-from-message, test:test/http_binding_test.cpp::http-moving-call-releases-a-moved-body, test:test/kafka_binding_test.cpp::kafka-from-message-moving-agrees-with-from-message, test:test/kafka_binding_test.cpp::kafka-moving-call-releases-a-moved-body, test:test/moving_in_v4_test.cpp::moving-entry-points-exist-in-v4, test:test/nats_binding_test.cpp::nats-from-message-moving-agrees-with-from-message, test:test/nats_binding_test.cpp::nats-moving-call-releases-a-moved-body, test:test/v3/v3_moving_absent_test.cpp::moving-entry-points-are-absent-from-the-frozen-generations]
 owner: filip.sajdak
 version: 2
 ---

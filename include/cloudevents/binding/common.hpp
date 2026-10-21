@@ -320,6 +320,76 @@ template<json::json_codec Codec>
   return data_t{json_document::make<Codec>(std::move(*parsed))};
 }
 
+namespace detail {
+
+// spec: SWR-BIND-0014
+/// Whether a call that may move the body does move it: a non-empty body under a media type that is
+/// absent or not one `is_json_content_type` accepts, the one case in which `read_body` returns the
+/// body as the `ce::binary` payload.
+[[nodiscard]] inline auto moves_body(const binary& body,
+                                     const std::optional<datacontenttype>& media_type) -> bool {
+  return !body.empty() && (!media_type || !is_json_content_type(media_type->view()));
+}
+
+// spec: SWR-BIND-0015
+/// Takes the bytes out of `body` and leaves it with size 0 and capacity 0. A swap with an empty
+/// vector does what a move does not promise: a moved-from vector may keep its capacity.
+[[nodiscard]] inline auto release_bytes(binary& body) noexcept -> binary {
+  binary taken;
+  taken.swap(body);
+  return taken;
+}
+
+/// The event of a binary-mode message whose body is moved. Validation does not read the payload, so
+/// the event is built without it and the bytes are installed once it is known to be valid. The
+/// media type travels the same way, moved out of the builder and back, never copied. Every return
+/// names `built`, so the result is constructed in place and not moved.
+[[nodiscard]] inline auto build_moving_body(event::builder&& under_construction, binary& body)
+    -> result<event> {
+  auto media_type = std::move(under_construction.rest.datacontenttype);
+  auto built = std::move(under_construction).build();
+  if (built) {
+    built->set_data(data_t{std::in_place_type<binary>, release_bytes(body)}, std::move(media_type));
+  }
+  return built;
+}
+
+// spec: SWR-BIND-0016
+/// Builds the event of a binary-mode message from its attributes and its body, and takes the body
+/// out of the message only when it is moved and only after the last step that can fail.
+template<json::json_codec Codec>
+[[nodiscard]] auto build_taking_body(event::builder&& under_construction,
+                                     binary& body,
+                                     const json::decode_options& options) -> result<event> {
+  if (moves_body(body, under_construction.rest.datacontenttype)) {
+    return build_moving_body(std::move(under_construction), body);
+  }
+  auto payload = read_body<Codec>(body, under_construction.rest.datacontenttype, options);
+  if (!payload) {
+    return ce::v4::detail::forward_failure(std::move(payload).error());
+  }
+  under_construction.rest.data = std::move(*payload);
+  return std::move(under_construction).build();
+}
+
+}  // namespace detail
+
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+/// `read_body` for a caller that gives the body up: a body that is moved (see `detail::moves_body`)
+/// becomes the `ce::binary` payload without a copy and leaves `body` with size 0 and capacity 0;
+/// any other body is read as `read_body` reads it and `body` is left as it was.
+template<json::json_codec Codec>
+// NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+[[nodiscard]] auto read_body_moving(binary&& body,
+                                    const std::optional<datacontenttype>& media_type,
+                                    const json::decode_options& options = {}) -> result<data_t> {
+  if (!detail::moves_body(body, media_type)) {
+    return read_body<Codec>(body, media_type, options);
+  }
+  return data_t{std::in_place_type<binary>, detail::release_bytes(body)};
+}
+
 template <binding_traits T, json::json_codec Codec>
 [[nodiscard]] auto encode_structured(const event& cloud_event) -> result<message> {
   auto text = json_format<Codec>::encode(cloud_event);

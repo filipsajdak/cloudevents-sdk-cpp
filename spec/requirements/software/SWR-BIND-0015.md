@@ -2,7 +2,7 @@
 uid: SWR-BIND-0015
 title: After a successful moving call a moved body is empty with no capacity and any other body is left intact
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A caller of a moving entry point gives up a body the call moves, and the contract says what remains:
@@ -23,8 +23,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp, code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/binding_core_test.cpp::moved-body-has-size-0-and-capacity-0-and-headers-are-unchanged, test:test/binding_core_test.cpp::unmoved-body-leaves-the-message-byte-for-byte-unchanged, test:test/http_binding_test.cpp::http-moving-call-releases-a-moved-body, test:test/http_binding_test.cpp::http-moving-call-leaves-an-unmoved-body-intact, test:test/kafka_binding_test.cpp::kafka-moving-call-releases-a-moved-body, test:test/kafka_binding_test.cpp::kafka-moving-call-leaves-an-unmoved-body-intact, test:test/nats_binding_test.cpp::nats-moving-call-releases-a-moved-body, test:test/nats_binding_test.cpp::nats-moving-call-leaves-an-unmoved-body-intact]
 owner: filip.sajdak
 version: 2
 ---

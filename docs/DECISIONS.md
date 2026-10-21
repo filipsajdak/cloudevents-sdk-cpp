@@ -787,6 +787,53 @@ It is a difference a producer should know about: a value that must be a strict
 RFC 3986 URI-reference has to be escaped before it is handed over, because
 nothing downstream will do it.
 
+## D-INTEROP-5: What the Kafka records of Go and Java showed
+
+Measured on 2026-10-21 against sdk-go v2.15.2 (`kafka_sarama` v2.15.2, which pulls
+sarama v1.40.1) and sdk-java 2.5.0 (`cloudevents-kafka`). Both convert an event to
+and from an in-memory record, so no broker ran (SWR-SEC-0008, `interop/kafka`).
+Every Go and Java record, in binary and structured mode, decodes here to the event
+it encodes, and Go and Java decode every record this SDK writes. The header rule
+agrees: `ce_` prefix and `content-type`, all lowercase, in all three SDKs. What
+differs is below; none of it is an interoperability failure, and the library did
+not change.
+
+| | Go | Java | this SDK |
+|---|---|---|---|
+| record key of a `partitionkey` event | the extension's value, on its own | none unless the caller passes one | none, or the extension's value with `partitionkey_mapper` |
+| value of an event without a payload | null (a tombstone) | null (a tombstone) | empty, not null |
+| extra attributes on read, binary mode | `kafkatopic`, `kafkapartition`, `kafkaoffset` | none | none |
+| non-JSON payload in structured mode | `data` string | `data_base64` | `data` string, or `data_base64` for bytes |
+| header names that are not lowercase | read | refused | refused |
+| batch mode | not exercised (D-KAFKA-1) | not exercised | refused |
+
+- **Key.** A Go producer routes by `partitionkey` without being asked. A Java
+  producer does not, and neither does this SDK by default, so two services that
+  publish the same event reach different partitions unless the C++ side names
+  `partitionkey_mapper` (SWR-KAFKA-0009). The default stays, because a key changes
+  where records land and the caller should choose that. The attribute travels as a
+  header in every case.
+- **Null value.** A reader gets an event with no data from a null value or an empty
+  one alike. The difference matters to a compacted topic, where Go and Java send a
+  tombstone for an event that has no payload. `ce::message::body` has no null, so
+  this SDK cannot write a tombstone and sends an empty value instead. A producer
+  that needs the tombstone sets the null on the transport record it builds.
+- **Extra attributes.** The Go consumer adds the three extensions in binary mode
+  only. They are not on the wire, so a record this SDK reads never has them, and the
+  Go verifier allows exactly those names and no others.
+- **Structured payload.** The disagreement is D-INTEROP-1 again: bytes agree,
+  representation does not, and both representations decode here.
+- **Capital letters.** Go matches the prefix and the content type without regard to
+  case and reads `CE_id` and `Content-Type`; Java matches them exactly and refuses
+  both, and so does this SDK (D-KAFKA-2). D-KAFKA-2 said no SDK writes such a name,
+  which stays true; the new fact is that one SDK reads it. A record from a producer
+  that capitalises the names reaches a Go consumer and not a Java or C++ one. The
+  two programs probe both records and fail if either answer changes.
+- **Percent and non-ASCII.** Kafka has no escaping rule, so `100% of 50%OFF` and
+  `a%20b` travel as written in all three. D-INTEROP-4 holds in a header value too:
+  Go and Java write `%C3%A9v%C3%A9nement` for a non-ASCII source, this SDK writes
+  the characters, and each accepts the other's spelling.
+
 ## D-JSON-3: A codec may refuse an unrepresentable integer at parse or at as_int
 
 `nlohmann::json::get<std::int64_t>()` reinterprets an out-of-range unsigned value

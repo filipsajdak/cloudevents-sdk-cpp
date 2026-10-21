@@ -211,9 +211,8 @@ existing, a CMake file by containing the name. `spec/tools/derive_delivered_in.p
 reads the tags through git (SWR-BUILD-0016), prints one row per requirement, and
 `--write` turns an `approved` requirement with a tag into `implemented` by editing
 its status line and adding `delivered_in` after it. `--check` exits 1 when
-`--write` would change a file; it is not in CI yet, and one line in
-`.github/workflows/spec.yml` would add it. Run `--write` at each release, after the
-tag exists.
+`--write` would change a file, and the spec gate runs it (D-SPEC-5). Run `--write`
+at each release, after the tag exists.
 
 Two choices follow from measuring it on the 70 requirements already marked
 `implemented`:
@@ -233,6 +232,32 @@ gives that tag. SWR-HTTP-0005 and SWR-NATS-0004 are impacted by CR-0004, but its
 analysis records an unchanged statement for both, so they were delivered at
 v0.5.0 and v0.3.0, and v0.6.0 added the defaulted `decode_options` parameter that
 SWR-BIND-0009 states.
+
+## D-SPEC-5: the delivered_in check is in the spec gate, and the post-tag pull request is merged first
+
+The spec gate runs `derive_delivered_in.py --check` (SWR-BUILD-0016) on every pull
+request and on main, with the full history so every release tag is present. Measured
+on the cases a pull request can carry: a new requirement with its tests, an amended
+delivered requirement back at `approved` (D-EXT-6), and the release pull request
+before its tag all pass, because no tag holds their evidence. A checkout that holds
+no release tag, or a tag whose objects are missing, exits 2 instead of passing, since
+a tree without tags derives nothing and looks clean.
+
+By design the check fails between the tag and the merge of the post-tag pull request:
+the tag delivers requirements still marked `approved`, and `ci.yml` makes the build
+matrix wait for this gate, so every pull request opened or updated in that window is
+red. The release process closes the window by ordering: open the post-tag pull
+request (`--write`, the vcpkg hash) the moment the tag exists, and merge it before
+anything else; a pull request that was red in the window turns green when updated
+from main. The pull request that runs `--write` is itself green, because the edits
+are in its tree.
+
+Alternatives, not taken: a check that tolerates tags younger than a number of days
+(a magic number, and it hides real drift for that long); a check that fails only on
+pushes to main (a pull request that reverts a status would then merge and turn main
+red); a job allowed to fail on the post-tag pull request's base (it would also pass
+a real drift, since nothing tells the two apart); and a tag-triggered workflow that
+commits `--write` itself (needs write access to main, and bypasses review).
 
 ## D-BUILD-1: boost-ext/ut is patched for GCC on macOS
 

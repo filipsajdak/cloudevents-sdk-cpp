@@ -100,7 +100,10 @@ Run every command from a clean `main` at the commit being tagged.
 - [ ] Tag on `main`, signed.
 - [ ] `python3 spec/tools/derive_delivered_in.py --write` run after the tag
       exists, and its edits committed: requirements the release delivered gain
-      `delivered_in` (D-SPEC-4).
+      `delivered_in` (D-SPEC-4). The spec gate fails every pull request from the
+      tag until these edits are on main (D-SPEC-5), so this is the first pull
+      request after the tag, together with the vcpkg hash below, and it is merged
+      before anything else. Update the pull requests that were red meanwhile.
 - [ ] The `SHA512` in `packaging/vcpkg/ports/cloudevents-cpp/portfile.cmake` is
       the hash of the new tag's archive, committed after the tag exists (the
       archive cannot be hashed before it does):

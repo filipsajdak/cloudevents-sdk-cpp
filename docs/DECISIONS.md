@@ -1443,6 +1443,8 @@ initializer at the call site, gains members without breaking a call, and keeps
 template parameter or a member of `json_format` was rejected: the limit is a
 per-call policy, and a caller decoding trusted and untrusted input with one
 codec needs both.
+The aggregate has since gained a second member, `parse_binary_body`, which only the
+v4 binary-mode body reader honours (D-BIND-3, SWR-BIND-0011).
 
 For a batch the limit is per event, by average size: a batch keeps documents
 when its text is at most the limit times its number of events, and otherwise
@@ -1689,6 +1691,29 @@ entry points take the small aggregate by value, as `json_format::decode` does
 (D-JSON-5). The text kept above the limit is copied from the body because the
 message stays the caller's; a body under a non-JSON media type is copied into
 `ce::binary` for the same reason, as it was in v3.
+
+## D-BIND-3: The opt-in is a trailing member, and the frozen-API gate reads `= {}` as an addition
+
+`parse_binary_body` is a `bool` appended to `decode_options` with a default member
+initializer, named once as `parses_binary_body_by_default` so the default is not a
+bare literal. The owner ruled on 2026-10-21 (CR-0005) that appending it is an
+addition. The frozen-API job disagreed: every default argument written
+`decode_options options = {}` spells each member of the aggregate in its syntax
+tree, so fifteen published declarations read as changed. The job now drops the
+members an initializer list gained at its end when each takes its default, and
+still fails a changed default argument or a member without a default
+(SWR-BUILD-0015, version 3). The alternative, an allowlist entry per declaration,
+was ruled out by the owner on the same day.
+
+The body reader checks the option after the empty-body and media-type tests, so
+an empty body is still no payload and a non-JSON media type is still `ce::binary`
+whatever the option says. With the option false it copies the body once, as
+`json_text`, from the borrowed view (SWR-BIND-0012). The v3 pin of SWR-BIND-0013
+sits in `test/v3/v3_decode_options_test.cpp`, not `test/` as CR-0005 planned, so
+that it builds with the v3 codec spelling the other v3 suites use and stays out of
+the clang-tidy gate with them (D-TIDY-5). The perf probe builds its options through
+a helper that names the member through a template parameter, so it also compiles
+against a base that lacks it.
 
 ## D-CODEC-4: A codec takes over a string through `adopt_string`
 

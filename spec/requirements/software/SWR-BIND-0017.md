@@ -2,7 +2,8 @@
 uid: SWR-BIND-0017
 title: The copying entry points never modify their message
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   from_message and from_batch_message take a const message&, and a caller may pass std::move(m) to

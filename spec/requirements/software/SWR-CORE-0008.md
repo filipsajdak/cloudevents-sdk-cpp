@@ -2,7 +2,8 @@
 uid: SWR-CORE-0008
 title: Timestamp parsing through a single CTRE pattern
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: high
 rationale: >
   SPEC 5.1 mandates one CTRE pattern for `timestamp::parse` so the accepted RFC

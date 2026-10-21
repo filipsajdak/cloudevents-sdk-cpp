@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0006
 title: The repository ships a vcpkg overlay port that a consumer builds against in CI
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   A project that manages its dependencies with vcpkg cannot adopt the SDK through find_package alone: it would have to install the SDK by hand and keep CTRE and the codec library in step with it.

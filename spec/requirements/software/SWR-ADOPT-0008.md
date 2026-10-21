@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0008
 title: A packaging recipe whose version differs from the project's version fails a check
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   The vcpkg port names a release by version and by the SHA-512 of that release's source archive, and the Conan recipe by version; each has to move with the tag (docs/RELEASE.md).

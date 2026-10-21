@@ -2,7 +2,8 @@
 uid: SWR-BIND-0012
 title: With the opt-in off, a binary-mode JSON body is kept as its own unparsed text
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: high
 rationale: >
   A forwarder that sets parse_binary_body to false wants the body untouched and no parse, so the body

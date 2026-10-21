@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0014
 title: A pull request shows which changed lines no suite pins, and is never blocked by it
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: low
 rationale: >
   A line can be covered and still unpinned: a suite runs it and no assertion notices when its operator flips.

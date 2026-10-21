@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0016
 title: The release that delivered a requirement is derived from the tags
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: low
 rationale: >
   A requirement is delivered by the first release whose tree holds its current statement and the tests that verify it.

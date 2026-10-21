@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0007
 title: The repository ships a Conan recipe that a consumer builds against in CI
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   A project that manages its dependencies with Conan has the same need as one using vcpkg (SWR-ADOPT-0006), and SPEC section 9 deferred the recipe as well (D7).

@@ -2,7 +2,8 @@
 uid: SWR-BUILD-0015
 title: A pull request that removes or changes a frozen declaration fails CI
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: high
 rationale: >
   SWR-BUILD-0006 forbids changing a published declaration, and the release checklist asked a person to diff the headers against the previous tag by hand.

@@ -2,7 +2,8 @@
 uid: SWR-KAFKA-0010
 title: The Kafka binding offers a moving receive entry point
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   A Kafka record's value can be a large non-JSON payload, and the consumer that forwards it benefits

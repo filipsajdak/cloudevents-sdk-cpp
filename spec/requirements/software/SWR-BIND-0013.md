@@ -2,7 +2,8 @@
 uid: SWR-BIND-0013
 title: Only the binary-mode body reader honours the opt-in; every other entry point and ce::v3 ignore it
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   Structured decode, http::from_batch_message, nats::from_payload and the json_format decoders read

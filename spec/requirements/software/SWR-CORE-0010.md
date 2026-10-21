@@ -2,7 +2,8 @@
 uid: SWR-CORE-0010
 title: Lenient timestamp acceptance of lowercase separators and second 60
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: high
 rationale: >
   SPEC 5.1 states that parsing accepts lowercase `t` and `z` and the leap second

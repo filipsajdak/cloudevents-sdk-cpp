@@ -2,7 +2,8 @@
 uid: SWR-BIND-0011
 title: The decode options carry an opt-in to skip the binary-mode parse, defaulting to the parse
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   CR-0005 reverses the owner's ruling of 2026-10-11 and adds an option to skip the parse of a binary-

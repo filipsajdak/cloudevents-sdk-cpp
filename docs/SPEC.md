@@ -357,7 +357,7 @@ Use the default, record it, move on. Do not relitigate inside a task.
 | D4 | Support `-fno-exceptions` builds | Yes; verify ut and nlohmann configs permit it, else tests only need exceptions |
 | D5 | Support specversion `0.3` on receive | No |
 | D6 | Floating-point extension values (not in spec type system) | Reject on decode with `type_mismatch` |
-| D7 | Package managers | vcpkg port and Conan recipe deferred past v0.1 |
+| D7 | Package managers | ~~vcpkg port and Conan recipe deferred past v0.1~~ **Closed for in-repo recipes by D-ADOPT-2** (`packaging/`, SWR-ADOPT-0006 to SWR-ADOPT-0008); submission to the public registries is not decided |
 
 ## 10. Definition of done (every work item)
 

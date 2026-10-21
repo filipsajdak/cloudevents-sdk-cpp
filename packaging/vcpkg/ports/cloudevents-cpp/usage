@@ -1,0 +1,14 @@
+cloudevents-cpp provides CMake targets:
+
+    find_package(cloudevents CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE ce::core ce::format_json ce::binding_http)
+
+The default feature "nlohmann" adds the codec, which is a component:
+
+    find_package(cloudevents CONFIG REQUIRED COMPONENTS codec_nlohmann)
+    target_link_libraries(main PRIVATE ce::codec_nlohmann)
+
+Install with the "rapidjson" or "boost-json" feature for those codecs, or
+without any codec by turning the default features off:
+
+    vcpkg install "cloudevents-cpp[core]" --overlay-ports=<clone>/packaging/vcpkg/ports

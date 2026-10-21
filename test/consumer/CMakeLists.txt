@@ -33,6 +33,22 @@ if(cloudevents_codec_nlohmann_FOUND)
   add_executable(consumer_codec codec_main.cpp)
   target_link_libraries(consumer_codec PRIVATE ce::codec_nlohmann)
   target_compile_features(consumer_codec PRIVATE cxx_std_20)
+
+  # The two above prove that headers are found. This one runs the library: an
+  # event goes out through the HTTP binding in both content modes and comes
+  # back equal, which executes CTRE, the codec and the format layer.
+  add_executable(consumer_roundtrip roundtrip_main.cpp)
+  target_link_libraries(consumer_roundtrip PRIVATE ce::codec_nlohmann ce::binding_http)
+  target_compile_features(consumer_roundtrip PRIVATE cxx_std_20)
+endif()
+
+# The same run through the RapidJSON codec, whose dependency is found by header
+# and whose include directory a package manager has to put where find_path looks.
+if(cloudevents_codec_rapidjson_FOUND)
+  add_executable(consumer_roundtrip_rapidjson roundtrip_rapidjson_main.cpp)
+  target_link_libraries(consumer_roundtrip_rapidjson
+    PRIVATE ce::codec_rapidjson ce::binding_http)
+  target_compile_features(consumer_roundtrip_rapidjson PRIVATE cxx_std_20)
 endif()
 
 # SWR-ADOPT-0001: all four targets exist in the installed package, with the
@@ -62,4 +78,10 @@ add_test(NAME consumer-no-nlohmann COMMAND consumer_no_nlohmann)
 add_test(NAME consumer-fno-exceptions COMMAND consumer_fno_exceptions)
 if(TARGET consumer_codec)
   add_test(NAME consumer-codec-link COMMAND consumer_codec)
+endif()
+if(TARGET consumer_roundtrip)
+  add_test(NAME consumer-roundtrip COMMAND consumer_roundtrip)
+endif()
+if(TARGET consumer_roundtrip_rapidjson)
+  add_test(NAME consumer-roundtrip-rapidjson COMMAND consumer_roundtrip_rapidjson)
 endif()

@@ -719,6 +719,42 @@ unaffected. `SWR-ADOPT-0005` states the behaviour, and the install-and-consume j
 now reinstalls against a system nlohmann and consumes with it hidden, which is the
 only arrangement that can see the problem.
 
+## D-ADOPT-2: vcpkg and Conan recipes live in this repository, and registry submission is not decided
+
+SPEC section 9 D7 deferred a vcpkg port and a Conan recipe past v0.1. The owner
+closed it on 2026-10-21 for recipes kept in `packaging/` and built by CI. A
+submission to the public vcpkg registry or to ConanCenter is a separate decision
+that nobody has made, and nothing here should be read as one.
+
+- **No CMake change.** `cmake/CeDependencies.cmake` already calls
+  `find_package(ctre)` and `find_package(nlohmann_json 3.12.0)` before it falls
+  back to FetchContent, so a package manager's copy wins. The recipes make that
+  fallback impossible rather than unlikely: they pass
+  `CMAKE_REQUIRE_FIND_PACKAGE_ctre=ON` (and the same for nlohmann_json when that
+  codec is on) and `FETCHCONTENT_FULLY_DISCONNECTED=ON`, so a missed lookup is a
+  configure error. A build that downloaded CTRE would be green and would prove
+  nothing about the recipe. They also pass `CE_BUILD_TESTING=OFF`, which defaults
+  ON for a top-level project and would fetch ut and build the suite.
+- **CTRE range.** The SDK builds against CTRE 3.9.0, the commit
+  `CeDependencies.cmake` pins. Both registries carry 3.9.0 and later (3.11.0 is
+  the newest in each on 2026-10-21). The recipes ask for `>= 3.9.0`, and Conan
+  below 4. vcpkg in classic mode (`vcpkg install --overlay-ports`) ignores
+  version constraints and installs the registry's newest, so the vcpkg CI job
+  builds with whatever CTRE its pinned vcpkg commit carries and the Conan job
+  with the newest 3.x. The 3.9.0 floor is the version the main suite builds with.
+- **Codecs.** nlohmann is the default feature or option, as it is the default of
+  `CE_CODECS`. rapidjson is found by header, so the recipes put its include
+  directory where `find_path` looks. boost_json needs a compiled Boost.JSON; the
+  recipes declare it and CI does not build it, because building Boost from source
+  on a runner costs more than the evidence is worth. That is a stated gap, not a
+  claim.
+- **Version.** The vcpkg manifest carries the version as a literal, because vcpkg
+  cannot read CMake; `scripts/check_packaging_version.py` compares it with the
+  project VERSION (SWR-ADOPT-0008). The Conan recipe reads CMake. The vcpkg
+  SHA-512 of the release archive cannot exist before the tag, so it is updated
+  after tagging (`docs/RELEASE.md`), and the working-tree mode CI uses does not
+  read it.
+
 ## D-INTEROP-2: Both in-tree codecs mishandled a surrogate pair
 
 A character outside the Basic Multilingual Plane is written in JSON as a

@@ -1,0 +1,187 @@
+name: packaging
+
+# The vcpkg overlay port and the Conan recipe (SWR-ADOPT-0006, SWR-ADOPT-0007).
+# Each job installs the package from the working tree through its package
+# manager and builds test/consumer against what that manager installed, with the
+# system prefixes hidden, so a dependency the recipe forgot to name cannot be
+# found by accident. The recipes make the project's download fallback an error,
+# so a green job also means CTRE and the codec library came from the manager.
+#
+# Only a change that can move the result runs it. Not a required check: it
+# depends on two third-party registries, and a registry outage is not a defect of
+# the change under review.
+#
+# boost-json / boost_json is declared by both recipes and built by neither job:
+# Boost.JSON is a compiled library and building Boost from source on a runner
+# costs more than the evidence is worth (D-ADOPT-2).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'packaging/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'include/**'
+      - 'test/consumer/**'
+      - 'scripts/check_packaging_version.py'
+      - '.github/workflows/packaging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CXX: g++-14
+  # The package managers and the registries they read, pinned so a run does not
+  # move on its own. vcpkg is a commit of its registry: it fixes the version of
+  # CTRE and of every other port. Conan's registry (ConanCenter) is not pinned by
+  # Conan; its recipe revisions can move, which is the one thing here that does.
+  VCPKG_URL: https://github.com/microsoft/vcpkg.git
+  VCPKG_COMMIT: 6f6324d69cc4d5229804bee9f72737fe2ef08087
+  CONAN_VERSION: '2.33.0'
+  PYTHON_VERSION: '3.12'
+  # The language level a consumer asks Conan for; ce::core requires it anyway.
+  CXX_STANDARD: '20'
+  # Prefixes a consumer must not find a dependency in.
+  HIDDEN_PREFIXES: /usr;/usr/local
+
+jobs:
+  vcpkg:
+    name: vcpkg overlay port (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    # Measured on the runner: a configuration takes under a minute, vcpkg's
+    # bootstrap and the consumer's compile being nearly all of it. A run near
+    # this limit is a hang, not a slow build.
+    timeout-minutes: 15
+    concurrency:
+      group: packaging-vcpkg-${{ matrix.name }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The default feature: the nlohmann codec.
+          - name: default
+            spec: cloudevents-cpp
+            expected_tests: consumer-codec-link consumer-roundtrip
+            forbidden_tests: ''
+          # Default features off: ce::core alone. No codec library is installed
+          # at all, which the existing install job can only simulate by stripping.
+          - name: core
+            spec: cloudevents-cpp[core]
+            expected_tests: ''
+            forbidden_tests: consumer-codec-link
+          - name: rapidjson
+            spec: cloudevents-cpp[core,rapidjson]
+            expected_tests: consumer-roundtrip-rapidjson
+            forbidden_tests: consumer-codec-link
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the compiler and the build tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y "$CXX" ninja-build
+
+      - name: Fetch vcpkg at its pinned commit and bootstrap it
+        run: |
+          git init --quiet "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" fetch --quiet --depth 1 "$VCPKG_URL" "$VCPKG_COMMIT"
+          git -C "$RUNNER_TEMP/vcpkg" checkout --quiet FETCH_HEAD
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+
+      # CLOUDEVENTS_CPP_SOURCE_DIR makes the port build this checkout instead of
+      # the archive of the last tag. vcpkg scrubs the environment of a port build,
+      # so the variable is named in VCPKG_KEEP_ENV_VARS. The binary cache does not
+      # hash the directory, so it is off: a cached package would be a test of an
+      # older tree.
+      - name: Install the port from the working tree
+        env:
+          CLOUDEVENTS_CPP_SOURCE_DIR: ${{ github.workspace }}
+          VCPKG_KEEP_ENV_VARS: CLOUDEVENTS_CPP_SOURCE_DIR
+          VCPKG_DISABLE_METRICS: '1'
+        run: |
+          "$RUNNER_TEMP/vcpkg/vcpkg" install "${{ matrix.spec }}" \
+            --overlay-ports="$GITHUB_WORKSPACE/packaging/vcpkg/ports" \
+            --binarysource=clear \
+            --x-install-root="$RUNNER_TEMP/vcpkg-installed" \
+            --x-buildtrees-root="$RUNNER_TEMP/vcpkg-buildtrees" \
+            --x-packages-root="$RUNNER_TEMP/vcpkg-packages"
+
+      - name: Build test/consumer against what vcpkg installed
+        run: |
+          cmake -S test/consumer -B build-consumer -G Ninja \
+            -DCMAKE_CXX_COMPILER="$CXX" \
+            -DCMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$RUNNER_TEMP/vcpkg-installed" \
+            -DCMAKE_REQUIRE_FIND_PACKAGE_cloudevents=ON \
+            -DCMAKE_IGNORE_PREFIX_PATH="$HIDDEN_PREFIXES"
+          cmake --build build-consumer
+
+      - name: Run the consumer, and name the tests that must have run
+        run: |
+          ctest --test-dir build-consumer --output-on-failure --no-tests=error
+          for name in ${{ matrix.expected_tests }}; do
+            ctest --test-dir build-consumer --output-on-failure --no-tests=error -R "^${name}\$"
+          done
+          for name in ${{ matrix.forbidden_tests }}; do
+            if ctest --test-dir build-consumer -N -R "^${name}\$" | grep -q "Total Tests: [1-9]"; then
+              echo "::error::${name} ran in the ${{ matrix.name }} configuration, which installed no such codec"
+              exit 1
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: vcpkg-${{ matrix.name }}-logs
+          path: ${{ runner.temp }}/vcpkg-buildtrees/**/*.log
+          if-no-files-found: ignore
+
+  conan:
+    name: conan recipe (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: packaging-conan-${{ matrix.name }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            nlohmann: 'True'
+            rapidjson: 'False'
+          - name: core
+            nlohmann: 'False'
+            rapidjson: 'False'
+          - name: rapidjson
+            nlohmann: 'False'
+            rapidjson: 'True'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y "$CXX"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Conan at its pinned version
+        run: pip install "conan==${CONAN_VERSION}"
+
+      # create builds the recipe from this checkout (export_sources copies it)
+      # and then builds and runs test_package, which is test/consumer. The
+      # recipe's test() names the codec tests that must have run.
+      - name: conan create, which builds and tests the package
+        run: |
+          CC="${CXX/g++/gcc}" conan profile detect --force
+          conan create packaging/conan --build=missing \
+            -s compiler.cppstd="$CXX_STANDARD" \
+            -o "&:nlohmann=${{ matrix.nlohmann }}" \
+            -o "&:rapidjson=${{ matrix.rapidjson }}"

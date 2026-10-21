@@ -52,6 +52,8 @@ Build/
 build-*/
 
 # CMake generated files
+# conan create writes one beside packaging/conan/test_package.
+CMakeUserPresets.json
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

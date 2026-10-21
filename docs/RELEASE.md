@@ -49,7 +49,8 @@ Run every command from a clean `main` at the commit being tagged.
       `fuzz` workflow is the evidence, and it counts only if it ran on that
       commit. Run it on demand from the Actions tab if the nightly predates it.
 - [ ] `./interop/run.sh` regenerates the goldens and both SDKs accept every
-      document this one produced (`SWR-SEC-0005`).
+      document and every Kafka record this one produced (`SWR-SEC-0005`,
+      `SWR-SEC-0008`).
 - [ ] `git diff --exit-code test/fixtures/interop` is empty after that run, or
       the change is understood and described in the release notes.
 - [ ] `cmake -S . -B build -DCE_BUILD_MODULE=ON` builds and `module_consumer`

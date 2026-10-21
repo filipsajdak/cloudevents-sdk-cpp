@@ -766,7 +766,7 @@ A struct with `CE_DESCRIBE` keeps its macro description when reflection is on.
 ## 9. Interoperability
 
 `interop/run.sh` checks this SDK against the Go and Java SDKs in both directions.
-Three differences are worth knowing.
+Four differences are worth knowing.
 
 **HTTP binary mode and percent-encoding.**
 The binding specification requires header values containing a space, `"`, `%` or non-ASCII to be percent-encoded.
@@ -793,6 +793,12 @@ Both are permitted, so a consumer must accept either.
 **Extension types.**
 Every SDK loses an extension's declared type in JSON and in binding headers.
 Read typed extensions with `get<Ext>()` rather than comparing variant alternatives.
+
+**Kafka records.**
+The Kafka bindings of sdk-go and sdk-java also run in `interop/run.sh`, in memory and without a broker, and every record decodes both ways.
+Name `partitionkey_mapper` if a Go consumer or a partitioned topic expects the key sdk-go sets on its own.
+Capitalised header names such as `CE_id` are read by sdk-go and refused by sdk-java and by this SDK.
+`D-INTEROP-5` has the full list.
 
 ## 10. How you can still get it wrong
 

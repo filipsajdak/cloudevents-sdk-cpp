@@ -23,10 +23,31 @@ ctre_include="$(find "$build/_deps" -type d -path '*ctre-src/include' | head -1)
   $(pkg-config --cflags nlohmann_json 2>/dev/null || echo "-isystem /usr/local/include -isystem /opt/homebrew/include") \
   "$root/interop/cpp/produce.cpp" -o "$build/produce"
 
+"$CXX" -std=c++20 -O1 \
+  -I "$root/include" \
+  ${ctre_include:+-isystem "$ctre_include"} \
+  $(pkg-config --cflags nlohmann_json 2>/dev/null || echo "-isystem /usr/local/include -isystem /opt/homebrew/include") \
+  "$root/interop/kafka/cpp/produce.cpp" -o "$build/produce-kafka"
+
 if [ "$mode" != "verify" ]; then
   echo "==> producing the C++ documents"
   "$build/produce" "$fixtures/cpp"
 fi
+
+# The Kafka records are always produced afresh, even in verify mode: both SDKs
+# must read what the library writes today, and the committed copy must be what
+# it writes today (checked below), or the cpp column would test stale bytes.
+if [ "$mode" = "verify" ]; then
+  kafka_cpp="$root/build/interop-verify/kafka-cpp"
+  rm -rf "$kafka_cpp"
+  mkdir -p "$kafka_cpp"
+  kafka_cpp_in_container=/w/build/interop-verify/kafka-cpp
+else
+  kafka_cpp="$fixtures/kafka/cpp"
+  kafka_cpp_in_container=/w/test/fixtures/interop/kafka/cpp
+fi
+echo "==> producing the C++ Kafka records"
+"$build/produce-kafka" "$kafka_cpp"
 
 # Container-side paths only. Verify mode writes inside the repository rather
 # than to a temporary directory, because only the repository is mounted; the
@@ -34,10 +55,15 @@ fi
 if [ "$mode" = "verify" ]; then
   go_out=/w/build/interop-verify/go
   java_out=/w/build/interop-verify/java
-  mkdir -p "$root/build/interop-verify/go" "$root/build/interop-verify/java"
+  kafka_go_out=/w/build/interop-verify/kafka-go
+  kafka_java_out=/w/build/interop-verify/kafka-java
+  mkdir -p "$root/build/interop-verify/go" "$root/build/interop-verify/java" \
+    "$root/build/interop-verify/kafka-go" "$root/build/interop-verify/kafka-java"
 else
   go_out=/w/test/fixtures/interop/go
   java_out=/w/test/fixtures/interop/java
+  kafka_go_out=/w/test/fixtures/interop/kafka/go
+  kafka_java_out=/w/test/fixtures/interop/kafka/java
 fi
 
 echo "==> Go: generating goldens and reading the C++ documents"
@@ -54,6 +80,33 @@ docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/java \
           exec mvn -q -B compile org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
                -Dexec.args="$1 /w/test/fixtures/interop/cpp"' sh "$java_out"
 
+# The Kafka bindings of both SDKs convert to and from an in-memory record, so no
+# broker is started. Each program writes its own records and then decodes the
+# C++ ones, failing on the first record that does not decode to its event.
+echo "==> Go: Kafka records, written and read without a broker"
+docker run --rm -v "$root:/w" -w /w/interop/kafka/go -e GOFLAGS=-mod=mod golang:1.22 \
+  sh -ec 'cd /w/interop/kafka/go
+          test -f go.mod || { echo "go.mod is not where run.sh expects it"; ls -la; exit 1; }
+          exec go run . "$1" "$2"' sh "$kafka_go_out" "$kafka_cpp_in_container"
+
+echo "==> Java: Kafka records, written and read without a broker"
+docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/kafka/java \
+  maven:3.9-eclipse-temurin-17 \
+  sh -ec 'cd /w/interop/kafka/java
+          exec mvn -q -B compile org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
+               -Dexec.args="$1 $2"' sh "$kafka_java_out" "$kafka_cpp_in_container"
+
+if [ "$mode" = "verify" ]; then
+  # What each side writes today must be the committed record, byte for byte.
+  for side in go java cpp; do
+    produced="$root/build/interop-verify/kafka-$side"
+    diff -r "$fixtures/kafka/$side" "$produced" || {
+      echo "the committed Kafka records for $side are not what the producer writes now" >&2
+      exit 1
+    }
+  done
+fi
+
 if [ "$mode" = "verify" ]; then
   # Removed from inside a container, because the generators run as root and
   # create subdirectories the host user cannot empty: unlinking a root-owned
@@ -63,4 +116,4 @@ if [ "$mode" = "verify" ]; then
 fi
 
 echo
-echo "both SDKs accepted every document this SDK produced"
+echo "both SDKs accepted every document and every Kafka record this SDK produced"

@@ -126,9 +126,14 @@ mention them will generate the same questions repeatedly.
 - Given the same non-JSON payload, the Java SDK writes `data_base64` where Go
   and this SDK write a JSON string. Both are legal (`D-INTEROP-1`).
 - A binary-mode body under a JSON media type is parsed once on receive in
-  `ce::v4`, and `retain_document_up_to = 0` does not skip the parse. A service
-  that only forwards events pays for it: on the HTTP full-event path the receive
-  alone costs 15% to 54% more instructions, by codec (v0.6.0 `CHANGELOG.md`,
-  Known limitations); staying on `ce::v3` avoids it.
+  `ce::v4`, and `retain_document_up_to = 0` does not skip the parse.
+  `parse_binary_body = false` skips it, and then nothing validates the body. A
+  service that only forwards events pays for the parse unless it sets that
+  option: on the HTTP full-event path the receive alone costs 15% to 54% more
+  instructions, by codec (v0.6.0 `CHANGELOG.md`, Known limitations).
+- Moving a binary-mode body (`from_message_moving`) saves allocations and bytes
+  and, below a few kilobytes, no instructions; a JSON body is never moved.
+- Go reads Kafka record headers named `CE_id` or `Content-Type`; Java and this
+  SDK refuse them (`D-KAFKA-2`, `D-INTEROP-5`).
 - The module interface exports `ce::v4` only: not `ce::v3`, and not `from_v3`
   or `to_v3`.

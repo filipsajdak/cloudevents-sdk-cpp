@@ -18,7 +18,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BUILD-0001]
 satisfied_by: [code:spec/tools/derive_delivered_in.py, code:.github/workflows/spec.yml]
-verified_by: [test:scripts/test_derive_delivered_in.py::FirstTagThatHoldsEverything, test:scripts/test_derive_delivered_in.py::NoTagQualifies, test:scripts/test_derive_delivered_in.py::WriteMode, test:scripts/test_derive_delivered_in.py::CheckMode]
+verified_by: [test:scripts/test_derive_delivered_in.py::FirstTagThatHoldsEverything, test:scripts/test_derive_delivered_in.py::NoTagQualifies, test:scripts/test_derive_delivered_in.py::WriteMode, test:scripts/test_derive_delivered_in.py::CheckMode, test:scripts/test_derive_delivered_in.py::CheckOnPullRequests, test:scripts/test_derive_delivered_in.py::CheckNeedsTags]
 owner: filip.sajdak
 version: 2
 ---

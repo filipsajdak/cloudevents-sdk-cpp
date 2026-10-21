@@ -2,7 +2,8 @@
 uid: SWR-NATS-0006
 title: The NATS binding offers a moving payload receive entry point
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   The owner chose on 2026-10-21 that nats::from_payload has a moving counterpart, so that the payload

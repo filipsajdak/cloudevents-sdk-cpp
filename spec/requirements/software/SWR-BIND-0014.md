@@ -2,7 +2,8 @@
 uid: SWR-BIND-0014
 title: A moving entry point returns what the copying entry point returns, taking a non-JSON body without a copy
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   CR-0005 adds entry points that move a message's body so a receive does not copy it. They are new

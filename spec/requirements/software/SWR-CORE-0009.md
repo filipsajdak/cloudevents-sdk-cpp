@@ -2,7 +2,8 @@
 uid: SWR-CORE-0009
 title: Byte-for-byte timestamp round-trip for canonical input
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: high
 rationale: >
   SPEC 5.1 requires `to_string` to round-trip canonical input byte for byte so

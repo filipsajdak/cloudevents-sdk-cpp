@@ -2,7 +2,8 @@
 uid: SWR-BIND-0016
 title: A failed moving call leaves the message unchanged
 type: software
-status: approved
+status: implemented
+delivered_in: v0.6.1
 priority: medium
 rationale: >
   A forwarder that cannot decode a message may still need to send its bytes elsewhere, for example to

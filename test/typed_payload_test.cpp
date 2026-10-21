@@ -279,22 +279,28 @@ void check_payload_member_kinds(std::string_view label) {
   using namespace boost::ut;
 
   constexpr std::array cases{
-      mistyped_member{R"({"sensor":"s","celsius":1,"calibrated":"yes"})", "calibrated",
+      mistyped_member{R"({"sensor":"s","celsius":1,"calibrated":"yes"})",
+                      "calibrated",
                       "a string where a boolean is declared"},
-      mistyped_member{R"({"sensor":"s","celsius":1,"drift":"fast"})", "drift",
+      mistyped_member{R"({"sensor":"s","celsius":1,"drift":"fast"})",
+                      "drift",
                       "a string where a number is declared"},
-      mistyped_member{R"({"sensor":"s","celsius":"hot"})", "celsius",
-                      "a string where an integer is declared"},
-      mistyped_member{R"({"sensor":"s","celsius":1,"tags":"north"})", "tags",
+      mistyped_member{
+          R"({"sensor":"s","celsius":"hot"})", "celsius", "a string where an integer is declared"},
+      mistyped_member{R"({"sensor":"s","celsius":1,"tags":"north"})",
+                      "tags",
                       "a string where an array is declared"},
-      mistyped_member{R"({"sensor":"s","celsius":1,"labels":["site"]})", "labels",
+      mistyped_member{R"({"sensor":"s","celsius":1,"labels":["site"]})",
+                      "labels",
                       "an array where an object is declared"},
-      mistyped_member{R"({"sensor":"s","celsius":1,"tags":["north",7]})", "tags",
+      mistyped_member{R"({"sensor":"s","celsius":1,"tags":["north",7]})",
+                      "tags",
                       "an array element of the wrong kind"},
-      mistyped_member{R"({"sensor":"s","celsius":1,"labels":{"site":7}})", "site",
+      mistyped_member{R"({"sensor":"s","celsius":1,"labels":{"site":7}})",
+                      "site",
                       "a map value of the wrong kind"},
-      mistyped_member{R"({"sensor":"s","celsius":1,"note":7})", "note",
-                      "an optional holding the wrong kind"},
+      mistyped_member{
+          R"({"sensor":"s","celsius":1,"note":7})", "note", "an optional holding the wrong kind"},
   };
 
   for (const auto& [document, named, why] : cases) {

@@ -1,5 +1,7 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -17,6 +19,7 @@
 
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "moving_entry_points.hpp"
 #include "payload.hpp"
 
 // The HTTP binding exercises the core with case_sensitive_names == false and a
@@ -788,5 +791,168 @@ const boost::ut::suite<"empty-binary-body-has-no-payload"> empty_binary_body = [
     expect(undeclared.has_value() && std::holds_alternative<std::monostate>(*undeclared));
   };
 };
+
+namespace {
+
+namespace moving = ce_test::moving;
+
+constexpr auto non_json_media_types = std::to_array<std::string_view>(
+    {"application/octet-stream", "text/plain", "application/xml", ""});
+
+/// Every media type the reader tells apart: JSON ones, others, and none.
+[[nodiscard]] auto every_media_type() -> std::vector<std::string_view> {
+  std::vector<std::string_view> all{std::begin(json_media_types), std::end(json_media_types)};
+  all.insert(all.end(), non_json_media_types.begin(), non_json_media_types.end());
+  return all;
+}
+
+}  // namespace
+
+// spec: SWR-BIND-0014
+const boost::ut::suite<"moving-reader-agrees-with-the-copying-reader"> moving_reader_agrees = [] {
+  using namespace boost::ut;
+
+  "every body kind reads as the copying reader reads it"_test = [] {
+    for (const auto media_type : every_media_type()) {
+      for (const auto text : {""sv, padded_body, "{not json"sv}) {
+        for (const auto& options : {ce::json::decode_options{},
+                                    ce::json::decode_options{.parse_binary_body = false},
+                                    ce::json::decode_options{.retain_document_up_to = 0}}) {
+          const auto media = moving::media_type_of(media_type);
+          const auto by_copy = binding::read_body<mini>(bytes_of(text), media, options);
+          const auto by_move = binding::read_body_moving<mini>(bytes_of(text), media, options);
+          expect(by_copy.has_value() == by_move.has_value()) << media_type << ": " << text;
+          if (by_copy && by_move) {
+            expect(bool{*by_copy == *by_move}) << media_type << ": " << text;
+          } else if (!by_copy && !by_move) {
+            expect(by_copy.error().code == by_move.error().code) << media_type << ": " << text;
+          }
+        }
+      }
+    }
+  };
+};
+
+// spec: SWR-BIND-0014
+const boost::ut::suite<"moving-reader-takes-a-non-json-body-without-a-copy"> moving_reader_adopts =
+    [] {
+      using namespace boost::ut;
+
+      "a non-empty body under no JSON media type becomes the payload, buffer and all"_test = [] {
+        for (const auto media_type : non_json_media_types) {
+          for (const std::size_t size : moving::non_empty_body_sizes) {
+            ce::binary body(size, moving::body_fill);
+            const std::byte* const address = body.data();
+            const auto read =
+                binding::read_body_moving<mini>(std::move(body), moving::media_type_of(media_type));
+            expect(read.has_value()) << media_type << " " << size;
+            expect(read.has_value() && std::holds_alternative<ce::binary>(*read));
+            if (read && std::holds_alternative<ce::binary>(*read)) {
+              const auto& held = std::get<ce::binary>(*read);
+              expect(held.data() == address) << media_type << " " << size << ": no copy was made";
+              expect(held.size() == size);
+            }
+          }
+        }
+      };
+
+      "the options do not matter to a body that is not JSON"_test = [] {
+        for (const auto& options : {ce::json::decode_options{.parse_binary_body = false},
+                                    ce::json::decode_options{.retain_document_up_to = 0}}) {
+          ce::binary body = bytes_of(padded_body);
+          const std::byte* const address = body.data();
+          const auto read = binding::read_body_moving<mini>(
+              std::move(body), moving::media_type_of("text/plain"), options);
+          expect(read.has_value() && std::holds_alternative<ce::binary>(*read));
+          if (read && std::holds_alternative<ce::binary>(*read)) {
+            expect(std::get<ce::binary>(*read).data() == address);
+          }
+        }
+      };
+    };
+
+// spec: SWR-BIND-0014
+const boost::ut::suite<"moving-reader-takes-the-copying-path-for-a-json-body">
+    moving_reader_copies_json = [] {
+      using namespace boost::ut;
+
+      "a JSON body is read from its bytes and the bytes stay where they were"_test = [] {
+        for (const auto media_type : json_media_types) {
+          for (const auto& options : {ce::json::decode_options{},
+                                      ce::json::decode_options{.parse_binary_body = false},
+                                      ce::json::decode_options{.retain_document_up_to = 0}}) {
+            ce::binary body = bytes_of(padded_body);
+            const std::byte* const address = body.data();
+            const ce::binary before = body;
+            const auto read = binding::read_body_moving<mini>(
+                std::move(body), moving::media_type_of(media_type), options);
+            expect(read.has_value()) << media_type;
+            expect(!read.has_value() || !std::holds_alternative<ce::binary>(*read)) << media_type;
+            // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+            expect(body == before && body.data() == address) << media_type << ": left intact";
+            // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+          }
+        }
+      };
+    };
+
+// spec: SWR-BIND-0015
+const boost::ut::suite<"moved-body-has-size-0-and-capacity-0-and-headers-are-unchanged">
+    moved_body_is_released = [] {
+      using namespace boost::ut;
+
+      "the reader leaves a moved body with no buffer"_test = [] {
+        for (const auto media_type : non_json_media_types) {
+          for (const std::size_t size : moving::non_empty_body_sizes) {
+            ce::binary body(size, moving::body_fill);
+            body.reserve(size + moving::spare_capacity_bytes);
+            const auto read =
+                binding::read_body_moving<mini>(std::move(body), moving::media_type_of(media_type));
+            expect(read.has_value()) << media_type << " " << size;
+            // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+            expect(body.size() == 0U) << media_type << " " << size;
+            expect(body.capacity() == 0U)
+                << media_type << " " << size << ": the buffer is released";
+            // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+          }
+        }
+      };
+
+    };
+
+// spec: SWR-BIND-0017
+const boost::ut::suite<"copying-entry-points-leave-the-message-intact"> copying_core_is_intact =
+    [] {
+      using namespace boost::ut;
+
+      "read_body leaves the body it is given as it was, for every media type"_test = [] {
+        for (const auto media_type : every_media_type()) {
+          ce::binary body = bytes_of(padded_body);
+          const std::byte* const address = body.data();
+          const ce::binary before = body;
+          const auto media = moving::media_type_of(media_type);
+          const auto by_lvalue = binding::read_body<mini>(body, media);
+          // The pin of SWR-BIND-0017: a std::move to a const reference must leave it alone.
+          // NOLINTNEXTLINE(performance-move-const-arg)
+          const auto by_move = binding::read_body<mini>(std::move(body), media);
+          // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+          expect(body == before && body.data() == address) << media_type;
+          // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+          expect(by_lvalue.has_value() && by_move.has_value()) << media_type;
+        }
+      };
+
+      "the structured decode leaves the message as it was"_test = [] {
+        ce::message structured{
+            .body = bytes_of(R"({"specversion":"1.0","id":"1","source":"/s","type":"t"})")};
+        const auto before = moving::take(structured);
+        const auto by_lvalue = binding::decode_structured<mini>(structured);
+        // NOLINTNEXTLINE(performance-move-const-arg)
+        const auto by_move = binding::decode_structured<mini>(std::move(structured));
+        expect(by_lvalue.has_value() && by_move.has_value());
+        // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
+        expect(moving::unchanged(structured, before));
+      };
+    };
 
 int main() {}

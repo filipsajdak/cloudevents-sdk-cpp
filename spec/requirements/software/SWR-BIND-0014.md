@@ -20,8 +20,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp]
+verified_by: [test:test/binding_core_test.cpp::moving-reader-agrees-with-the-copying-reader, test:test/binding_core_test.cpp::moving-reader-takes-a-non-json-body-without-a-copy, test:test/binding_core_test.cpp::moving-reader-takes-the-copying-path-for-a-json-body]
 owner: filip.sajdak
 version: 2
 ---

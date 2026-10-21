@@ -320,6 +320,44 @@ template<json::json_codec Codec>
   return data_t{json_document::make<Codec>(std::move(*parsed))};
 }
 
+namespace detail {
+
+// spec: SWR-BIND-0014
+/// Whether a call that may move the body does move it: a non-empty body under a media type that is
+/// absent or not one `is_json_content_type` accepts, the one case in which `read_body` returns the
+/// body as the `ce::binary` payload.
+[[nodiscard]] inline auto moves_body(const binary& body,
+                                     const std::optional<datacontenttype>& media_type) -> bool {
+  return !body.empty() && (!media_type || !is_json_content_type(media_type->view()));
+}
+
+// spec: SWR-BIND-0015
+/// Takes the bytes out of `body` and leaves it with size 0 and capacity 0. A swap with an empty
+/// vector does what a move does not promise: a moved-from vector may keep its capacity.
+[[nodiscard]] inline auto release_bytes(binary& body) noexcept -> binary {
+  binary taken;
+  taken.swap(body);
+  return taken;
+}
+
+}  // namespace detail
+
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+/// `read_body` for a caller that gives the body up: a body that is moved (see `detail::moves_body`)
+/// becomes the `ce::binary` payload without a copy and leaves `body` with size 0 and capacity 0;
+/// any other body is read as `read_body` reads it and `body` is left as it was.
+template<json::json_codec Codec>
+// NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+[[nodiscard]] auto read_body_moving(binary&& body,
+                                    const std::optional<datacontenttype>& media_type,
+                                    const json::decode_options& options = {}) -> result<data_t> {
+  if (!detail::moves_body(body, media_type)) {
+    return read_body<Codec>(body, media_type, options);
+  }
+  return data_t{std::in_place_type<binary>, detail::release_bytes(body)};
+}
+
 template <binding_traits T, json::json_codec Codec>
 [[nodiscard]] auto encode_structured(const event& cloud_event) -> result<message> {
   auto text = json_format<Codec>::encode(cloud_event);

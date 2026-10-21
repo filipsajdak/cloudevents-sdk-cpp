@@ -23,8 +23,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp]
+verified_by: [test:test/binding_core_test.cpp::moved-body-has-size-0-and-capacity-0-and-headers-are-unchanged]
 owner: filip.sajdak
 version: 2
 ---

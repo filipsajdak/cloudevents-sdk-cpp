@@ -13,7 +13,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
 satisfied_by: []
-verified_by: []
+verified_by: [test:test/binding_core_test.cpp::copying-entry-points-leave-the-message-intact]
 owner: filip.sajdak
 version: 2
 ---

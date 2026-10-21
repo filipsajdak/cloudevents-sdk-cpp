@@ -393,6 +393,21 @@ jobs:
         run: cmake --build build
       - name: coverage-report
         run: cmake --build build --target coverage-report
+      - name: variants
+        if: always()
+        run: |
+          mkdir -p build/coverage/variants
+          cd build
+          G="gcovr --root .. --gcov-executable gcov-13 --filter ../include/cloudevents/ --exclude ../include/cloudevents/detail/expected_polyfill.hpp"
+          $G --print-summary > coverage/variants/default.txt
+          $G --exclude-throw-branches --print-summary > coverage/variants/nothrow.txt
+          $G --exclude-throw-branches --exclude-unreachable-branches --print-summary > coverage/variants/nothrow_unreach.txt
+          $G --exclude-unreachable-branches --print-summary > coverage/variants/unreach.txt
+          $G --exclude-throw-branches --txt-metric branch --txt coverage/variants/nothrow_files.txt
+          $G --txt-metric branch --txt coverage/variants/default_files.txt
+          $G --exclude-throw-branches --xml coverage/variants/nothrow.xml
+          $G --json coverage/variants/default.json
+          cat coverage/variants/*.txt | head -400
       - uses: actions/upload-artifact@v4
         if: always()
         with:

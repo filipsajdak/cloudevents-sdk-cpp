@@ -229,6 +229,42 @@ auto nats_decode_binary() -> bool {
   return event.has_value();
 }
 
+/// Options that leave a binary-mode JSON body unparsed.
+///
+/// `parse_binary_body` exists from v0.6.1. The perf job measures the merge base with the
+/// pull request's probe, so the probe has to compile against a `decode_options` that has
+/// no such member: there the operation measures the default behaviour. The member is
+/// named through the template parameter so that the branch not taken is never checked.
+template<class Options = ce::json::decode_options>
+[[nodiscard]] constexpr auto unparsed_options() -> Options {
+  if constexpr (requires(Options options) { options.parse_binary_body; }) {
+    return Options{.parse_binary_body = false};
+  } else {
+    return Options{};
+  }
+}
+
+template<class C>
+auto http_decode_binary_unparsed() -> bool {
+  auto event = ce::http::from_message<C>(http_binary_message(), unparsed_options());
+  escape(event);
+  return event.has_value();
+}
+
+template<class C>
+auto kafka_decode_binary_unparsed() -> bool {
+  auto event = ce::kafka::from_message<C>(kafka_binary_message(), unparsed_options());
+  escape(event);
+  return event.has_value();
+}
+
+template<class C>
+auto nats_decode_binary_unparsed() -> bool {
+  auto event = ce::nats::from_message<C>(nats_binary_message(), unparsed_options());
+  escape(event);
+  return event.has_value();
+}
+
 // Binary-mode decode followed by the typed read of the payload it carries. Where the
 // body is kept as text the read parses it again; where the decode keeps a document
 // the codec built, the read uses it. The two sides differ in what the receive and
@@ -454,6 +490,9 @@ auto operations_for(std::string_view codec) {
       {.id = id("http_encode_structured"), .run = http_encode_structured<C>},
       {.id = id("kafka_decode_binary"), .run = kafka_decode_binary<C>},
       {.id = id("nats_decode_binary"), .run = nats_decode_binary<C>},
+      {.id = id("http_decode_binary_unparsed"), .run = http_decode_binary_unparsed<C>},
+      {.id = id("kafka_decode_binary_unparsed"), .run = kafka_decode_binary_unparsed<C>},
+      {.id = id("nats_decode_binary_unparsed"), .run = nats_decode_binary_unparsed<C>},
       {.id = id("http_decode_binary_typed"), .run = decode_binary_typed<http_binding, C>},
       {.id = id("kafka_decode_binary_typed"), .run = decode_binary_typed<kafka_binding, C>},
       {.id = id("nats_decode_binary_typed"), .run = decode_binary_typed<nats_binding, C>},

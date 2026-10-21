@@ -52,6 +52,7 @@ class widget {
   int n_;
 };
 auto make(int n) -> widget { return widget{n}; }
+auto configure(options chosen = {}) -> int;
 }  // namespace ce::v3
 """
 
@@ -139,6 +140,17 @@ class Verdicts(unittest.TestCase):
 
     def test_a_member_appended_to_an_aggregate_with_a_default_initialiser_passes(self) -> None:
         self.assertEqual(self.verdict(BASE.replace("bool strict = false; };", "bool strict = false; int extra = 0; };"))[0], frozen_api_diff.EXIT_OK)
+
+    def test_a_member_appended_to_an_aggregate_a_default_argument_value_initialises_passes(self) -> None:
+        # `options chosen = {}` spells every member, so its tree grows with the aggregate.
+        status, out = self.verdict(BASE.replace("bool strict = false; };", "bool strict = false; int extra = 0; };"))
+        self.assertEqual((status, out.count("changed:")), (frozen_api_diff.EXIT_OK, 0))
+
+    def test_a_default_argument_that_is_not_the_empty_list_still_fails_when_the_aggregate_grows(self) -> None:
+        base = BASE.replace("options chosen = {}", "options chosen = {1}")
+        self.write(self.base, HEADER, base)
+        status, _ = self.verdict(base.replace("options chosen = {1}", "options chosen = {2}").replace("bool strict = false; };", "bool strict = false; int extra = 0; };"))
+        self.assertEqual(status, frozen_api_diff.EXIT_BROKEN)
 
     def test_a_removed_declaration_fails_and_names_it(self) -> None:
         status, out = self.verdict(BASE.replace("  auto size() const noexcept -> int { return n_; }\n", ""))

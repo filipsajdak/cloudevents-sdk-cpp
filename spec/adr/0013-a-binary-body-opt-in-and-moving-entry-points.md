@@ -3,7 +3,8 @@
 ## Status
 
 Accepted 2026-10-21 for both stages, on CR-0005: the opt-in, and the moving entry points after the measurement of a non-JSON binary-mode receive (pull request #93).
-The failed-call state of a moving call is a proposal the owner has not ruled (CR-0005, open question 1).
+The owner ruled the open questions of stage 2 the same day (CR-0005, items 14 to 22): the state of the message after a moving call, the treatment of JSON bodies, the reach, the names, the payload type and whether a buffer is released.
+No question is open.
 It does not change ADR-0012: `ce::v4` and `ce::v3` stay frozen, and this decision adds to v4 only.
 
 ## Context
@@ -54,9 +55,23 @@ The frozen-API diff job is told the same, so it needs no per-member allowlist en
 **The moving entry point has a new name, not an overload, and only in v4 (the owner, 2026-10-21, after the measurement).**
 A same-name `from_message(message&&)` would make `from_message<C>(std::move(m))` move from `m` where today it binds to `const message&` and leaves `m` intact, the class of change the owner ruled a break on 2026-09-28, and would make `&from_message<C>` ambiguous.
 `from_message_moving<Codec>(message&&, decode_options = {})` in the HTTP, Kafka and NATS bindings, with `binding::read_body_moving` under them, changes no existing call.
-It returns what `from_message` returns, moves the body into a `ce::binary` payload for a non-JSON body, and leaves `header_fields` unchanged and the body valid and unspecified after success.
+It returns what `from_message` returns, whatever the body: it moves the body into a `ce::binary` payload for a non-JSON body and takes the copying path for a JSON, structured or batch body.
 The owner ruled the name `from_message_moving` and v4 only; v3 gets none.
-Proposed, not ruled (CR-0005 open questions): that a failed call leaves the message unchanged, that `from_message_moving` also exists for JSON and structured-mode messages and takes the copying path there, and that `from_batch_message` and `from_payload` get no moving form because they keep no bytes of the input to move.
+
+**The state of the message after a call (owner, 2026-10-21).**
+A failed call leaves the message unchanged, for every body, so a forwarder can still send the bytes to a dead-letter queue; the body is taken only after the last failure point.
+A body is *moved* when it is a non-empty binary-mode body whose media type is absent or not one `is_json_content_type` accepts; that is the one case in which the reader returns the body as a `ce::binary` payload.
+After a successful call that moved the body, the body has size 0 and capacity 0 and the headers are unchanged.
+The owner declined "valid and unspecified", as a moved-from `std::vector` is, and ruled that the empty body with its buffer released is a deliberate, permanent promise: a documented moved-from state is part of the API, as the moved-from `json_document` taught (`D-CORE-9`, CR-0004).
+The implementation must therefore move from the vector and leave capacity 0 itself, with `std::exchange(body, {})` or a swap, and the tests check `capacity() == 0`.
+A body that was not moved (JSON, structured, batch, empty) takes the copying path, and the message is left intact, byte for byte, on success and on failure.
+The owner chose "empty only what was moved" over emptying every body, which would have discarded a caller's bytes for no saving.
+
+**The reach is wider than first proposed (owner, 2026-10-21).**
+`http::from_batch_message` and `nats::from_payload` get moving counterparts as well, `http::from_batch_message_moving` and `nats::from_payload_moving`, in addition to `binding::read_body_moving` and the three `from_message_moving`.
+The owner was told that these two parse JSON and save nothing from a move, and chose symmetry.
+`from_payload` takes a `std::string_view` that owns nothing, so its moving form takes a `std::string&&`.
+Both always take the copying path and never modify their input: they exist for symmetry only.
 
 **The evidence for the move (pull request #93, Callgrind, gcc-14 x86-64):** for a non-JSON binary-mode body a move saves at most one allocation of the body's size, that is one of four allocations, 99.9% of the allocated bytes at 64 KiB and about 73% to 75% at 256 B.
 In instructions the ceiling is 5.5% to 7.8% for 256 B and 85% to 89% for 64 KiB; the 64 KiB figure is overstated because Callgrind replaces `memcpy` with a routine of about one instruction per byte.
@@ -75,7 +90,9 @@ The owner weighed a small gain for small bodies against a large one for large bo
 - `decode_options` grows from 8 to 16 bytes, and v3 callers of `json_format::decode` can write a field that does nothing.
 - A caller who opts in takes over validation of the body.
 - The move saves nothing for a JSON body, so the forwarder case gains from the opt-in alone.
-- A second name per binding and a longer export list in the module.
+- A second name per binding, two more names for the batch and payload entry points that save nothing, and a longer export list in the module.
+- A moved-from body with size 0 and capacity 0 is a promise that cannot be given up without a rule 4 decision, and it forces the implementation to release the buffer explicitly.
+- The guarantee depends on the body: a moved body is emptied, any other body is left intact, so a caller needs the media type to know which.
 - A small non-JSON body gains at most 5.5% to 7.8% of the instructions of a receive.
 
 ### Neutral
@@ -92,6 +109,9 @@ The owner weighed a small gain for small bodies against a large one for large bo
 - **A same-name `from_message(message&&)`.** It silently changes the state of a moved argument and makes the function's address ambiguous. Declined by the owner on 2026-10-21.
 - **A tag or wrapper parameter on `from_message`.** It avoids the hazard with one name, at the price of a public tag type and a third-place options parameter. Declined by the owner on 2026-10-21.
 - **`from_message(message)` taking the message by value.** It replaces a published declaration and copies on every lvalue call. Declined by the owner on 2026-10-21.
+- **A moved-from body that is "valid and unspecified".** The state of a moved-from `std::vector`. Declined by the owner on 2026-10-21 in favour of an empty body with capacity 0.
+- **Emptying every body after success, also one that was copied.** Declined by the owner on 2026-10-21 ("empty only what was moved").
+- **No moving form for `from_batch_message` and `from_payload`.** The first proposal, because they keep no bytes to move. Declined by the owner on 2026-10-21, who chose symmetry knowing they save nothing.
 - **The moving entry point in v3.** An addition to a frozen generation that rule 4 admits. Declined by the owner on 2026-10-21: a consumer that wants fewer copies migrates to v4.
 
 ## References

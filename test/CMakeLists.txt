@@ -169,6 +169,13 @@ if(Python3_Interpreter_FOUND)
     COMMAND Python3::Interpreter -m unittest discover
             -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_mutation_*.py")
   set_tests_properties(mutation_tools PROPERTIES LABELS "tools")
+  # The packaging recipes name the project's version (SWR-ADOPT-0008). The suite
+  # also checks this repository, so a version bump that forgets the vcpkg
+  # manifest fails every build that runs ctest, not only the packaging workflow.
+  add_test(NAME packaging_tools
+    COMMAND Python3::Interpreter -m unittest discover
+            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_packaging_*.py")
+  set_tests_properties(packaging_tools PROPERTIES LABELS "tools")
   # The frozen-API diff (SWR-BUILD-0015). Its verdict suites need a clang++ and
   # its release suites also the tags and the dependencies' headers; each skips
   # when one is missing, so a shallow clone or a GCC-only host still passes.

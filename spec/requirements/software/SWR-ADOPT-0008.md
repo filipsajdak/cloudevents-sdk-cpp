@@ -2,7 +2,7 @@
 uid: SWR-ADOPT-0008
 title: A packaging recipe whose version differs from the project's version fails a check
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The vcpkg port names a release by version and by the SHA-512 of that release's source archive, and the Conan recipe by version; each has to move with the tag (docs/RELEASE.md).
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-ADOPT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:scripts/check_packaging_version.py]
+verified_by: [test:scripts/test_packaging_version.py::PackagingVersion]
 owner: filip.sajdak
 version: 1
 ---

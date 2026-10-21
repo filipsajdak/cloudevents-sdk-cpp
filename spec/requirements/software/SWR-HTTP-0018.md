@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-HTTP-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/http.hpp]
+verified_by: [test:test/http_binding_test.cpp::from-message-moving-agrees-with-from-message]
 owner: filip.sajdak
 version: 1
 ---

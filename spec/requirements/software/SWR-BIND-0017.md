@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: [test:test/binding_core_test.cpp::copying-entry-points-leave-the-message-intact]
+satisfied_by: [code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/binding_core_test.cpp::copying-entry-points-leave-the-message-intact, test:test/http_binding_test.cpp::from-message-leaves-the-message-intact, test:test/kafka_binding_test.cpp::kafka-from-message-leaves-the-message-intact, test:test/nats_binding_test.cpp::nats-from-message-leaves-the-message-intact]
 owner: filip.sajdak
 version: 2
 ---

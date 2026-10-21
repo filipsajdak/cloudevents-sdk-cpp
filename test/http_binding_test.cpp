@@ -24,6 +24,7 @@
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "moving_entry_points.hpp"
 #include "payload.hpp"
 
 // The binding is a template over the JSON codec, exactly as json_format is. So
@@ -1915,6 +1916,126 @@ const boost::ut::suite<"from-batch-message-ignores-parse-binary-body"> http_batc
       laid_out->body = ce::to_bytes("[{not json");
       const auto refused = ce::http::from_batch_message<C>(*laid_out, {.parse_binary_body = false});
       expect(!refused.has_value()) << codec << ": a malformed batch still fails";
+    };
+  });
+};
+
+// --- CR-0005: the moving entry points -----------------------------------------
+
+namespace {
+
+/// The HTTP entry points under the shared checks of moving_entry_points.hpp.
+template<class C>
+struct http_under_test {
+  static constexpr std::string_view prefix = "ce-";
+  static constexpr std::string_view media_header = "Content-Type";
+
+  [[nodiscard]] static auto lay_out(const ce::event& subject, ce::content_mode mode)
+      -> ce::result<ce::message> {
+    return ce::http::to_message<C>(subject, mode);
+  }
+
+  template<class Message>
+  [[nodiscard]] static auto copying(Message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::http::from_message<C>(std::forward<Message>(given), options);
+  }
+
+  [[nodiscard]] static auto moving(ce::message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::http::from_message_moving<C>(std::move(given), options);
+  }
+};
+
+/// Whether a moving entry point accepts a message of this value category.
+template<class M>
+constexpr bool http_moving_accepts =
+    requires(M&& given) { ce::http::from_message_moving<mini_codec>(std::forward<M>(given)); };
+}  // namespace
+
+// spec: SWR-HTTP-0018
+// spec: SWR-BIND-0014
+const boost::ut::suite<"from-message-moving-agrees-with-from-message"> http_moving_agrees = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_moving_agrees_with_copying<http_under_test<C>>(codec);
+    };
+  });
+
+  "the value policy is a template parameter, as in from_message"_test = [] {
+    const ce::message plain = binary_message_with({"ce-subject", "caf\xC3\xA9"});
+    const auto by_copy = ce::http::from_message<mini_codec, ce::http::literal_values>(plain);
+    ce::message given = plain;
+    const auto by_move =
+        ce::http::from_message_moving<mini_codec, ce::http::literal_values>(std::move(given));
+    expect(ce_test::moving::agree(by_copy, by_move));
+    expect(by_copy.has_value() && by_move.has_value());
+  };
+
+  "the entry point takes a message by rvalue reference and returns a result of an event"_test = [] {
+    static_assert(std::is_same_v<decltype(ce::http::from_message_moving<mini_codec>(
+                                     std::declval<ce::message>())),
+                                 ce::result<ce::event>>);
+    static_assert(http_moving_accepts<ce::message>);
+    static_assert(!http_moving_accepts<ce::message&>);
+    static_assert(!http_moving_accepts<const ce::message&>);
+  };
+};
+
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+const boost::ut::suite<"http-moving-call-releases-a-moved-body"> http_moving_releases = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_moved_body_is_released<http_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0015
+const boost::ut::suite<"http-moving-call-leaves-an-unmoved-body-intact"> http_moving_unmoved = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_unmoved_body_is_left_intact<http_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0016
+const boost::ut::suite<"http-moving-call-failure-keeps-the-message"> http_moving_failure = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_failed_call_leaves_the_message<http_under_test<C>>(codec);
+    };
+  });
+
+  "a batch given to the single-event moving entry point is refused and left alone"_test = [] {
+    ce::message given{
+        .header_fields = {{"Content-Type", "application/cloudevents-batch+json"}},
+        .body = ce::binary(ce_test::moving::small_body_bytes, ce_test::moving::body_fill)};
+    const auto before = ce_test::moving::take(given);
+    const auto refused = ce::http::from_message_moving<mini_codec>(std::move(given));
+    expect(!refused.has_value());
+    // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
+    expect(ce_test::moving::unchanged(given, before));
+  };
+};
+
+// spec: SWR-BIND-0017
+const boost::ut::suite<"from-message-leaves-the-message-intact"> http_copying_intact = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_copying_entry_point_leaves_the_message<http_under_test<C>>(codec);
     };
   });
 };

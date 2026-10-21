@@ -15,6 +15,7 @@
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "moving_entry_points.hpp"
 #include "payload.hpp"
 
 namespace {
@@ -431,6 +432,108 @@ const boost::ut::suite<"from-payload-ignores-parse-binary-body"> nats_payload_ig
       if (!refused) {
         expect(refused.error().code == ce::errc::parse_error) << codec;
       }
+    };
+  });
+};
+
+// --- CR-0005: the moving entry points -----------------------------------------
+
+namespace {
+
+using mini_codec = ce::test::mini_codec;
+
+/// The NATS entry points under the shared checks of moving_entry_points.hpp. A NATS message
+/// carries its media type as the `ce-datacontenttype` attribute.
+template<class C>
+struct nats_under_test {
+  static constexpr std::string_view prefix = "ce-";
+  static constexpr std::string_view media_header = "ce-datacontenttype";
+
+  [[nodiscard]] static auto lay_out(const ce::event& subject, ce::content_mode mode)
+      -> ce::result<ce::message> {
+    return ce::nats::to_message<C>(subject, mode);
+  }
+
+  template<class Message>
+  [[nodiscard]] static auto copying(Message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::nats::from_message<C>(std::forward<Message>(given), options);
+  }
+
+  [[nodiscard]] static auto moving(ce::message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::nats::from_message_moving<C>(std::move(given), options);
+  }
+};
+
+template<class M>
+constexpr bool nats_moving_accepts =
+    requires(M&& given) { ce::nats::from_message_moving<mini_codec>(std::forward<M>(given)); };
+}  // namespace
+
+// spec: SWR-NATS-0005
+// spec: SWR-BIND-0014
+const boost::ut::suite<"nats-from-message-moving-agrees-with-from-message"> nats_moving_agrees =
+    [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::moving::check_moving_agrees_with_copying<nats_under_test<C>>(codec);
+        };
+      });
+
+      "the entry point returns a result of an event"_test = [] {
+        static_assert(std::is_same_v<decltype(ce::nats::from_message_moving<mini_codec>(
+                                         std::declval<ce::message>())),
+                                     ce::result<ce::event>>);
+        static_assert(nats_moving_accepts<ce::message>);
+        static_assert(!nats_moving_accepts<ce::message&>);
+        static_assert(!nats_moving_accepts<const ce::message&>);
+      };
+    };
+
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+const boost::ut::suite<"nats-moving-call-releases-a-moved-body"> nats_moving_releases = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_moved_body_is_released<nats_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0015
+const boost::ut::suite<"nats-moving-call-leaves-an-unmoved-body-intact"> nats_moving_unmoved = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_unmoved_body_is_left_intact<nats_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0016
+const boost::ut::suite<"nats-moving-call-failure-keeps-the-message"> nats_moving_failure = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_failed_call_leaves_the_message<nats_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0017
+const boost::ut::suite<"nats-from-message-leaves-the-message-intact"> nats_copying_intact = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_copying_entry_point_leaves_the_message<nats_under_test<C>>(codec);
     };
   });
 };

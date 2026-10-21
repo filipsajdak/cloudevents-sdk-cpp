@@ -799,6 +799,69 @@ namespace moving = ce_test::moving;
 constexpr auto non_json_media_types = std::to_array<std::string_view>(
     {"application/octet-stream", "text/plain", "application/xml", ""});
 
+/// A message of the stand-in binding: the four attributes, the media type if any, a body.
+[[nodiscard]] auto core_message(std::string_view media_type, ce::binary body) -> ce::message {
+  ce::message built{.header_fields = {{"x_specversion", "1.0"},
+                                      {"x_id", "1"},
+                                      {"x_source", "/s"},
+                                      {"x_type", "t"}},
+                    .body = std::move(body)};
+  if (!media_type.empty()) {
+    built.header_fields.add("content-type", std::string{media_type});
+  }
+  return built;
+}
+
+/// The attributes and the media type of a stand-in message, as a binding reads them.
+[[nodiscard]] auto core_head(const ce::message& from) -> ce::result<ce::event::builder> {
+  auto under_construction = binding::read_attributes<exact_traits>(from.header_fields);
+  if (!under_construction) {
+    return ce::fail(under_construction.error().code,
+                    under_construction.error().detail,
+                    under_construction.error().where);
+  }
+  if (const std::string* declared = from.header_fields.find_exact("content-type");
+      declared != nullptr) {
+    auto media_type = ce::datacontenttype::make(*declared);
+    if (!media_type) {
+      return ce::fail(media_type.error().code, media_type.error().detail, media_type.error().where);
+    }
+    under_construction->rest.datacontenttype = std::move(*media_type);
+  }
+  return under_construction;
+}
+
+/// The core's receive over the stand-in binding, as the bindings run it: the copying read.
+[[nodiscard]] auto core_copying(const ce::message& from, ce::json::decode_options options = {})
+    -> ce::result<ce::event> {
+  auto under_construction = core_head(from);
+  if (!under_construction) {
+    return ce::fail(under_construction.error().code,
+                    under_construction.error().detail,
+                    under_construction.error().where);
+  }
+  auto payload =
+      binding::read_body<mini>(from.body, under_construction->rest.datacontenttype, options);
+  if (!payload) {
+    return ce::fail(payload.error().code, payload.error().detail, payload.error().where);
+  }
+  under_construction->rest.data = std::move(*payload);
+  return std::move(*under_construction).build();
+}
+
+/// The same receive, taking the body as the moving entry points do.
+[[nodiscard]] auto core_moving(ce::message& from, ce::json::decode_options options = {})
+    -> ce::result<ce::event> {
+  auto under_construction = core_head(from);
+  if (!under_construction) {
+    return ce::fail(under_construction.error().code,
+                    under_construction.error().detail,
+                    under_construction.error().where);
+  }
+  return binding::detail::build_taking_body<mini>(
+      std::move(*under_construction), from.body, options);
+}
+
 /// Every media type the reader tells apart: JSON ones, others, and none.
 [[nodiscard]] auto every_media_type() -> std::vector<std::string_view> {
   std::vector<std::string_view> all{std::begin(json_media_types), std::end(json_media_types)};
@@ -918,6 +981,103 @@ const boost::ut::suite<"moved-body-has-size-0-and-capacity-0-and-headers-are-unc
         }
       };
 
+      "a receive that moves the body leaves the headers as they were"_test = [] {
+        for (const auto media_type : non_json_media_types) {
+          for (const std::size_t size : moving::non_empty_body_sizes) {
+            ce::message given = core_message(media_type, ce::binary(size, moving::body_fill));
+            const auto before = moving::take(given);
+            const auto by_copy = core_copying(given);
+            const auto decoded = core_moving(given);
+            expect(decoded.has_value()) << media_type << " " << size;
+            expect(moving::agree(by_copy, decoded)) << media_type << " " << size;
+            expect(given.body.size() == 0U) << media_type << " " << size;
+            expect(given.body.capacity() == 0U) << media_type << " " << size;
+            expect(given.header_fields == before.headers) << media_type << " " << size;
+            expect(moving::carries_bytes(decoded, before.address, size))
+                << media_type << " " << size << ": the event adopted the buffer";
+          }
+        }
+      };
+    };
+
+// spec: SWR-BIND-0015
+const boost::ut::suite<"unmoved-body-leaves-the-message-byte-for-byte-unchanged">
+    unmoved_body_is_intact = [] {
+      using namespace boost::ut;
+
+      const auto left_intact =
+          [](ce::message given, ce::json::decode_options options, std::string_view what) {
+            const auto before = moving::take(given);
+            const auto decoded = core_moving(given, options);
+            expect(decoded.has_value()) << what;
+            expect(moving::unchanged(given, before)) << what;
+          };
+
+      "a JSON body is copied and the message is not touched"_test = [&] {
+        for (const auto media_type : json_media_types) {
+          const auto make = [&] { return core_message(media_type, bytes_of(padded_body)); };
+          left_intact(make(), {}, "parsed");
+          left_intact(make(), {.parse_binary_body = false}, "unparsed");
+          left_intact(make(), {.retain_document_up_to = 0}, "kept as text");
+        }
+      };
+
+      "an empty body is not moved, and keeps the capacity it had"_test = [&] {
+        for (const auto media_type : non_json_media_types) {
+          ce::message given = core_message(media_type, ce::binary{});
+          given.body.reserve(moving::reserved_empty_bytes);
+          left_intact(std::move(given), {}, "an empty body");
+        }
+      };
+    };
+
+// spec: SWR-BIND-0016
+const boost::ut::suite<"failed-moving-call-leaves-the-message-unchanged"> failed_call_is_intact =
+    [] {
+      using namespace boost::ut;
+
+      const auto refused = [](ce::message given, ce::errc code, std::string_view what) {
+        const auto before = moving::take(given);
+        const auto by_copy = core_copying(given);
+        const auto decoded = core_moving(given);
+        expect(!decoded.has_value()) << what;
+        if (!decoded) {
+          expect(decoded.error().code == code) << what;
+        }
+        expect(moving::agree(by_copy, decoded)) << what;
+        expect(moving::unchanged(given, before)) << what;
+      };
+
+      "a body that would be moved stays when the event fails its final validation"_test = [&] {
+        for (const auto media_type : non_json_media_types) {
+          for (const std::size_t size : moving::non_empty_body_sizes) {
+            ce::message given = core_message(media_type, ce::binary(size, moving::body_fill));
+            ce::raw_headers without_id;
+            for (const auto& [name, value] : given.header_fields) {
+              if (name != "x_id") {
+                without_id.add(name, value);
+              }
+            }
+            given.header_fields = std::move(without_id);
+            refused(std::move(given),
+                    ce::errc::missing_required_attribute,
+                    std::string{media_type} + " of " + std::to_string(size));
+          }
+        }
+      };
+
+      "a body that would be moved stays when an attribute does not parse"_test = [&] {
+        ce::message given = core_message("application/octet-stream",
+                                         ce::binary(moving::small_body_bytes, moving::body_fill));
+        given.header_fields.add("x_time", "yesterday");
+        refused(std::move(given), ce::errc::invalid_timestamp, "a time that does not parse");
+      };
+
+      "a JSON body that does not parse stays"_test = [&] {
+        refused(core_message("application/json", bytes_of("{not json")),
+                ce::errc::parse_error,
+                "a malformed JSON body");
+      };
     };
 
 // spec: SWR-BIND-0017

@@ -340,6 +340,38 @@ namespace detail {
   return taken;
 }
 
+/// The event of a binary-mode message whose body is moved. Validation does not read the payload, so
+/// the event is built without it and the bytes are installed once it is known to be valid. The
+/// media type travels the same way, moved out of the builder and back, never copied. Every return
+/// names `built`, so the result is constructed in place and not moved.
+[[nodiscard]] inline auto build_moving_body(event::builder&& under_construction, binary& body)
+    -> result<event> {
+  auto media_type = std::move(under_construction.rest.datacontenttype);
+  auto built = std::move(under_construction).build();
+  if (built) {
+    built->set_data(data_t{std::in_place_type<binary>, release_bytes(body)}, std::move(media_type));
+  }
+  return built;
+}
+
+// spec: SWR-BIND-0016
+/// Builds the event of a binary-mode message from its attributes and its body, and takes the body
+/// out of the message only when it is moved and only after the last step that can fail.
+template<json::json_codec Codec>
+[[nodiscard]] auto build_taking_body(event::builder&& under_construction,
+                                     binary& body,
+                                     const json::decode_options& options) -> result<event> {
+  if (moves_body(body, under_construction.rest.datacontenttype)) {
+    return build_moving_body(std::move(under_construction), body);
+  }
+  auto payload = read_body<Codec>(body, under_construction.rest.datacontenttype, options);
+  if (!payload) {
+    return ce::v4::detail::forward_failure(std::move(payload).error());
+  }
+  under_construction.rest.data = std::move(*payload);
+  return std::move(under_construction).build();
+}
+
 }  // namespace detail
 
 // spec: SWR-BIND-0014

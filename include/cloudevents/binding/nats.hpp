@@ -86,6 +86,7 @@ template <json::json_codec Codec>
 }
 
 // spec: SWR-BIND-0009
+// spec: SWR-BIND-0017
 template<json::json_codec Codec>
 [[nodiscard]] auto from_message(const message& incoming, json::decode_options options = {})
     -> result<event> {
@@ -111,6 +112,35 @@ template<json::json_codec Codec>
   under_construction->rest.data = std::move(*payload);
 
   return std::move(*under_construction).build();
+}
+
+// spec: SWR-NATS-0005
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+// spec: SWR-BIND-0016
+/// `from_message` for a caller that gives the message up. A non-empty body whose media type is
+/// absent or not JSON is moved into the event: after a successful call it has size 0 and capacity
+/// 0, and the headers are as they were. Any other body is copied and the message is left as it
+/// was, as is the message after a failed call.
+template<json::json_codec Codec>
+// NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+[[nodiscard]] auto from_message_moving(message&& incoming, json::decode_options options = {})
+    -> result<event> {
+  if (detect_content_mode(incoming) == content_mode::structured) {
+    return binding::decode_structured<Codec>(incoming, options);
+  }
+
+  if (!incoming.header_fields.contains("ce-specversion")) {
+    return fail(errc::not_a_cloudevent, "no ce-specversion header and no CloudEvents content type");
+  }
+
+  auto under_construction = binding::read_attributes<detail::nats_traits>(incoming.header_fields);
+  if (!under_construction) {
+    return ce::v4::detail::forward_failure(std::move(under_construction).error());
+  }
+
+  return binding::detail::build_taking_body<Codec>(
+      std::move(*under_construction), incoming.body, options);
 }
 
 }  // namespace ce::inline v4::nats

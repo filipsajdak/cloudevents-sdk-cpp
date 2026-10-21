@@ -17,6 +17,7 @@
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
 #include "mini_codec.hpp"
+#include "moving_entry_points.hpp"
 #include "payload.hpp"
 
 // Every assertion that touches a codec is a function template instantiated for
@@ -445,5 +446,121 @@ const boost::ut::suite<"kafka-from-message-ignores-parse-binary-body-in-structur
         };
       });
     };
+
+// --- CR-0005: the moving entry point ------------------------------------------
+
+namespace {
+
+using mini_codec = ce::test::mini_codec;
+
+/// The Kafka entry points under the shared checks of moving_entry_points.hpp.
+template<class C>
+struct kafka_under_test {
+  static constexpr std::string_view prefix = "ce_";
+  static constexpr std::string_view media_header = "content-type";
+
+  [[nodiscard]] static auto lay_out(const ce::event& subject, ce::content_mode mode)
+      -> ce::result<ce::message> {
+    return ce::kafka::to_message<C>(subject, mode);
+  }
+
+  template<class Message>
+  [[nodiscard]] static auto copying(Message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::kafka::from_message<C>(std::forward<Message>(given), options);
+  }
+
+  [[nodiscard]] static auto moving(ce::message&& given, ce::json::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::kafka::from_message_moving<C>(std::move(given), options);
+  }
+};
+
+template<class M>
+constexpr bool kafka_moving_accepts =
+    requires(M&& given) { ce::kafka::from_message_moving<mini_codec>(std::forward<M>(given)); };
+
+}  // namespace
+
+// spec: SWR-KAFKA-0010
+// spec: SWR-BIND-0014
+const boost::ut::suite<"kafka-from-message-moving-agrees-with-from-message"> kafka_moving_agrees =
+    [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::moving::check_moving_agrees_with_copying<kafka_under_test<C>>(codec);
+        };
+      });
+
+      "the entry point returns a result of an event"_test = [] {
+        static_assert(std::is_same_v<decltype(ce::kafka::from_message_moving<mini_codec>(
+                                         std::declval<ce::message>())),
+                                     ce::result<ce::event>>);
+        static_assert(kafka_moving_accepts<ce::message>);
+        static_assert(!kafka_moving_accepts<ce::message&>);
+        static_assert(!kafka_moving_accepts<const ce::message&>);
+      };
+
+      "a batch content type is refused as it is by from_message, and left alone"_test = [] {
+        ce::message given{
+            .header_fields = {{"content-type", "application/cloudevents-batch+json"}},
+            .body = ce::binary(ce_test::moving::small_body_bytes, ce_test::moving::body_fill)};
+        const auto before = ce_test::moving::take(given);
+        const auto by_copy = ce::kafka::from_message<mini_codec>(given);
+        const auto by_move = ce::kafka::from_message_moving<mini_codec>(std::move(given));
+        expect(ce_test::moving::agree(by_copy, by_move));
+        expect(!by_move.has_value());
+        // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
+        expect(ce_test::moving::unchanged(given, before));
+      };
+    };
+
+// spec: SWR-BIND-0014
+// spec: SWR-BIND-0015
+const boost::ut::suite<"kafka-moving-call-releases-a-moved-body"> kafka_moving_releases = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_moved_body_is_released<kafka_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0015
+const boost::ut::suite<"kafka-moving-call-leaves-an-unmoved-body-intact"> kafka_moving_unmoved =
+    [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::moving::check_unmoved_body_is_left_intact<kafka_under_test<C>>(codec);
+        };
+      });
+    };
+
+// spec: SWR-BIND-0016
+const boost::ut::suite<"kafka-moving-call-failure-keeps-the-message"> kafka_moving_failure = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_failed_call_leaves_the_message<kafka_under_test<C>>(codec);
+    };
+  });
+};
+
+// spec: SWR-BIND-0017
+const boost::ut::suite<"kafka-from-message-leaves-the-message-intact"> kafka_copying_intact = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::moving::check_copying_entry_point_leaves_the_message<kafka_under_test<C>>(codec);
+    };
+  });
+};
 
 int main() {}

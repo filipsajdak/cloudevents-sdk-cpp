@@ -438,7 +438,9 @@ jobs:
           sudo apt-get install -y g++-13 cmake ninja-build nlohmann-json3-dev
       # Verify only: the committed goldens must not move in a pull request. Both
       # SDKs read the documents this one produced, and the job fails if either
-      # rejects one (SWR-SEC-0005).
+      # rejects one (SWR-SEC-0005). The same holds for the Kafka records, which
+      # both SDKs convert to and from in memory, so no broker runs (SWR-SEC-0008):
+      # the job also fails if a committed record is not what its producer writes now.
       - name: Verify both directions
         run: CXX=g++-13 ./interop/run.sh verify
       - name: The committed goldens are unchanged

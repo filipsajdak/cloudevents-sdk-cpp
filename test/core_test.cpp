@@ -1131,6 +1131,33 @@ const boost::ut::suite<"core-is-json-content-type"> core_is_json_content_type = 
     static_assert(!ce::is_json_content_type("application/notjson"));
     expect(true);
   };
+
+  // A static_assert is evaluated by the compiler, so it leaves no trace in a
+  // coverage run and says nothing about the code the program will execute.
+  // The same table, evaluated at run time.
+  "the verdicts are the same when evaluated at run time"_test = [] {
+    struct verdict {
+      std::string text;
+      bool json;
+    };
+    const std::vector<verdict> table{
+        {"application/json", true},
+        {"text/json", true},
+        {"application/cloudevents+json", true},
+        {"APPLICATION/JSON", true},
+        {"Application/CloudEvents+JSON", true},
+        {"application/json; charset=utf-8", true},
+        {"application/xml", false},
+        {"text/plain", false},
+        {"notamediatype", false},
+        {"", false},
+        {"application/jsonx", false},
+        {"application/notjson", false},
+    };
+    for (const auto& [text, json] : table) {
+      expect(ce::is_json_content_type(text) == json) << "for '" << text << "'";
+    }
+  };
 };
 
 // spec: SWR-CORE-0025

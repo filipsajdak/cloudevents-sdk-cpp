@@ -1425,6 +1425,53 @@ const boost::ut::suite<"decode-keeps-the-payloads-own-text"> payloads_own_text =
         << "valid escapes stay as written";
   };
 
+  // The scanner runs on text a codec has already accepted, so each of these is a
+  // document the codec would not hand it. What it does with them is still its own
+  // contract: decline, and never return a slice of text it could not follow.
+  "the scanner gives up on structure it cannot follow"_test = [] {
+    using ce::json::detail::data_member_text;
+    expect(!data_member_text("{}").has_value()) << "an empty object";
+    expect(!data_member_text("{1:2}").has_value()) << "a member name that is not a string";
+    expect(!data_member_text(R"({"data" 1})").has_value()) << "a member with no colon";
+    expect(!data_member_text(R"({"data":["open]})").has_value()) << "an unclosed string in an array";
+    expect(!data_member_text(R"({"data":[tru]})").has_value()) << "a misspelt literal in an array";
+    expect(!data_member_text(R"({"data":[1,2)").has_value()) << "an array the text ends inside";
+    expect(!data_member_text(R"({"data":{"a":)").has_value()) << "an object the text ends inside";
+    expect(!data_member_text(R"({"data":)").has_value()) << "a member with no value";
+    expect(!data_member_text("").has_value()) << "no text";
+  };
+
+  "the batch scanner gives up on a malformed list"_test = [] {
+    using ce::json::detail::batch_data_slices;
+    using ce::json::detail::json_slicer;
+
+    const auto drained = [](std::string_view text) {
+      batch_data_slices slices{text};
+      std::vector<std::string_view> seen;
+      for (int guard = 0; guard < 8; ++guard) {
+        const auto next = slices.next();
+        if (!next) {
+          break;
+        }
+        seen.push_back(*next);
+      }
+      return seen;
+    };
+    const std::vector<std::string_view> first_only{"1"sv};
+    expect(drained(R"([{"data":1},])") == first_only) << "a trailing comma ends the list";
+    expect(drained(R"([{"data":1} {"data":2}])") == first_only) << "no comma between elements";
+    expect(drained(R"({"data":1})").empty()) << "an object where a list is required";
+    expect(drained("").empty()) << "no text";
+
+    // Once the scanner has lost its place it stays lost: asking again cannot
+    // resynchronise it on a later, well-formed element.
+    json_slicer lost{R"({"data":1})"};
+    lost.lose();
+    expect(lost.lost());
+    expect(!lost.event_data().has_value());
+    expect(lost.lost());
+  };
+
   "the scanner refuses a temporary string it would outlive"_test = [] {
     using ce::json::detail::batch_data_slices;
     using ce::json::detail::json_slicer;

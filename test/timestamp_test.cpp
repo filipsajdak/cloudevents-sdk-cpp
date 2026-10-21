@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <format>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -36,6 +37,25 @@ const boost::ut::suite<"timestamp-refuses-more-digits-than-it-can-express">
       if (!counted) {
         expect(counted.error().code == ce::errc::invalid_attribute_value);
         expect(counted.error().where == std::to_string(beyond));
+      }
+    }
+  };
+
+  // The same bound, met from the wire: the text of a timestamp is untrusted
+  // input, and a tenth digit has to be refused there too rather than dropped.
+  // The grammar itself stops at nine digits, so the refusal is the grammar's.
+  "parsing refuses text with more fractional digits than nine"_test = [] {
+    constexpr std::string_view widest_accepted = "2018-04-05T17:31:00.123456789Z";
+    constexpr std::string_view one_beyond = "2018-04-05T17:31:00.1234567890Z";
+    constexpr std::string_view many_beyond = "2018-04-05T17:31:00.12345678901234567890+02:00";
+
+    expect(ce::parse_timestamp(widest_accepted).has_value());
+    for (const std::string_view text : {one_beyond, many_beyond}) {
+      const auto refused = ce::parse_timestamp(text);
+      expect(!refused.has_value()) << "should refuse " << text;
+      if (!refused) {
+        expect(refused.error().code == ce::errc::invalid_timestamp) << text;
+        expect(refused.error().where == text) << text;
       }
     }
   };

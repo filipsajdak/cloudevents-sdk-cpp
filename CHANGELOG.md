@@ -2,6 +2,17 @@
 
 Notable changes per release. Dates are the tag date.
 
+## Unreleased
+
+### Added
+
+- A vcpkg overlay port (`packaging/vcpkg/ports/cloudevents-cpp`) and a Conan recipe (`packaging/conan`), each built and tested against `test/consumer` in CI.
+  The nlohmann codec is the default feature or option; RapidJSON is the other one CI builds, and Boost.JSON is declared and not built there.
+  Install from a clone with `vcpkg install cloudevents-cpp --overlay-ports=...` or `conan create packaging/conan`; **neither is submitted to the vcpkg registry or to ConanCenter**, and that is not decided.
+  No CMake change: the build already looked CTRE up with `find_package` before it fetched it, and the recipes make a missed lookup an error.
+  The consumer gained a round-trip program that runs the library through the installed package.
+  A check fails a release that leaves the vcpkg manifest on the old version (`SWR-ADOPT-0006` to `SWR-ADOPT-0008`, `D-ADOPT-2`).
+
 ## v0.6.0 - 2026-10-11
 
 `ce::v4` opens: a `json_document` can move, a typed write refuses a media type that is not JSON, and a JSON body received in binary mode keeps the document it was parsed into.

@@ -57,6 +57,15 @@ Run every command from a clean `main` at the commit being tagged.
 - [ ] The installed package is consumed from `test/consumer/` with the system
       copy of any dependency hidden, so a stale include path cannot mask a
       missing one.
+- [ ] The `packaging` workflow is green on the release commit: the vcpkg port
+      and the Conan recipe each built and ran `test/consumer`
+      (`SWR-ADOPT-0006`, `SWR-ADOPT-0007`). Run it from the Actions tab if the
+      last run predates the commit.
+- [ ] `python3 scripts/check_packaging_version.py` exits 0: the `version` in
+      `packaging/vcpkg/ports/cloudevents-cpp/vcpkg.json` is the new `VERSION`
+      from `CMakeLists.txt`, and the Conan recipe still reads it from there
+      (`SWR-ADOPT-0008`). Edit `vcpkg.json` in the same commit as the `VERSION`
+      bump; the CTest `packaging_tools` fails the build if it is forgotten.
 
 ## The API is frozen at the tag
 
@@ -91,6 +100,14 @@ Run every command from a clean `main` at the commit being tagged.
 - [ ] `python3 spec/tools/derive_delivered_in.py --write` run after the tag
       exists, and its edits committed: requirements the release delivered gain
       `delivered_in` (D-SPEC-4).
+- [ ] The `SHA512` in `packaging/vcpkg/ports/cloudevents-cpp/portfile.cmake` is
+      the hash of the new tag's archive, committed after the tag exists (the
+      archive cannot be hashed before it does):
+      `curl -sL https://github.com/filipsajdak/cloudevents-sdk-cpp/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 512`.
+      Then install the port without `CLOUDEVENTS_CPP_SOURCE_DIR` set; vcpkg
+      downloads the archive and refuses a mismatch. Until that commit lands, the
+      released-source mode names the previous release's hash, which is why CI
+      builds the working tree instead.
 - [ ] The tag builds from a clean clone with no network access beyond the
       dependency fetch.
 

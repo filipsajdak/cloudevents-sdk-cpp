@@ -64,6 +64,30 @@ target_link_libraries(app PRIVATE ce::core ce::format_json ce::codec_nlohmann ce
 
 `ce::core` depends on nothing but CTRE.
 
+### With vcpkg or Conan
+
+The repository ships a vcpkg overlay port and a Conan recipe under [packaging/](packaging/), built and consumed by CI.
+**Neither is published to the vcpkg registry or to ConanCenter**, and nothing here has been submitted to either; you install from a clone.
+Both take CTRE (`>= 3.9.0`) and the codec library from the package manager, so the build downloads nothing.
+
+```bash
+git clone https://github.com/filipsajdak/cloudevents-sdk-cpp
+
+# vcpkg: an overlay port. The nlohmann codec is the default feature.
+vcpkg install cloudevents-cpp --overlay-ports=cloudevents-sdk-cpp/packaging/vcpkg/ports
+vcpkg install "cloudevents-cpp[core,rapidjson]" --overlay-ports=cloudevents-sdk-cpp/packaging/vcpkg/ports
+
+# Conan 2: a local recipe, built from the clone. nlohmann is the default option.
+conan create cloudevents-sdk-cpp/packaging/conan --build=missing -s compiler.cppstd=20
+conan create cloudevents-sdk-cpp/packaging/conan --build=missing -s compiler.cppstd=20 \
+  -o "&:nlohmann=False" -o "&:rapidjson=True"
+```
+
+The port builds the archive of the tag the clone's `vcpkg.json` names, checked against a SHA-512.
+Either way the package carries the project's own `cloudeventsConfig.cmake`, so the `find_package` and the targets above are the same.
+The `boost-json` feature and the `boost_json` option are declared and not built by CI: Boost.JSON is a compiled library.
+In a Conan consumer, `requires` takes `cloudevents-cpp/<version>` and the generators are `CMakeToolchain` and `CMakeDeps`.
+
 ## Documentation
 
 - [docs/GUIDE.md](docs/GUIDE.md) - the user guide: every feature, with examples that are compiled and run in CI.

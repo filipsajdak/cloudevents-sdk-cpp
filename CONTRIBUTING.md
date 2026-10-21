@@ -108,6 +108,32 @@ The suites run as the CTest `frozen_api_tools` and skip where clang, the tags or
 - **A failure means the change belongs in a new generation.** Do not edit the frozen declaration to make the job pass; declare the changed entity in the next generation (D-BUILD-4: before 1.0 a break bumps the minor version, an addition or a fix the patch).
 - **Required check.** It is meant to be one: the toolchain it uses is pinned and both revisions are parsed by the same install, so a run does not vary. It stays advisory until it has run green on a few pull requests without a failure that was not a real break; then the owner adds `frozen API` to branch protection.
 
+## Packaging recipes
+
+`packaging/vcpkg/ports/cloudevents-cpp` and `packaging/conan` are the vcpkg overlay port and the Conan recipe (`SWR-ADOPT-0006`, `SWR-ADOPT-0007`, `D-ADOPT-2`).
+The `packaging` workflow builds `test/consumer` against each, on pull requests that touch packaging, the CMake build, the headers or the consumer.
+Submission to the public vcpkg registry and to ConanCenter is a separate decision nobody has made; do not open one.
+
+To run them yourself, from a clone, with caches outside it:
+
+```bash
+# Conan 2 (pip install conan): builds the working tree, then test_package builds and runs test/consumer
+conan create packaging/conan --build=missing -s compiler.cppstd=20
+
+# vcpkg: CLOUDEVENTS_CPP_SOURCE_DIR makes the port build this tree instead of the last tag's archive.
+# vcpkg scrubs the environment of a port build, hence VCPKG_KEEP_ENV_VARS, and the binary cache does
+# not hash the directory, hence --binarysource=clear.
+CLOUDEVENTS_CPP_SOURCE_DIR="$PWD" VCPKG_KEEP_ENV_VARS=CLOUDEVENTS_CPP_SOURCE_DIR \
+  vcpkg install cloudevents-cpp --overlay-ports="$PWD/packaging/vcpkg/ports" --binarysource=clear
+cmake -S test/consumer -B build-consumer -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake
+```
+
+Both recipes pass `CMAKE_REQUIRE_FIND_PACKAGE_ctre` and `FETCHCONTENT_FULLY_DISCONNECTED`, so a lookup that misses is a configure error, not the download `cmake/CeDependencies.cmake` would otherwise fall back to.
+That is why neither needs a CMake change, and why a green run means the dependencies came from the package manager.
+vcpkg in classic mode ignores version constraints, so its job builds with the CTRE its pinned registry commit carries (`D-ADOPT-2`).
+
+`python3 scripts/check_packaging_version.py` (also the CTest `packaging_tools`) fails when the vcpkg manifest's version differs from the project VERSION or the Conan recipe stops reading it from `CMakeLists.txt`.
+
 ## Spec first
 
 Every behaviour of the SDK traces to a requirement in [spec/requirements/](spec/requirements/).

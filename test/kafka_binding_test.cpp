@@ -409,4 +409,41 @@ const boost::ut::suite<"kafka-binary-mode-json-body"> kafka_binary_mode_json_bod
   });
 };
 
+// spec: SWR-BIND-0012
+const boost::ut::suite<"kafka-binary-body-not-parsed"> kafka_binary_body_not_parsed = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_binary_body_not_parsed<C>(
+          codec,
+          [](const ce::event& subject, ce::content_mode mode) {
+            return ce::kafka::to_message<C>(subject, mode);
+          },
+          [](const ce::message& laid_out, ce::json::decode_options options) {
+            return ce::kafka::from_message<C>(laid_out, options);
+          });
+    };
+  });
+};
+
+// spec: SWR-BIND-0013
+const boost::ut::suite<"kafka-from-message-ignores-parse-binary-body-in-structured-mode">
+    kafka_structured_ignores = [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::check_structured_ignores_parse_binary_body<C>(
+              codec,
+              [](const ce::event& subject, ce::content_mode mode) {
+                return ce::kafka::to_message<C>(subject, mode);
+              },
+              [](const ce::message& laid_out, ce::json::decode_options options) {
+                return ce::kafka::from_message<C>(laid_out, options);
+              });
+        };
+      });
+    };
+
 int main() {}

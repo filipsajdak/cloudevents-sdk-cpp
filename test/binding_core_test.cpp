@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -589,6 +590,183 @@ const boost::ut::suite<"binary-json-body-must-parse"> binary_json_body_must_pars
     }
   };
 };
+
+// spec: SWR-BIND-0011
+const boost::ut::suite<"decode-options-parse-binary-body-defaults-to-true"> options_default_parse =
+    [] {
+      using namespace boost::ut;
+      using options = ce::json::decode_options;
+
+      "the member is a trailing bool that defaults to true"_test = [] {
+        static_assert(std::is_same_v<decltype(options::parse_binary_body), bool>);
+        static_assert(options::parses_binary_body_by_default);
+        expect(options{}.parse_binary_body);
+        expect(options{.retain_document_up_to = 0}.parse_binary_body);
+        expect(options{std::size_t{0}}.parse_binary_body);
+      };
+
+      "an explicit value is kept, and the retention limit is untouched by it"_test = [] {
+        const options off{.parse_binary_body = false};
+        expect(!off.parse_binary_body);
+        expect(off.retain_document_up_to == options::default_retention_limit);
+        const options both{.retain_document_up_to = 7, .parse_binary_body = false};
+        expect(both.retain_document_up_to == 7U && !both.parse_binary_body);
+      };
+    };
+
+// spec: SWR-BIND-0011
+const boost::ut::suite<"decode-options-designated-initializer-still-builds"> options_old_forms =
+    [] {
+      using namespace boost::ut;
+      using options = ce::json::decode_options;
+
+      // The three forms a caller of ce::v4 wrote before the member existed.
+      static_assert(std::is_aggregate_v<options>);
+      static_assert(requires { options{.retain_document_up_to = std::size_t{1}}; });
+      static_assert(requires { options{std::size_t{1}}; });
+      static_assert(requires { options{}; });
+
+      "each older form leaves the opt-in on"_test = [] {
+        expect(options{.retain_document_up_to = 3}.parse_binary_body);
+        expect(options{3}.parse_binary_body);
+        expect(options{}.parse_binary_body);
+        expect(options{3}.retain_document_up_to == 3U);
+      };
+    };
+
+// spec: SWR-BIND-0012
+const boost::ut::suite<"unparsed-binary-json-body-keeps-the-bytes"> unparsed_keeps_bytes = [] {
+  using namespace boost::ut;
+  constexpr ce::json::decode_options unparsed{.parse_binary_body = false};
+
+  "a valid body is json_text with its exact bytes, not a document"_test = [&] {
+    const auto read = read_json_body(padded_body, "application/json", unparsed);
+    expect(read.has_value() && std::holds_alternative<ce::json_text>(*read));
+    if (read && std::holds_alternative<ce::json_text>(*read)) {
+      expect(std::get<ce::json_text>(*read).raw == padded_body);
+    }
+  };
+
+  "every JSON media type takes the unparsed path"_test = [&] {
+    for (const auto media_type : json_media_types) {
+      const auto read = read_json_body(padded_body, media_type, unparsed);
+      expect(read.has_value() && std::holds_alternative<ce::json_text>(*read)) << media_type;
+    }
+  };
+
+  "an explicit true is the default"_test = [&] {
+    const auto by_default = read_json_body(padded_body, "application/json");
+    const auto explicit_true =
+        read_json_body(padded_body, "application/json", {.parse_binary_body = true});
+    expect(by_default.has_value() && std::holds_alternative<ce::json_document>(*by_default));
+    expect(explicit_true.has_value() && std::holds_alternative<ce::json_document>(*explicit_true));
+    const auto over = read_json_body(
+        padded_body, "application/json", {.retain_document_up_to = 0, .parse_binary_body = true});
+    expect(over.has_value() && std::holds_alternative<ce::json_text>(*over));
+  };
+
+  "the bytes are copied once from the borrowed body and the body is left alone"_test = [&] {
+    const ce::binary body = bytes_of(padded_body);
+    const auto declared = ce::datacontenttype::make("application/json"sv);
+    const auto read = binding::read_body<mini>(
+        body, declared ? std::optional{*declared} : std::nullopt, unparsed);
+    expect(read.has_value());
+    expect(body == bytes_of(padded_body)) << "the message's body is the caller's";
+    if (read && std::holds_alternative<ce::json_text>(*read)) {
+      const auto& kept = std::get<ce::json_text>(*read).raw;
+      expect(static_cast<const void*>(kept.data()) != static_cast<const void*>(body.data()))
+          << "the event owns its copy";
+    }
+  };
+};
+
+// spec: SWR-BIND-0012
+const boost::ut::suite<"unparsed-binary-json-body-never-fails-to-parse"> unparsed_never_fails = [] {
+  using namespace boost::ut;
+  constexpr ce::json::decode_options unparsed{.parse_binary_body = false};
+
+  "a body that is not JSON is kept as its bytes under every JSON media type"_test = [&] {
+    for (const auto media_type : json_media_types) {
+      for (const auto body : malformed) {
+        const auto read = read_json_body(body, media_type, unparsed);
+        expect(read.has_value()) << media_type << ": " << body;
+        if (read && std::holds_alternative<ce::json_text>(*read)) {
+          expect(std::get<ce::json_text>(*read).raw == body) << media_type << ": " << body;
+        } else {
+          expect(false) << media_type << ": " << body;
+        }
+      }
+    }
+  };
+
+  "whitespace only is kept as it is"_test = [&] {
+    const auto read = read_json_body(" \n", "application/json", unparsed);
+    expect(read.has_value() && std::holds_alternative<ce::json_text>(*read));
+    if (read && std::holds_alternative<ce::json_text>(*read)) {
+      expect(std::get<ce::json_text>(*read).raw == " \n"sv);
+    }
+  };
+
+  "with the opt-in on a malformed body still fails"_test = [&] {
+    const auto read = read_json_body("{not json", "application/json", {.parse_binary_body = true});
+    expect(!read.has_value());
+    if (!read) {
+      expect(read.error().code == ce::errc::parse_error);
+    }
+  };
+};
+
+// spec: SWR-BIND-0012
+const boost::ut::suite<"unparsed-binary-json-body-ignores-the-retention-limit">
+    unparsed_ignores_limit = [] {
+      using namespace boost::ut;
+
+      "below, at and above the limit the result is the same text"_test = [&] {
+        for (const std::size_t limit : {std::size_t{0},
+                                        padded_body.size() - 1U,
+                                        padded_body.size(),
+                                        padded_body.size() + 1U}) {
+          for (const auto body : {padded_body, std::string_view{"{not json"}}) {
+            const auto read =
+                read_json_body(body,
+                               "application/json",
+                               {.retain_document_up_to = limit, .parse_binary_body = false});
+            expect(read.has_value() && std::holds_alternative<ce::json_text>(*read))
+                << limit << ": " << body;
+            if (read && std::holds_alternative<ce::json_text>(*read)) {
+              expect(std::get<ce::json_text>(*read).raw == body) << limit << ": " << body;
+            }
+          }
+        }
+      };
+
+      "a body above the default limit is kept as its bytes, malformed or not"_test = [] {
+        const std::string valid =
+            "[" + std::string(ce::json::decode_options::default_retention_limit, ' ') + "]";
+        const std::string broken =
+            "{" + std::string(ce::json::decode_options::default_retention_limit, ' ');
+        for (const std::string_view body : {std::string_view{valid}, std::string_view{broken}}) {
+          const auto read = read_json_body(body, "application/json", {.parse_binary_body = false});
+          expect(read.has_value() && std::holds_alternative<ce::json_text>(*read));
+          if (read && std::holds_alternative<ce::json_text>(*read)) {
+            expect(std::get<ce::json_text>(*read).raw == body);
+          }
+        }
+      };
+
+      "an empty body and a body of another media type are unchanged"_test = [] {
+        constexpr ce::json::decode_options unparsed{.parse_binary_body = false};
+        const auto empty = read_json_body("", "application/json", unparsed);
+        expect(empty.has_value() && std::holds_alternative<std::monostate>(*empty));
+        for (const auto media_type : {"text/plain", "application/octet-stream"}) {
+          const auto read = read_json_body(padded_body, media_type, unparsed);
+          expect(read.has_value() && std::holds_alternative<ce::binary>(*read)) << media_type;
+        }
+        const auto undeclared =
+            binding::read_body<mini>(bytes_of(padded_body), std::nullopt, unparsed);
+        expect(undeclared.has_value() && std::holds_alternative<ce::binary>(*undeclared));
+      };
+    };
 
 // spec: SWR-BIND-0010
 const boost::ut::suite<"empty-binary-body-has-no-payload"> empty_binary_body = [] {

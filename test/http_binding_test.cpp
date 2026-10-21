@@ -1854,4 +1854,69 @@ const boost::ut::suite<"http-binary-mode-json-body"> http_binary_mode_json_body 
   });
 };
 
+// spec: SWR-BIND-0012
+const boost::ut::suite<"http-binary-body-not-parsed"> http_binary_body_not_parsed = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_binary_body_not_parsed<C>(
+          codec,
+          [](const ce::event& subject, ce::content_mode mode) {
+            return ce::http::to_message<C>(subject, mode);
+          },
+          [](const ce::message& laid_out, ce::json::decode_options options) {
+            return ce::http::from_message<C>(laid_out, options);
+          });
+    };
+  });
+};
+
+// spec: SWR-BIND-0013
+const boost::ut::suite<"http-from-message-ignores-parse-binary-body-in-structured-mode">
+    http_structured_ignores = [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::check_structured_ignores_parse_binary_body<C>(
+              codec,
+              [](const ce::event& subject, ce::content_mode mode) {
+                return ce::http::to_message<C>(subject, mode);
+              },
+              [](const ce::message& laid_out, ce::json::decode_options options) {
+                return ce::http::from_message<C>(laid_out, options);
+              });
+        };
+      });
+    };
+
+// spec: SWR-BIND-0013
+const boost::ut::suite<"from-batch-message-ignores-parse-binary-body"> http_batch_ignores = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      const std::vector<ce::event> batch{ce_test::options_event(), ce_test::options_event()};
+      auto laid_out = ce::http::to_batch_message<C>(batch);
+      expect(laid_out.has_value()) << codec;
+      if (!laid_out) {
+        return;
+      }
+      for (const bool parse : {true, false}) {
+        const auto read = ce::http::from_batch_message<C>(*laid_out, {.parse_binary_body = parse});
+        expect(read.has_value() && read->size() == 2U) << codec;
+        if (read) {
+          for (const auto& decoded : *read) {
+            expect(std::holds_alternative<ce::json_document>(decoded.data())) << codec;
+          }
+        }
+      }
+      laid_out->body = ce::to_bytes("[{not json");
+      const auto refused = ce::http::from_batch_message<C>(*laid_out, {.parse_binary_body = false});
+      expect(!refused.has_value()) << codec << ": a malformed batch still fails";
+    };
+  });
+};
+
 int main() {}

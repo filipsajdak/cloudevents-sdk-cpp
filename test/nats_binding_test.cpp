@@ -372,4 +372,67 @@ const boost::ut::suite<"nats-binary-mode-json-body"> nats_binary_mode_json_body 
   });
 };
 
+// spec: SWR-BIND-0012
+const boost::ut::suite<"nats-binary-body-not-parsed"> nats_binary_body_not_parsed = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_binary_body_not_parsed<C>(
+          codec,
+          [](const ce::event& subject, ce::content_mode mode) {
+            return ce::nats::to_message<C>(subject, mode);
+          },
+          [](const ce::message& laid_out, ce::json::decode_options options) {
+            return ce::nats::from_message<C>(laid_out, options);
+          });
+    };
+  });
+};
+
+// spec: SWR-BIND-0013
+const boost::ut::suite<"nats-from-message-ignores-parse-binary-body-in-structured-mode">
+    nats_structured_ignores = [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::check_structured_ignores_parse_binary_body<C>(
+              codec,
+              [](const ce::event& subject, ce::content_mode mode) {
+                return ce::nats::to_message<C>(subject, mode);
+              },
+              [](const ce::message& laid_out, ce::json::decode_options options) {
+                return ce::nats::from_message<C>(laid_out, options);
+              });
+        };
+      });
+    };
+
+// spec: SWR-BIND-0013
+const boost::ut::suite<"from-payload-ignores-parse-binary-body"> nats_payload_ignores = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      const auto payload = ce::nats::to_payload<C>(ce_test::options_event());
+      expect(payload.has_value()) << codec;
+      if (!payload) {
+        return;
+      }
+      for (const bool parse : {true, false}) {
+        const auto read = ce::nats::from_payload<C>(*payload, {.parse_binary_body = parse});
+        expect(read.has_value() && std::holds_alternative<ce::json_document>(read->data()))
+            << codec;
+      }
+      constexpr std::string_view malformed = "{not json";
+      const auto refused = ce::nats::from_payload<C>(malformed, {.parse_binary_body = false});
+      expect(!refused.has_value()) << codec << ": a malformed payload still fails";
+      if (!refused) {
+        expect(refused.error().code == ce::errc::parse_error) << codec;
+      }
+    };
+  });
+};
+
 int main() {}

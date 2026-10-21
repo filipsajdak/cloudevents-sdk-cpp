@@ -16,8 +16,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/http_binding_test.cpp::batch-moving-agrees-with-the-copying-batch, test:test/http_binding_test.cpp::batch-moving-never-modifies-the-message, test:test/nats_binding_test.cpp::payload-moving-agrees-with-the-copying-payload, test:test/nats_binding_test.cpp::payload-moving-never-modifies-the-string]
 owner: filip.sajdak
 version: 1
 ---

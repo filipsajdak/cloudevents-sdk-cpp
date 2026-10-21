@@ -79,6 +79,8 @@ ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
 # The binding core names no codec, so this suite runs in a build with none.
 ce_add_test(binding_core_test SOURCES binding_core_test.cpp)
+# The moving entry points exist in ce::v4; test/v3 shows that no frozen generation has them.
+ce_add_test(moving_in_v4_test SOURCES moving_in_v4_test.cpp)
 ce_add_test(message_headers_test SOURCES message_headers_test.cpp)
 ce_add_test(http_encoding_test SOURCES http_encoding_test.cpp)
 ce_add_test(timestamp_test SOURCES timestamp_test.cpp)

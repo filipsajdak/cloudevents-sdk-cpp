@@ -263,4 +263,16 @@ template<json::json_codec Codec>
   }
   return json_format<Codec>::decode_batch(detail::text_of(request.body), options);
 }
+
+// spec: SWR-HTTP-0019
+// spec: SWR-BIND-0018
+/// `from_batch_message` for a caller that gives the message up. A batch is JSON, which a call reads
+/// and does not adopt, so the message is never modified.
+template<json::json_codec Codec>
+// NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+[[nodiscard]] auto from_batch_message_moving(message&& request, json::decode_options options = {})
+    -> result<std::vector<event>> {
+  return from_batch_message<Codec>(request, options);
+}
+
 }  // namespace ce::inline v4::http

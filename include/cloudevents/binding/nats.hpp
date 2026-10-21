@@ -32,6 +32,17 @@ template<json::json_codec Codec>
   return json_format<Codec>::decode(payload, options);
 }
 
+// spec: SWR-NATS-0006
+// spec: SWR-BIND-0018
+/// `from_payload` for a caller that gives the payload up. A payload is JSON, which a call reads and
+/// does not adopt, so the string is never modified.
+template<json::json_codec Codec>
+// NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+[[nodiscard]] auto from_payload_moving(std::string&& payload, json::decode_options options = {})
+    -> result<event> {
+  return from_payload<Codec>(std::string_view{payload}, options);
+}
+
 namespace detail {
 
 inline constexpr std::string_view attribute_prefix = "ce-";

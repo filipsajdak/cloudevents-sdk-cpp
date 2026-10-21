@@ -538,4 +538,84 @@ const boost::ut::suite<"nats-from-message-leaves-the-message-intact"> nats_copyi
   });
 };
 
+namespace {
+
+template<class S>
+constexpr bool nats_payload_moving_accepts =
+    requires(S&& given) { ce::nats::from_payload_moving<mini_codec>(std::forward<S>(given)); };
+
+}  // namespace
+
+// spec: SWR-NATS-0006
+// spec: SWR-BIND-0018
+const boost::ut::suite<"payload-moving-agrees-with-the-copying-payload"> nats_payload_agrees = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      static_assert(nats_payload_moving_accepts<std::string>);
+      static_assert(!nats_payload_moving_accepts<std::string&>);
+      static_assert(!nats_payload_moving_accepts<std::string_view>);
+      static_assert(
+          std::is_same_v<decltype(ce::nats::from_payload_moving<C>(std::declval<std::string>())),
+                         ce::result<ce::event>>);
+      const auto payload = ce::nats::to_payload<C>(ce_test::options_event());
+      expect(payload.has_value()) << codec;
+      if (!payload) {
+        return;
+      }
+      for (const auto& options : {ce::json::decode_options{},
+                                  ce::json::decode_options{.retain_document_up_to = 0},
+                                  ce::json::decode_options{.parse_binary_body = false}}) {
+        std::string given = *payload;
+        const auto by_copy = ce::nats::from_payload<C>(*payload, options);
+        const auto by_move = ce::nats::from_payload_moving<C>(std::move(given), options);
+        expect(ce_test::moving::agree(by_copy, by_move)) << codec;
+        expect(by_move.has_value()) << codec;
+      }
+
+      constexpr std::string_view malformed = "{not json";
+      const auto refused_by_copy = ce::nats::from_payload<C>(malformed);
+      const auto refused_by_move = ce::nats::from_payload_moving<C>(std::string{malformed});
+      expect(!refused_by_copy.has_value() && !refused_by_move.has_value()) << codec;
+      if (!refused_by_copy && !refused_by_move) {
+        expect(refused_by_copy.error().code == refused_by_move.error().code) << codec;
+      }
+    };
+  });
+};
+
+// spec: SWR-NATS-0006
+// spec: SWR-BIND-0018
+const boost::ut::suite<"payload-moving-never-modifies-the-string"> nats_payload_intact = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      const auto leaves = [&codec](std::string given, std::string_view what) {
+        const std::string before = given;
+        const char* const address = given.data();
+        const std::size_t capacity = given.capacity();
+        const auto read = ce::nats::from_payload_moving<C>(std::move(given));
+        (void)read;
+        // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+        expect(given == before && given.data() == address && given.capacity() == capacity)
+            << codec << ": " << what;
+        // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+      };
+      const auto payload = ce::nats::to_payload<C>(ce_test::options_event());
+      expect(payload.has_value()) << codec;
+      if (!payload) {
+        return;
+      }
+      leaves(*payload, "a payload");
+      leaves(std::string{ce_test::moving::malformed_json_body}, "a malformed payload");
+      leaves(std::string{}, "an empty payload");
+      std::string large = *payload;
+      large.reserve(ce_test::moving::large_body_bytes);
+      leaves(std::move(large), "a payload in a larger buffer");
+    };
+  });
+};
+
 int main() {}

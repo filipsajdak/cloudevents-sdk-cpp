@@ -1,0 +1,210 @@
+name: vcpkg-released
+
+# The vcpkg port's released-source mode (SWR-ADOPT-0009): the archive of the tag
+# v<version>, checked against the SHA-512 in portfile.cmake, which is what a
+# consumer gets. The packaging workflow builds the working tree instead, because
+# the hash can only be committed after the tag exists (SWR-ADOPT-0008).
+#
+# When it runs. On a push to main that changes the port, on demand, and on a pull
+# request that changes this file. CMakeLists.txt is not in the filter: a version
+# bump changes vcpkg.json in the same commit (check_packaging_version.py fails
+# otherwise), so the port's path already names every change that can move the
+# result, and a CMakeLists.txt filter would only add runs for edits that do not.
+# The pull_request trigger exists so this file is exercised before it is on main,
+# where push and workflow_dispatch can first run it; it stays, limited to this
+# file, so a later edit of the job is proved by its own pull request.
+#
+# The guard. Between the version bump and the post-tag commit the port names a
+# tag that does not exist, or a hash that is still the previous release's. A
+# release pull request would turn red for no defect, so scripts/
+# check_vcpkg_release_guard.py reads the tags on origin and the hashes held at the
+# tags, and the job skips successfully, with a notice, in those two states.
+#
+# Not a required check: it reaches github.com and the vcpkg registry, and an
+# outage of either is not a defect of the change under review.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/vcpkg/**'
+      - 'scripts/check_vcpkg_release_guard.py'
+      - '.github/workflows/vcpkg-released.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/vcpkg-released.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CXX: g++-14
+  # The same pinned vcpkg commit as the packaging workflow, so the two jobs
+  # install the same CTRE and the same toolchain files.
+  VCPKG_URL: https://github.com/microsoft/vcpkg.git
+  VCPKG_COMMIT: 6f6324d69cc4d5229804bee9f72737fe2ef08087
+  # Prefixes a consumer must not find a dependency in.
+  HIDDEN_PREFIXES: /usr;/usr/local
+  PORT_DIR: packaging/vcpkg/ports/cloudevents-cpp
+  # What vcpkg prints when an archive does not match the hash the port names.
+  REJECTION: had an unexpected hash
+
+jobs:
+  vcpkg-released:
+    name: vcpkg released source
+    runs-on: ubuntu-24.04
+    # Two installs of a header-only port, a bootstrap and two consumer builds
+    # take as long as one packaging job (15 minutes there, a hang past it); the
+    # negative case adds one failed download.
+    timeout-minutes: 20
+    concurrency:
+      group: vcpkg-released-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      # The guard needs every tag, to read the port as it was at the last two.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the release the port names can be proved yet
+        id: guard
+        run: python3 scripts/check_vcpkg_release_guard.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Say what the guard decided
+        env:
+          RUN: ${{ steps.guard.outputs.run }}
+          REASON: ${{ steps.guard.outputs.reason }}
+        run: |
+          {
+            echo "### vcpkg released source"
+            echo
+            echo "run: \`$RUN\`"
+            echo
+            echo "$REASON"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install the compiler and the build tool
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y "$CXX" ninja-build
+
+      - name: Fetch vcpkg at its pinned commit and bootstrap it
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          git init --quiet "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" fetch --quiet --depth 1 "$VCPKG_URL" "$VCPKG_COMMIT"
+          git -C "$RUNNER_TEMP/vcpkg" checkout --quiet FETCH_HEAD
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+
+      # The check is real only if a wrong hash can fail it. A copy of the port
+      # whose hash is the committed one with every digit moved on by one must be
+      # refused, and the hash vcpkg reports for the archive must be the committed
+      # one: that is the port's hash being the archive's, read from vcpkg and not
+      # from this script. It runs first, with its own download directory, so no
+      # archive from the positive install can answer for it.
+      - name: A wrong SHA-512 is refused, and the committed one is the archive's
+        if: steps.guard.outputs.run == 'true'
+        env:
+          VCPKG_DISABLE_METRICS: '1'
+          VCPKG_DOWNLOADS: ${{ runner.temp }}/vcpkg-downloads-negative
+        run: |
+          unset CLOUDEVENTS_CPP_SOURCE_DIR
+          committed="$(awk '$1 == "SHA512" { print $2 }' "$PORT_DIR/portfile.cmake")"
+          wrong="$(printf '%s' "$committed" | tr '0-9a-f' '1-9a-f0')"
+          if [ -z "$committed" ] || [ "$committed" = "$wrong" ]; then
+            echo "::error::could not derive a wrong SHA512 from the portfile"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/bad-ports"
+          cp -R "$PORT_DIR" "$RUNNER_TEMP/bad-ports/"
+          sed -i "s/$committed/$wrong/" "$RUNNER_TEMP/bad-ports/cloudevents-cpp/portfile.cmake"
+          if ! grep -q "$wrong" "$RUNNER_TEMP/bad-ports/cloudevents-cpp/portfile.cmake"; then
+            echo "::error::the wrong SHA512 did not reach the copy of the port"
+            exit 1
+          fi
+
+          status=0
+          "$RUNNER_TEMP/vcpkg/vcpkg" install cloudevents-cpp \
+            --overlay-ports="$RUNNER_TEMP/bad-ports" \
+            --binarysource=clear \
+            --x-install-root="$RUNNER_TEMP/vcpkg-installed-negative" \
+            --x-buildtrees-root="$RUNNER_TEMP/vcpkg-buildtrees-negative" \
+            --x-packages-root="$RUNNER_TEMP/vcpkg-packages-negative" \
+            > "$RUNNER_TEMP/negative.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/negative.log"
+
+          if [ "$status" -eq 0 ]; then
+            echo "::error::vcpkg installed a port whose SHA512 is wrong: the hash is not checked"
+            exit 1
+          fi
+          if ! grep -q "$REJECTION" "$RUNNER_TEMP/negative.log"; then
+            echo "::error::vcpkg failed, but not with '$REJECTION': the rejection above is another failure"
+            exit 1
+          fi
+          actual="$(sed -nE 's/^note: Actual +: +([0-9a-f]+)$/\1/p' "$RUNNER_TEMP/negative.log" | head -n 1)"
+          if [ "$actual" != "$committed" ]; then
+            echo "::error::vcpkg hashed the archive as '$actual', the portfile names '$committed'"
+            exit 1
+          fi
+          echo "vcpkg refused the wrong SHA512 with '$REJECTION' and reported the committed one as the archive's"
+
+      # No CLOUDEVENTS_CPP_SOURCE_DIR: the port downloads the archive of the tag
+      # and vcpkg checks it against the committed hash. The binary cache is off so
+      # that a package built from an earlier archive cannot answer.
+      - name: Install the port from the released archive, and consume it
+        if: steps.guard.outputs.run == 'true'
+        env:
+          VCPKG_DISABLE_METRICS: '1'
+        run: |
+          unset CLOUDEVENTS_CPP_SOURCE_DIR
+          for configuration in default rapidjson; do
+            case "$configuration" in
+              default)
+                spec='cloudevents-cpp'
+                expected='consumer-codec-link consumer-roundtrip'
+                forbidden=''
+                ;;
+              rapidjson)
+                spec='cloudevents-cpp[core,rapidjson]'
+                expected='consumer-roundtrip-rapidjson'
+                forbidden='consumer-codec-link'
+                ;;
+            esac
+
+            "$RUNNER_TEMP/vcpkg/vcpkg" install "$spec" \
+              --overlay-ports="$GITHUB_WORKSPACE/packaging/vcpkg/ports" \
+              --binarysource=clear \
+              --x-install-root="$RUNNER_TEMP/vcpkg-installed-$configuration" \
+              --x-buildtrees-root="$RUNNER_TEMP/vcpkg-buildtrees-$configuration" \
+              --x-packages-root="$RUNNER_TEMP/vcpkg-packages-$configuration"
+
+            cmake -S test/consumer -B "build-consumer-$configuration" -G Ninja \
+              -DCMAKE_CXX_COMPILER="$CXX" \
+              -DCMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+              -DVCPKG_MANIFEST_MODE=OFF \
+              -DVCPKG_INSTALLED_DIR="$RUNNER_TEMP/vcpkg-installed-$configuration" \
+              -DCMAKE_REQUIRE_FIND_PACKAGE_cloudevents=ON \
+              -DCMAKE_IGNORE_PREFIX_PATH="$HIDDEN_PREFIXES"
+            cmake --build "build-consumer-$configuration"
+
+            ctest --test-dir "build-consumer-$configuration" --output-on-failure --no-tests=error
+            for name in $expected; do
+              ctest --test-dir "build-consumer-$configuration" --output-on-failure --no-tests=error -R "^${name}\$"
+            done
+            for name in $forbidden; do
+              if ctest --test-dir "build-consumer-$configuration" -N -R "^${name}\$" | grep -q "Total Tests: [1-9]"; then
+                echo "::error::${name} ran in the ${configuration} configuration, which installed no such codec"
+                exit 1
+              fi
+            done
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: vcpkg-released-logs
+          path: ${{ runner.temp }}/vcpkg-buildtrees-*/**/*.log
+          if-no-files-found: ignore

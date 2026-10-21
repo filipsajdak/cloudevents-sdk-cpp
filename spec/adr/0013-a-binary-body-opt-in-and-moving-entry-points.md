@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted 2026-10-21 for the opt-in, on CR-0005.
-The moving entry points are **deferred until a measurement** of a non-JSON binary-mode receive and a further owner decision; the decision below about them is a recommendation, not an accepted decision.
+Accepted 2026-10-21 for both stages, on CR-0005: the opt-in, and the moving entry points after the measurement of a non-JSON binary-mode receive (pull request #93).
+The failed-call state of a moving call is a proposal the owner has not ruled (CR-0005, open question 1).
 It does not change ADR-0012: `ce::v4` and `ce::v3` stay frozen, and this decision adds to v4 only.
 
 ## Context
@@ -51,13 +51,17 @@ The counter-argument, that the struct definition is itself a published declarati
 The frozen-API diff job is told the same, so it needs no per-member allowlist entry.
 `SWR-BUILD-0006` is not amended by this decision; CR-0005 proposes wording as a follow-up.
 
-**Deferred: the moving entry point has a new name, not an overload (recommended; the owner chose on 2026-10-21 to measure first).**
+**The moving entry point has a new name, not an overload, and only in v4 (the owner, 2026-10-21, after the measurement).**
 A same-name `from_message(message&&)` would make `from_message<C>(std::move(m))` move from `m` where today it binds to `const message&` and leaves `m` intact, the class of change the owner ruled a break on 2026-09-28, and would make `&from_message<C>` ambiguous.
 `from_message_moving<Codec>(message&&, decode_options = {})` in the HTTP, Kafka and NATS bindings, with `binding::read_body_moving` under them, changes no existing call.
-It returns what `from_message` returns, moves the body into a `ce::binary` payload for a non-JSON body, leaves `header_fields` unchanged and the body valid and unspecified after success, and leaves the message unchanged after a failure.
-`from_batch_message` and `from_payload` get no moving form: they keep no bytes of the input to move.
-v3 gets none, v4 only.
-The working name is the owner's to change, and the whole entry point waits for the measurement.
+It returns what `from_message` returns, moves the body into a `ce::binary` payload for a non-JSON body, and leaves `header_fields` unchanged and the body valid and unspecified after success.
+The owner ruled the name `from_message_moving` and v4 only; v3 gets none.
+Proposed, not ruled (CR-0005 open questions): that a failed call leaves the message unchanged, that `from_message_moving` also exists for JSON and structured-mode messages and takes the copying path there, and that `from_batch_message` and `from_payload` get no moving form because they keep no bytes of the input to move.
+
+**The evidence for the move (pull request #93, Callgrind, gcc-14 x86-64):** for a non-JSON binary-mode body a move saves at most one allocation of the body's size, that is one of four allocations, 99.9% of the allocated bytes at 64 KiB and about 73% to 75% at 256 B.
+In instructions the ceiling is 5.5% to 7.8% for 256 B and 85% to 89% for 64 KiB; the 64 KiB figure is overstated because Callgrind replaces `memcpy` with a routine of about one instruction per byte.
+It saves nothing for a JSON body, which the parse reads and `json_text::raw` stores as a `std::string`.
+The owner weighed a small gain for small bodies against a large one for large bodies, and approved the entry point.
 
 ## Consequences
 
@@ -65,13 +69,14 @@ The working name is the owner's to change, and the whole entry point waits for t
 - A forwarder of binary-mode events pays no parse and cannot be refused for a body it never reads, with a measured cost near v3's.
 - No existing call changes meaning, in either addition.
 - v3 is untouched.
-- If the moving entry points go ahead, a non-JSON binary-mode body is received without a second copy.
+- A non-JSON binary-mode body is received without a second copy: one allocation and up to 99.9% of the bytes saved at 64 KiB.
 
 ### Negative
 - `decode_options` grows from 8 to 16 bytes, and v3 callers of `json_format::decode` can write a field that does nothing.
 - A caller who opts in takes over validation of the body.
 - The move saves nothing for a JSON body, so the forwarder case gains from the opt-in alone.
-- If the moving entry points go ahead, a second name per binding and a longer export list in the module.
+- A second name per binding and a longer export list in the module.
+- A small non-JSON body gains at most 5.5% to 7.8% of the instructions of a receive.
 
 ### Neutral
 - The default stays "validate and parse", and `SWR-BIND-0008` becomes the default behaviour rather than the only one.
@@ -84,9 +89,10 @@ The working name is the owner's to change, and the whole entry point waits for t
 - **A separate `from_message_raw`.** It doubles the entry points for one flag. Declined by the owner on 2026-10-20.
 - **Validate without keeping the DOM.** The validation is the parse and saves no instructions. Declined by the owner on 2026-10-20.
 - **Keeping the parse as a known limitation.** Ruled by the owner on 2026-10-11, reversed on 2026-10-20.
-- **A same-name `from_message(message&&)`.** It silently changes the state of a moved argument and makes the function's address ambiguous; recommended against in CR-0005.
-- **A tag or wrapper parameter on `from_message`.** It avoids the hazard with one name, at the price of a public tag type and a third-place options parameter; the alternative to the new name if the owner wants one name.
-- **`from_message(message)` taking the message by value.** It replaces a published declaration and copies on every lvalue call.
+- **A same-name `from_message(message&&)`.** It silently changes the state of a moved argument and makes the function's address ambiguous. Declined by the owner on 2026-10-21.
+- **A tag or wrapper parameter on `from_message`.** It avoids the hazard with one name, at the price of a public tag type and a third-place options parameter. Declined by the owner on 2026-10-21.
+- **`from_message(message)` taking the message by value.** It replaces a published declaration and copies on every lvalue call. Declined by the owner on 2026-10-21.
+- **The moving entry point in v3.** An addition to a frozen generation that rule 4 admits. Declined by the owner on 2026-10-21: a consumer that wants fewer copies migrates to v4.
 
 ## References
 

@@ -2,7 +2,7 @@
 uid: SWR-ADOPT-0006
 title: The repository ships a vcpkg overlay port that a consumer builds against in CI
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A project that manages its dependencies with vcpkg cannot adopt the SDK through find_package alone: it would have to install the SDK by hand and keep CTRE and the codec library in step with it.
@@ -14,8 +14,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-ADOPT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:packaging/vcpkg/ports/cloudevents-cpp/portfile.cmake, code:packaging/vcpkg/ports/cloudevents-cpp/vcpkg.json, code:.github/workflows/packaging.yml]
+verified_by: [test:test/consumer/CMakeLists.txt::consumer-roundtrip, test:test/consumer/CMakeLists.txt::consumer-codec-link]
 owner: filip.sajdak
 version: 1
 ---

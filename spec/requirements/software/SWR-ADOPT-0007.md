@@ -2,7 +2,7 @@
 uid: SWR-ADOPT-0007
 title: The repository ships a Conan recipe that a consumer builds against in CI
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A project that manages its dependencies with Conan has the same need as one using vcpkg (SWR-ADOPT-0006), and SPEC section 9 deferred the recipe as well (D7).
@@ -14,8 +14,8 @@ rationale: >
 verification_method: demonstration
 security_classification: operational
 derived_from: [SYS-ADOPT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:packaging/conan/conanfile.py, code:packaging/conan/test_package/conanfile.py, code:.github/workflows/packaging.yml]
+verified_by: [test:test/consumer/CMakeLists.txt::consumer-roundtrip, test:test/consumer/CMakeLists.txt::consumer-codec-link]
 owner: filip.sajdak
 version: 1
 ---

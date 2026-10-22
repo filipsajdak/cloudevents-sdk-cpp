@@ -1,0 +1,40 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "",
+  "content_type": null,
+  "user_properties": [
+    [
+      "ce-aboolean",
+      "true"
+    ],
+    [
+      "ce-aninteger",
+      "42"
+    ],
+    [
+      "ce-astring",
+      "text"
+    ],
+    [
+      "ce-id",
+      "id-types"
+    ],
+    [
+      "ce-negative",
+      "-7"
+    ],
+    [
+      "ce-source",
+      "/interop/go"
+    ],
+    [
+      "ce-specversion",
+      "1.0"
+    ],
+    [
+      "ce-type",
+      "com.example.types"
+    ]
+  ]
+}

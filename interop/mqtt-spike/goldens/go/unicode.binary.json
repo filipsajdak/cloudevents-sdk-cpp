@@ -1,0 +1,28 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "eyJ0ZXh0Ijoiw6nmlocg8J+YgCJ9",
+  "content_type": "application/json",
+  "user_properties": [
+    [
+      "ce-id",
+      "id-unicode-é文"
+    ],
+    [
+      "ce-source",
+      "/interop/go/%C3%A9v%C3%A9nement"
+    ],
+    [
+      "ce-specversion",
+      "1.0"
+    ],
+    [
+      "ce-subject",
+      "日本語 😀"
+    ],
+    [
+      "ce-type",
+      "com.example.unicode"
+    ]
+  ]
+}

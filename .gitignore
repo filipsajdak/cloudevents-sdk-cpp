@@ -31,6 +31,7 @@
 # without the file that makes it a module and only CI noticed.
 !interop/go/go.mod
 !interop/kafka/go/go.mod
+!interop/mqtt-spike/go/go.mod
 
 # Maven build output. The generator sources are committed; its .class files are
 # not.

@@ -108,10 +108,15 @@ Run every command from a clean `main` at the commit being tagged.
       the hash of the new tag's archive, committed after the tag exists (the
       archive cannot be hashed before it does):
       `curl -sL https://github.com/filipsajdak/cloudevents-sdk-cpp/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 512`.
-      Then install the port without `CLOUDEVENTS_CPP_SOURCE_DIR` set; vcpkg
-      downloads the archive and refuses a mismatch. Until that commit lands, the
-      released-source mode names the previous release's hash, which is why CI
-      builds the working tree instead.
+      Until that commit lands, the released-source mode names the previous
+      release's hash, which is why the `packaging` workflow builds the working
+      tree instead. The `vcpkg-released` job on main proves the hash after the
+      post-tag PR merges: it installs the port without `CLOUDEVENTS_CPP_SOURCE_DIR`,
+      so vcpkg downloads the archive and refuses a mismatch, and it also
+      checks that a wrong hash is refused (`SWR-ADOPT-0009`). It skips, with a
+      notice, while the tag is missing or the hash is not yet new; read its
+      result in the Actions tab, and dispatch it manually if the post-tag PR
+      did not touch `packaging/vcpkg/`.
 - [ ] The tag builds from a clean clone with no network access beyond the
       dependency fetch.
 

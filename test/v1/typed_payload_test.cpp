@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -265,6 +266,67 @@ void check_payload_failures(std::string_view label) {
   }
 }
 
+/// One member of `reading` holding a JSON value of the wrong kind, and the member
+/// the error has to name. An element of an array names the array, and a member of
+/// a map names its own key. Every view points at a string literal in the table below.
+struct mistyped_member {
+  std::string_view document;  // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
+  std::string_view named;     // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
+  std::string_view why;       // NOLINT(scudoai-copy-view-member,custom-scudoai-copy-view-member)
+};
+
+template<class C>
+void check_payload_member_kinds(std::string_view label) {
+  using namespace boost::ut;
+
+  constexpr std::array cases{
+      mistyped_member{R"({"sensor":"s","celsius":1,"calibrated":"yes"})",
+                      "calibrated",
+                      "a string where a boolean is declared"},
+      mistyped_member{R"({"sensor":"s","celsius":1,"drift":"fast"})",
+                      "drift",
+                      "a string where a number is declared"},
+      mistyped_member{
+          R"({"sensor":"s","celsius":"hot"})", "celsius", "a string where an integer is declared"},
+      mistyped_member{R"({"sensor":"s","celsius":1,"tags":"north"})",
+                      "tags",
+                      "a string where an array is declared"},
+      mistyped_member{R"({"sensor":"s","celsius":1,"labels":["site"]})",
+                      "labels",
+                      "an array where an object is declared"},
+      mistyped_member{R"({"sensor":"s","celsius":1,"tags":["north",7]})",
+                      "tags",
+                      "an array element of the wrong kind"},
+      mistyped_member{R"({"sensor":"s","celsius":1,"labels":{"site":7}})",
+                      "site",
+                      "a map value of the wrong kind"},
+      mistyped_member{
+          R"({"sensor":"s","celsius":1,"note":7})", "note", "an optional holding the wrong kind"},
+  };
+
+  for (const auto& [document, named, why] : cases) {
+    ce::v1::event subject = minimal();
+    subject.datacontenttype = "application/json";
+    subject.data = ce::v1::json_text{.raw = std::string{document}};
+    auto refused = ce::v1::data_as<reading, C>(subject);
+    expect(!refused.has_value()) << label << ": " << why;
+    if (!refused) {
+      expect(refused.error().code == ce::v1::errc::type_mismatch) << label << ": " << why;
+      expect(refused.error().where == named)
+          << label << ": " << why << " named " << refused.error().where;
+    }
+  }
+
+  // Every document above differs from this one in a single member, so the
+  // refusals are about that member and not about the document around it.
+  ce::v1::event sound = minimal();
+  sound.datacontenttype = "application/json";
+  sound.data =
+      ce::v1::json_text{.raw = R"({"sensor":"s","celsius":1,"calibrated":true,"drift":0.5,)"
+                               R"("note":"n","tags":["north"],"labels":{"site":"oslo"}})"};
+  expect(ce::v1::data_as<reading, C>(sound).has_value()) << label;
+}
+
 const boost::ut::suite<"typed-payload-roundtrip"> payload_roundtrip = [] {
   using namespace boost::ut;
 
@@ -284,6 +346,10 @@ const boost::ut::suite<"typed-payload-roundtrip"> payload_roundtrip = [] {
   "absent members mini_codec"_test = [] { check_payload_absent_members<mini_codec>("mini_codec"); };
   "failures nlohmann_codec"_test = [] { check_payload_failures<nlohmann_codec>("nlohmann_codec"); };
   "failures mini_codec"_test = [] { check_payload_failures<mini_codec>("mini_codec"); };
+  "member kinds nlohmann_codec"_test = [] {
+    check_payload_member_kinds<nlohmann_codec>("nlohmann_codec");
+  };
+  "member kinds mini_codec"_test = [] { check_payload_member_kinds<mini_codec>("mini_codec"); };
 };
 
 // --- SWR-EXT-0006 -----------------------------------------------------------

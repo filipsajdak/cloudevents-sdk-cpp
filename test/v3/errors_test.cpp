@@ -1,6 +1,7 @@
 #include <boost/ut.hpp>
 
 #include <cloudevents/v3/binding/http.hpp>
+#include <cloudevents/v3/binding/kafka.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
 #include <cloudevents/v3/core.hpp>
 #include <cloudevents/extensions.hpp>
@@ -17,6 +18,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 // One negative test per errc, and a check that the set is complete.
@@ -135,6 +137,28 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
 
     fails_with(ce::v3::ext::sampled_rate{.sampledrate = 0}.validate(),
                ce::v3::errc::invalid_attribute_value, "a sampled rate of zero");
+
+    // A JSON document is untrusted input. A context attribute that is not a JSON
+    // string is refused, and the error names the member.
+    const std::pair<std::string_view, std::string_view> not_strings[] = {
+        {R"({"specversion":1.0,"id":"1","source":"/s","type":"t"})"sv, "specversion"sv},
+        {R"({"specversion":"1.0","id":5,"source":"/s","type":"t"})"sv, "id"sv},
+        {R"({"specversion":"1.0","id":"1","source":true,"type":"t"})"sv, "source"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":["t"]})"sv, "type"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","subject":5})"sv, "subject"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":5})"sv,
+         "datacontenttype"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","dataschema":{}})"sv,
+         "dataschema"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","time":5})"sv, "time"sv},
+    };
+    for (const auto& [document, member] : not_strings) {
+      const auto refused = format::decode(document);
+      fails_with(refused, ce::v3::errc::invalid_attribute_value, document);
+      if (!refused) {
+        expect(refused.error().where == member) << document << " named " << refused.error().where;
+      }
+    }
   };
 
   "unsupported_spec_version"_test = [] {
@@ -157,11 +181,40 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
                            "2026-09-20T25:00:00Z"sv, ""sv}) {
       fails_with(ce::v3::parse_timestamp(bad), ce::v3::errc::invalid_timestamp, bad);
     }
+
+    // The same text arriving in a JSON document, where it is a string member.
+    const auto from_document = format::decode(
+        R"({"specversion":"1.0","id":"1","source":"/s","type":"t","time":"yesterday"})");
+    fails_with(
+        from_document, ce::v3::errc::invalid_timestamp, "a time member that is not a date-time");
+    if (!from_document) {
+      expect(from_document.error().where == "time"sv) << from_document.error().where;
+    }
   };
 
   "invalid_content_type"_test = [] {
     fails_with(ce::v3::datacontenttype::make("not a media type"sv), ce::v3::errc::invalid_content_type,
                "a malformed media type");
+
+    // The same text arriving as a Content-Type header, on each binding that
+    // carries one.
+    const ce::v3::message http_request{.header_fields = {{"ce-specversion", "1.0"},
+                                                         {"ce-id", "1"},
+                                                         {"ce-source", "/s"},
+                                                         {"ce-type", "t"},
+                                                         {"Content-Type", "not a media type"}}};
+    fails_with(ce::v3::http::from_message<codec>(http_request),
+               ce::v3::errc::invalid_content_type,
+               "a malformed Content-Type header");
+
+    const ce::v3::message kafka_record{.header_fields = {{"ce_specversion", "1.0"},
+                                                         {"ce_id", "1"},
+                                                         {"ce_source", "/s"},
+                                                         {"ce_type", "t"},
+                                                         {"content-type", "not a media type"}}};
+    fails_with(ce::v3::kafka::from_message<codec>(kafka_record),
+               ce::v3::errc::invalid_content_type,
+               "a malformed content-type record header");
   };
 
   "parse_error"_test = [] {

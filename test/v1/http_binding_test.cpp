@@ -657,6 +657,23 @@ void check_invalid_utf8_rejected(std::string_view label) {
     expect(refused_extension.error().code == ce::v1::errc::invalid_utf8) << label;
   }
 
+  // The literal policy takes the octets as they are, so it is the policy that has
+  // to refuse them: nothing was percent-decoded before they reached it.
+  const std::string_view ill_formed_literals[] = {
+      "\xC0\x80"sv, "\xED\xA0\x80"sv, "\xE2\x82"sv, "\x80"sv};
+  for (const std::string_view literal : ill_formed_literals) {
+    ce::v1::message literal_request = minimal_binary_message();
+    literal_request.header_fields.set("ce-subject", std::string{literal});
+    auto refused_literal =
+        ce::v1::http::from_message<C, ce::v1::http::literal_values>(literal_request);
+    expect(!refused_literal.has_value()) << label << ": a literal policy admitted ill-formed text";
+    if (!refused_literal) {
+      expect(refused_literal.error().code == ce::v1::errc::invalid_utf8) << label;
+      expect(refused_literal.error().where == "subject"sv)
+          << label << ": " << refused_literal.error().where;
+    }
+  }
+
   // Well-formed multi-byte text is accepted, so the rejections above are about
   // ill-formedness and not about non-ASCII generally.
   ce::v1::message good = minimal_binary_message();
@@ -1401,6 +1418,10 @@ const boost::ut::suite<"header-value-invalid-utf8"> header_value_invalid_utf8 = 
     expect(!ce::v1::http::detail::is_valid_utf8("\xF5\x80\x80\x80"sv));  // above U+10FFFF
     expect(!ce::v1::http::detail::is_valid_utf8("\xF4\x90\x80\x80"sv));  // above U+10FFFF
     expect(!ce::v1::http::detail::is_valid_utf8("\xE2\x82"sv));          // truncated
+    expect(!ce::v1::http::detail::is_valid_utf8("\xC3\x28"sv));          // lead, then ASCII
+    expect(!ce::v1::http::detail::is_valid_utf8("\xE2\x28\xA1"sv));      // continuation replaced
+    expect(!ce::v1::http::detail::is_valid_utf8("\xE2\x82\x28"sv));      // third byte replaced
+    expect(!ce::v1::http::detail::is_valid_utf8("\xF0\x9F\x98\x28"sv));  // fourth byte replaced
     expect(!ce::v1::http::detail::is_valid_utf8("\x80"sv));              // stray continuation
     expect(!ce::v1::http::detail::is_valid_utf8("\xFE"sv));              // never a lead byte
     expect(!ce::v1::http::detail::is_valid_utf8("\xFF"sv));

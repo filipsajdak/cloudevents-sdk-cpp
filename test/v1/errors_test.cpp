@@ -17,6 +17,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 // One negative test per errc, and a check that the set is complete.
@@ -138,6 +139,28 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
 
     fails_with(ce::v1::ext::sampled_rate{.sampledrate = 0}.validate(),
                ce::v1::errc::invalid_attribute_value, "a sampled rate of zero");
+
+    // A JSON document is untrusted input. A context attribute that is not a JSON
+    // string is refused, and the error names the member.
+    const std::pair<std::string_view, std::string_view> not_strings[] = {
+        {R"({"specversion":1.0,"id":"1","source":"/s","type":"t"})"sv, "specversion"sv},
+        {R"({"specversion":"1.0","id":5,"source":"/s","type":"t"})"sv, "id"sv},
+        {R"({"specversion":"1.0","id":"1","source":true,"type":"t"})"sv, "source"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":["t"]})"sv, "type"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","subject":5})"sv, "subject"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","datacontenttype":5})"sv,
+         "datacontenttype"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","dataschema":{}})"sv,
+         "dataschema"sv},
+        {R"({"specversion":"1.0","id":"1","source":"/s","type":"t","time":5})"sv, "time"sv},
+    };
+    for (const auto& [document, member] : not_strings) {
+      const auto refused = format::decode(document);
+      fails_with(refused, ce::v1::errc::invalid_attribute_value, document);
+      if (!refused) {
+        expect(refused.error().where == member) << document << " named " << refused.error().where;
+      }
+    }
   };
 
   "unsupported_spec_version"_test = [] {
@@ -161,6 +184,15 @@ const boost::ut::suite<"errc-negative-coverage"> negative_coverage = [] {
     for (const auto bad : {"not-a-time"sv, "2026-13-01T00:00:00Z"sv, "2026-09-20"sv,
                            "2026-09-20T25:00:00Z"sv, ""sv}) {
       fails_with(ce::v1::parse_timestamp(bad), ce::v1::errc::invalid_timestamp, bad);
+    }
+
+    // The same text arriving in a JSON document, where it is a string member.
+    const auto from_document = format::decode(
+        R"({"specversion":"1.0","id":"1","source":"/s","type":"t","time":"yesterday"})");
+    fails_with(
+        from_document, ce::v1::errc::invalid_timestamp, "a time member that is not a date-time");
+    if (!from_document) {
+      expect(from_document.error().where == "time"sv) << from_document.error().where;
     }
   };
 

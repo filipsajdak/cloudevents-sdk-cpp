@@ -279,5 +279,65 @@ class CheckMode(Scenario, unittest.TestCase):
         self.assertEqual(code, tool.EXIT_OK)
 
 
+# spec: SWR-BUILD-0016
+class CheckOnPullRequests(Scenario, unittest.TestCase):
+    """What a pull request carries when --check runs on it in CI."""
+
+    def test_a_delivered_requirement_left_approved_fails_naming_file_and_tag(self) -> None:
+        self.ship_in(FIRST)
+        self.repo.release(SECOND)
+        code, out = self.repo.run("--check")
+        self.assertEqual(code, tool.EXIT_DRIFT)
+        self.assertIn(f"{REQUIREMENT_PATH} (delivered by {FIRST})", out)
+        self.assertIn("--write", out)
+
+    def test_a_new_requirement_with_its_tests_passes(self) -> None:
+        self.repo.release(FIRST)
+        self.repo.put(CODE_PATH, "// code\n")
+        self.repo.put(TEST_PATH, suite_source())
+        self.repo.put(REQUIREMENT_PATH, requirement())
+        code, _ = self.repo.run("--check")
+        self.assertEqual(code, tool.EXIT_OK)
+
+    def test_a_delivered_requirement_amended_back_to_approved_passes(self) -> None:
+        self.ship_in(FIRST, requirement(status="implemented"))
+        self.repo.put(REQUIREMENT_PATH, requirement(statement="The demo shall do a second thing.", version=2))
+        code, _ = self.repo.run("--check")
+        self.assertEqual(code, tool.EXIT_OK)
+
+    def test_a_requirement_whose_tests_the_release_pull_request_adds_passes_before_the_tag(self) -> None:
+        self.repo.put(REQUIREMENT_PATH, requirement())
+        self.repo.release(FIRST)
+        self.repo.put(CODE_PATH, "// code\n")
+        self.repo.put(TEST_PATH, suite_source())
+        code, _ = self.repo.run("--check")
+        self.assertEqual(code, tool.EXIT_OK)
+
+    def test_the_window_after_the_tag_fails_until_the_write_is_merged(self) -> None:
+        self.ship_in(FIRST)
+        self.assertEqual(self.repo.run("--check")[0], tool.EXIT_DRIFT)
+        self.repo.run("--write")
+        self.assertEqual(self.repo.run("--check")[0], tool.EXIT_OK)
+
+
+# spec: SWR-BUILD-0016
+class CheckNeedsTags(Scenario, unittest.TestCase):
+    """A check that cannot read the tags fails and does not pass."""
+
+    def test_a_checkout_without_tags_fails_and_says_how_to_fetch_them(self) -> None:
+        self.repo.put(REQUIREMENT_PATH, requirement())
+        code, out = self.repo.run("--check")
+        self.assertEqual(code, tool.EXIT_UNREADABLE)
+        self.assertIn("git fetch --tags", out)
+
+    def test_a_tag_whose_objects_are_missing_fails_and_does_not_pass(self) -> None:
+        self.ship_in(FIRST)
+        absent_object = "1" * 40
+        (self.repo.root / ".git" / "refs" / "tags" / SECOND).write_text(absent_object + "\n", encoding="utf-8")
+        code, out = self.repo.run("--check")
+        self.assertEqual(code, tool.EXIT_UNREADABLE)
+        self.assertIn(SECOND, out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,7 +29,10 @@ Modes:
   --write    for each `approved` requirement with a derived tag, set
              `status: implemented` and `delivered_in: <tag>` by editing the two
              lines in place; nothing else in the file changes
-  --check    exit 1 if --write would change anything, listing the files
+  --check    exit 1 if --write would change anything, listing each file with the
+             tag that delivers it; exit 2 if the release tags cannot be read (none
+             fetched, or a tag whose objects are missing), because a tree without
+             tags derives nothing and would look clean
 
 Tags are read with `git`; no tag is ever checked out. Standard library plus
 pyyaml (through reqlib).
@@ -48,6 +51,7 @@ import reqlib
 
 EXIT_OK = 0
 EXIT_DRIFT = 1
+EXIT_UNREADABLE = 2
 
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 STATUS_APPROVED = "approved"
@@ -59,6 +63,10 @@ STATUS_LINE_RE = re.compile(r"^status: approved[ \t]*$", re.MULTILINE)
 DELIVERED_LINE_RE = re.compile(r"^delivered_in:.*$", re.MULTILINE)
 
 
+class TagUnreadable(Exception):
+    """A release tag whose tree cannot be listed."""
+
+
 class GitTree:
     """The files of one release tag, read through git and cached."""
 
@@ -66,7 +74,9 @@ class GitTree:
         self.repo = repo
         self.tag = tag
         listing = self._git("ls-tree", "-r", "--name-only", tag)
-        self._paths = set(listing.splitlines()) if listing is not None else set()
+        if listing is None:
+            raise TagUnreadable(tag)
+        self._paths = set(listing.splitlines())
         self._texts: dict[str, str | None] = {}
 
     def _git(self, *args: str) -> str | None:
@@ -202,12 +212,12 @@ def render_table(rows) -> str:
     return "\n".join("  ".join(c.ljust(w) for c, w in zip(row, widths)).rstrip() for row in cells)
 
 
-def pending_edits(rows) -> list[tuple[pathlib.Path, str]]:
-    """(path, new text) for each approved requirement a tag delivers."""
+def pending_edits(rows) -> list[tuple[pathlib.Path, str, str]]:
+    """(path, new text, delivering tag) for each approved requirement a tag delivers."""
     edits = []
     for path, req, tag, _ in rows:
         if tag and req.meta.get("status") == STATUS_APPROVED:
-            edits.append((path, mark_delivered(path.read_text(encoding="utf-8"), tag)))
+            edits.append((path, mark_delivered(path.read_text(encoding="utf-8"), tag), tag))
     return edits
 
 
@@ -219,17 +229,27 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="exit 1 if --write would change anything")
     args = parser.parse_args(argv)
 
-    rows = derive_all(args.repo)
+    if args.check and not release_tags(args.repo):
+        print("FAIL: no release tags are readable here; run `git fetch --tags` "
+              "(CI: actions/checkout with fetch-depth: 0)")
+        return EXIT_UNREADABLE
+    try:
+        rows = derive_all(args.repo)
+    except TagUnreadable as unreadable:
+        print(f"FAIL: the tree of tag {unreadable} cannot be read; the clone is shallow "
+              "or partial, run `git fetch --unshallow --tags`")
+        return EXIT_UNREADABLE
     print(render_table(rows))
     edits = pending_edits(rows)
     if args.write:
-        for path, text in edits:
+        for path, text, _ in edits:
             path.write_text(text, encoding="utf-8")
         print(f"wrote {len(edits)} requirement file(s)")
     if args.check and edits:
         print(f"FAIL: {len(edits)} requirement(s) are approved but delivered by a tag:")
-        for path, _ in edits:
-            print(f"  - {path.relative_to(args.repo)}")
+        for path, _, tag in edits:
+            print(f"  - {path.relative_to(args.repo)} (delivered by {tag})")
+        print("fix: python3 spec/tools/derive_delivered_in.py --write, and commit the edits")
         return EXIT_DRIFT
     return EXIT_OK
 

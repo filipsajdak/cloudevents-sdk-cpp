@@ -18,8 +18,16 @@ jobs:
   gate:
     name: requirements gate
     runs-on: ubuntu-latest
+    # The gates read files, and the delivered_in check reads each release tag once:
+    # well under a minute. Anything near this limit is a hang.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The delivered_in check reads every release tag, and a shallow clone has
+          # none (SWR-BUILD-0016). The tool fails on a checkout without tags, so a
+          # lost fetch-depth turns this job red instead of letting it pass.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -39,6 +47,10 @@ jobs:
       - name: Check reference resolution
         working-directory: spec/tools
         run: python check_references.py
+
+      - name: Check that no delivered requirement is still approved
+        working-directory: spec/tools
+        run: python derive_delivered_in.py --check
 
       - uses: actions/upload-artifact@v4
         if: always()

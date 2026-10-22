@@ -1,0 +1,32 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "",
+  "content_type": null,
+  "user_properties": [
+    [
+      "ce-id",
+      "id-extensions"
+    ],
+    [
+      "ce-sampledrate",
+      "30"
+    ],
+    [
+      "ce-source",
+      "/interop/go"
+    ],
+    [
+      "ce-specversion",
+      "1.0"
+    ],
+    [
+      "ce-traceparent",
+      "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+    ],
+    [
+      "ce-type",
+      "com.example.extensions"
+    ]
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "eyJzcGVjdmVyc2lvbiI6IjEuMCIsImlkIjoiaWQtYmluYXJ5Iiwic291cmNlIjoiL2ludGVyb3AvZ28iLCJ0eXBlIjoiY29tLmV4YW1wbGUuYmluYXJ5IiwiZGF0YWNvbnRlbnR0eXBlIjoiYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtIiwiZGF0YV9iYXNlNjQiOiJBQUVDL3c9PSJ9",
+  "content_type": "application/cloudevents+json",
+  "user_properties": []
+}

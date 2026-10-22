@@ -1,0 +1,24 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "AAEC/w==",
+  "content_type": "application/octet-stream",
+  "user_properties": [
+    [
+      "ce-id",
+      "id-binary"
+    ],
+    [
+      "ce-source",
+      "/interop/go"
+    ],
+    [
+      "ce-specversion",
+      "1.0"
+    ],
+    [
+      "ce-type",
+      "com.example.binary"
+    ]
+  ]
+}

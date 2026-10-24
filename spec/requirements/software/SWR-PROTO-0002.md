@@ -7,7 +7,7 @@ priority: medium
 rationale: >
   The Protobuf format clause fixes application/cloudevents+protobuf for transports with content
   identification, as SWR-JSON-0025 does for JSON. The batch media type is a separate capability
-  and is an open question in CR-0009.
+  and is SWR-PROTO-0024 (CR-0009, item 10).
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0001]

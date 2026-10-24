@@ -3,7 +3,8 @@
 ## Status
 
 Accepted 2026-10-24 for the four owner rulings of CR-0009: the bet goes ahead as an addition to `ce::v4`, the codec is hand-written, text data is written to `text_data` and read from any data field, and the field numbers follow `cloudevents.proto`.
-The mapping questions that CR-0009 lists as open (limits, timestamps, empty data, JSON classification, `proto_data`) are not decided here.
+On 2026-10-25 the owner approved CR-0009 and accepted its 15 mapping proposals (limits, timestamps, empty data, JSON classification, `proto_data`, batch, binding names and the rest; CR-0009, "Owner decisions", items 5 to 19).
+They are rules of the format and not part of this decision, which they do not change; CR-0009 is their record.
 ADR-0014 belongs to another change request; the gap is intended.
 
 ## Context
@@ -57,7 +58,7 @@ The Go SDK never writes `text_data`, and it returns a `text_data` payload of `ap
 - A hand-written reader of untrusted bytes has none of the years of fuzz and sanitizer hardening of `libprotobuf`; the fuzz target and the limits are the answer, and they are owed from the first slice.
 - The code is ours to maintain: about 455 to 480 lines, a test file, a fuzz target and an interoperability harness (Go and Java).
 - A timestamp loses its offset and fraction digits, and its range is that of `ce::timestamp`, roughly the years 1678 to 2262, narrower than the wire's years 1 to 9999.
-- An event with a JSON `data` is read back as `std::string` or `binary` unless CR-0009 open question 4 is ruled otherwise.
+- An event with a JSON `data` is read back as `std::string` or `binary` unless the caller uses the optional `decode_as<Codec>` that the owner approved on 2026-10-25 (CR-0009, item 8).
 
 ### Neutral
 - Structured mode in the bindings stays hard-wired to JSON until the second slice, which adds new entry points under new names.

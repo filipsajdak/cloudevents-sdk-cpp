@@ -3,8 +3,9 @@
 ## Status
 
 Accepted 2026-10-24 for the design, on CR-0008, by the owner's rulings of that day (CR-0008, "Owner decisions"): MQTT is a bet, it ships as an addition in `ce::v4`, binary mode follows the specification text by default with an opt-in for sdk-go's `ce-` prefix, and the work comes in two slices.
-Two questions stay open and are the owner's (CR-0008, "Open questions"): the treatment of a foreign User Property, and a User Property named `content-type`.
-Neither changes the design below; each changes one requirement.
+On 2026-10-25 the owner approved CR-0008 and ruled the two questions that had stayed open: a foreign User Property is ignored, and a User Property named `content-type` beside the Content Type property is refused (CR-0008, "Owner decisions", items 5 and 6).
+Neither changes the design below; each fixed one requirement.
+The moving entry points for MQTT remain an open question of CR-0008 and are not decided here.
 It does not change ADR-0012 or ADR-0013: `ce::v4` and its predecessors stay frozen, and this decision adds to v4 only.
 
 ## Context
@@ -59,8 +60,8 @@ This is the shape `ce::http::literal_values` has (D-HTTP-1): a named opt-in, a c
 It is an addition because the entry points are new, and a function with a defaulted parameter cannot be bound to by existing code.
 The policy is compile-time because the prefix already is: `binding_traits::attribute_prefix` is a `static constexpr` member, so the policy supplies the traits and the binding stays a single implementation for both names, as the sketch's `spec_rules` and `go_rules` were.
 
-**Foreign User Properties and a User Property named `content-type` are not decided here.**
-The requirements carry a proposal each (`SWR-MQTT-0013`, `SWR-MQTT-0008`), marked as such, and the ADR does not depend on either.
+**Foreign User Properties and a User Property named `content-type` are ruled by the owner (2026-10-25).**
+A foreign User Property is ignored (`SWR-MQTT-0013`) and a User Property named `content-type` is refused with `invalid_argument` (`SWR-MQTT-0008`); the ADR does not depend on either.
 
 ## Alternatives considered and declined
 
@@ -73,7 +74,7 @@ The requirements carry a proposal each (`SWR-MQTT-0013`, `SWR-MQTT-0008`), marke
 | Guess the protocol version in `from_message` | A message with no properties would be wrong on one side. |
 | Write `datacontenttype` as a User Property as well as the Content Type, as example 3.1.4 shows | No SDK does it, `:62-66` and `:146-147` do not call for it, and a receiver has no rule for which copy wins. The binding reads the duplicate when equal and writes one. |
 | Structured mode only, forever | The text defines binary mode and the rest of the protocol maps onto the model with no change; the cost is slice 2 of about 500 lines. |
-| Refuse a message with a foreign User Property | Open question 1. The spike's argument against it: broker-side annotations would be fatal. Left to the owner. |
+| Refuse a message with a foreign User Property | Ruled by the owner on 2026-10-25 (CR-0008, item 5). The spike's argument against it: broker-side annotations would be fatal. |
 
 ## Consequences
 
@@ -91,7 +92,7 @@ The requirements carry a proposal each (`SWR-MQTT-0013`, `SWR-MQTT-0008`), marke
 
 ### Neutral
 
-- `from_message_moving` for MQTT is not decided here (CR-0008, open question 3).
+- `from_message_moving` for MQTT is not decided here (CR-0008, open question 3, not ruled).
 - The Payload Format Indicator, QoS and retain are outside `message`, as the text is silent on them.
 
 ## References

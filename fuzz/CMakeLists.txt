@@ -45,6 +45,8 @@ if(CE_CODEC_NLOHMANN)
     LIBS ce::codec_nlohmann ce::binding_http CORPUS corpus/http)
   ce_add_fuzzer(fuzz_kafka_message SOURCES fuzz_kafka_message.cpp
     LIBS ce::codec_nlohmann ce::binding_kafka CORPUS corpus/kafka)
+  ce_add_fuzzer(fuzz_mqtt_message SOURCES fuzz_mqtt_message.cpp
+    LIBS ce::codec_nlohmann ce::binding_mqtt CORPUS corpus/mqtt)
   ce_add_fuzzer(fuzz_nats_payload SOURCES fuzz_nats_payload.cpp
     LIBS ce::codec_nlohmann ce::binding_nats CORPUS corpus/nats)
   ce_add_fuzzer(fuzz_typed SOURCES fuzz_typed.cpp

@@ -1,0 +1,7 @@
+content-type:application/cloudevents+json
+x-request-id:abc
+x-request-id:def
+specversion:1.0
+id:from-a-user-property
+
+{"specversion":"1.0","id":"1","source":"/s","type":"t"}

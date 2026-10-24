@@ -45,6 +45,7 @@ jobs:
           - { target: fuzz_json_decode, dir: fuzz, seeds: json }
           - { target: fuzz_http_message, dir: fuzz, seeds: http }
           - { target: fuzz_kafka_message, dir: fuzz, seeds: kafka }
+          - { target: fuzz_mqtt_message, dir: fuzz, seeds: mqtt }
           - { target: fuzz_nats_payload, dir: fuzz, seeds: nats }
           - { target: fuzz_typed, dir: fuzz, seeds: typed }
           # The ce::v1 decoders parse the same untrusted input, so SWR-SEC-0001

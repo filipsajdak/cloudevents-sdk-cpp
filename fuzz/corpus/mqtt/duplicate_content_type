@@ -1,0 +1,4 @@
+content-type:application/cloudevents+json
+content-type:text/plain
+
+{"specversion":"1.0","id":"1","source":"/s","type":"t"}

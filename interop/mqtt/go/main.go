@@ -1,11 +1,12 @@
-// Generates the MQTT 5.0 PUBLISH goldens the Go CloudEvents SDK produces, with no
-// broker (CR-0006 spike, docs/spikes/mqtt.md).
+// Generates the MQTT 5.0 PUBLISH goldens the Go CloudEvents SDK produces, and checks
+// that the structured PUBLISH messages this SDK produced decode there to the event they
+// encode (SWR-MQTT-0014; CR-0006 spike, docs/spikes/mqtt.md).
 //
 // protocol/mqtt_paho/v2 converts an event to and from a caller-supplied
 // *paho.Publish, which is the topic, the payload and the properties (Content Type,
 // User Properties) a broker would carry. Nothing here opens a socket.
 //
-// usage: go run . <output-directory>
+// usage: go run . <output-directory> <directory-of-cpp-messages>
 package main
 
 import (
@@ -18,6 +19,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	mqtt "github.com/cloudevents/sdk-go/protocol/mqtt_paho/v2"
@@ -43,6 +45,10 @@ type publish struct {
 
 var modes = []string{"binary", "structured"}
 
+// verified is the modes of the C++ messages this program reads back. Binary mode is
+// read once this SDK writes it.
+var verified = []string{"structured"}
+
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -54,12 +60,15 @@ type named struct {
 	event event.Event
 }
 
-func corpus() []named {
+// corpus is the event set of the other interop programs, with the producer's name in
+// every source so a message says who wrote it.
+func corpus(tag string) []named {
+	source := "/interop/" + tag
 	base := func(id, kind string) event.Event {
 		e := cloudevents.NewEvent()
 		e.SetSpecVersion("1.0")
 		e.SetID(id)
-		e.SetSource("/interop/go")
+		e.SetSource(source)
 		e.SetType(kind)
 		return e
 	}
@@ -72,11 +81,11 @@ func corpus() []named {
 	add("minimal", base("id-minimal", "com.example.minimal"))
 
 	full := base("id-full", "com.example.full")
-	full.SetSource("https://example.test/interop/go")
+	full.SetSource("https://example.test/interop/" + tag)
 	full.SetSubject("the-subject")
 	full.SetTime(instant)
 	full.SetDataSchema("https://example.test/schema/1")
-	must(full.SetData("application/json", map[string]any{"count": 3, "label": "go"}))
+	must(full.SetData("application/json", map[string]any{"count": 3, "label": tag}))
 	add("full", full)
 
 	extended := base("id-extensions", "com.example.extensions")
@@ -100,7 +109,7 @@ func corpus() []named {
 	add("extension_types", types)
 
 	unicode := base("id-unicode-é文", "com.example.unicode")
-	unicode.SetSource("/interop/go/événement")
+	unicode.SetSource("/interop/" + tag + "/événement")
 	unicode.SetSubject("日本語 \U0001F600")
 	must(unicode.SetData("application/json", map[string]any{"text": "é文 \U0001F600"}))
 	add("unicode", unicode)
@@ -220,7 +229,7 @@ func textOf(e event.Event) string {
 // that a golden is a PUBLISH the SDK itself accepts.
 func roundTrip() int {
 	failures := 0
-	for _, entry := range corpus() {
+	for _, entry := range corpus("go") {
 		for _, mode := range modes {
 			got, err := consume(produce(entry.event, mode))
 			switch {
@@ -284,15 +293,125 @@ func probe() int {
 
 func ptr(text string) *string { return &text }
 
+func isJSON(contentType string) bool {
+	return contentType == "" || strings.HasPrefix(contentType, "application/json") ||
+		strings.HasSuffix(contentType, "+json")
+}
+
+// sameData compares the payload: a JSON payload as a document, because the JSON
+// format may re-serialise it, anything else byte for byte (D-INTEROP-1).
+func sameData(want, got event.Event) error {
+	if isJSON(want.DataContentType()) && len(want.Data()) > 0 && len(got.Data()) > 0 {
+		var left, right any
+		if err := json.Unmarshal(want.Data(), &left); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(got.Data(), &right); err != nil {
+			return fmt.Errorf("data is not JSON: %q", got.Data())
+		}
+		if !reflect.DeepEqual(left, right) {
+			return fmt.Errorf("data %s != %s", want.Data(), got.Data())
+		}
+		return nil
+	}
+	if !bytes.Equal(want.Data(), got.Data()) {
+		return fmt.Errorf("data %q != %q", want.Data(), got.Data())
+	}
+	return nil
+}
+
+// timeText is the instant with its offset, because timestamp equality is
+// textual across the SDKs (D-INTEROP-3); an absent time is the empty string.
+func timeText(instant time.Time) string {
+	if instant.IsZero() {
+		return ""
+	}
+	return instant.Format(time.RFC3339Nano)
+}
+
+// sameEvent compares every attribute and every extension, the extensions by their
+// text.
+func sameEvent(want, got event.Event) error {
+	pairs := [][3]string{
+		{"specversion", want.SpecVersion(), got.SpecVersion()},
+		{"id", want.ID(), got.ID()},
+		{"source", want.Source(), got.Source()},
+		{"type", want.Type(), got.Type()},
+		{"subject", want.Subject(), got.Subject()},
+		{"datacontenttype", want.DataContentType(), got.DataContentType()},
+		{"dataschema", want.DataSchema(), got.DataSchema()},
+		{"time", timeText(want.Time()), timeText(got.Time())},
+	}
+	for _, pair := range pairs {
+		if pair[1] != pair[2] {
+			return fmt.Errorf("%s: want %q, got %q", pair[0], pair[1], pair[2])
+		}
+	}
+	wanted := map[string]string{}
+	for name, value := range want.Extensions() {
+		wanted[name] = fmt.Sprint(value)
+	}
+	gotten := map[string]string{}
+	for name, value := range got.Extensions() {
+		gotten[name] = fmt.Sprint(value)
+	}
+	if !reflect.DeepEqual(wanted, gotten) {
+		return fmt.Errorf("extensions: want %v, got %v", wanted, gotten)
+	}
+	return sameData(want, got)
+}
+
+// verify has the Go SDK read the PUBLISH messages the C++ SDK wrote and compares
+// each with the event it was written from.
+func verify(dir string) int {
+	failures, checked := 0, 0
+	for _, entry := range corpus("cpp") {
+		for _, mode := range verified {
+			path := filepath.Join(dir, entry.name+"."+mode+".json")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL %s: %v\n", path, err)
+				failures++
+				continue
+			}
+			var wire publish
+			must(json.Unmarshal(raw, &wire))
+			got, err := consume(wire)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL %s.%s: go refused it: %v\n", entry.name, mode, err)
+				failures++
+				continue
+			}
+			if err := got.Validate(); err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL %s.%s: invalid: %v\n", entry.name, mode, err)
+				failures++
+				continue
+			}
+			if err := sameEvent(entry.event, *got); err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL %s.%s: %v\n", entry.name, mode, err)
+				failures++
+				continue
+			}
+			fmt.Printf("go accepted %s.%s\n", entry.name, mode)
+			checked++
+		}
+	}
+	fmt.Printf("go verified %d message(s) produced by the C++ SDK, %d failure(s)\n", checked, failures)
+	if checked == 0 {
+		return 1
+	}
+	return failures
+}
+
 func main() {
-	outDir := os.Args[1]
+	outDir, cppDir := os.Args[1], os.Args[2]
 	must(os.MkdirAll(outDir, 0o755))
-	for _, entry := range corpus() {
+	for _, entry := range corpus("go") {
 		for _, mode := range modes {
 			write(outDir, entry.name, mode, produce(entry.event, mode))
 		}
 	}
-	if failures := roundTrip() + probe(); failures != 0 {
+	if failures := verify(cppDir) + roundTrip() + probe(); failures != 0 {
 		os.Exit(1)
 	}
 }

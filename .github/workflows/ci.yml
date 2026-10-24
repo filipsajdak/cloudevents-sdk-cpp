@@ -441,6 +441,9 @@ jobs:
       # rejects one (SWR-SEC-0005). The same holds for the Kafka records, which
       # both SDKs convert to and from in memory, so no broker runs (SWR-SEC-0008):
       # the job also fails if a committed record is not what its producer writes now.
+      # The MQTT messages are checked the same way against the Go SDK alone, which
+      # converts to and from an in-memory PUBLISH (SWR-MQTT-0014); sdk-java has no
+      # MQTT binding.
       - name: Verify both directions
         run: CXX=g++-13 ./interop/run.sh verify
       - name: The committed goldens are unchanged

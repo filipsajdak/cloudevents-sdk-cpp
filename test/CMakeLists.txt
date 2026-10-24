@@ -159,6 +159,15 @@ if(CE_CODEC_NLOHMANN)
     LIBS ce::codec_nlohmann ce::binding_kafka)
   target_compile_definitions(interop_kafka_test
     PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
+  # The MQTT messages of the Go SDK and this one (SWR-MQTT-0014), over every codec. The events
+  # are the ones interop/mqtt/cpp/produce.cpp writes, so the suite includes that corpus.
+  ce_add_codec_test(interop_mqtt_test
+    SOURCES interop_mqtt_test.cpp
+    LIBS ce::codec_nlohmann ce::binding_mqtt)
+  target_include_directories(interop_mqtt_test
+    PRIVATE "${PROJECT_SOURCE_DIR}/interop/mqtt/cpp")
+  target_compile_definitions(interop_mqtt_test
+    PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 endif()
 
 add_subdirectory(v1)

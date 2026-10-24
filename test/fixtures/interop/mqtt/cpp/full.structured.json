@@ -1,0 +1,7 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "eyJkYXRhIjp7ImNvdW50IjozLCJsYWJlbCI6ImNwcCJ9LCJkYXRhY29udGVudHR5cGUiOiJhcHBsaWNhdGlvbi9qc29uIiwiZGF0YXNjaGVtYSI6Imh0dHBzOi8vZXhhbXBsZS50ZXN0L3NjaGVtYS8xIiwiaWQiOiJpZC1mdWxsIiwic291cmNlIjoiaHR0cHM6Ly9leGFtcGxlLnRlc3QvaW50ZXJvcC9jcHAiLCJzcGVjdmVyc2lvbiI6IjEuMCIsInN1YmplY3QiOiJ0aGUtc3ViamVjdCIsInRpbWUiOiIyMDI2LTA5LTIwVDEyOjM0OjU2WiIsInR5cGUiOiJjb20uZXhhbXBsZS5mdWxsIn0=",
+  "content_type": "application/cloudevents+json",
+  "user_properties": []
+}

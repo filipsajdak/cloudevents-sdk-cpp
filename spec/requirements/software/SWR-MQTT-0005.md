@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0005
 title: A message that is not a CloudEvent is distinct from a malformed one
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 1 (CR-0008). A topic carries whatever its publishers put there, so a subscriber meets a plain
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-not-a-cloudevent, test:test/mqtt_binding_test.cpp::mqtt-malformed-structured-payload]
 owner: filip.sajdak
 version: 1
 ---

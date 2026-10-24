@@ -51,7 +51,7 @@ if(NOT MSVC)
   foreach(probe IN ITEMS headers baseline)
     add_library(ce_macro_probe_${probe} OBJECT macro_probe/${probe}.cpp)
     target_link_libraries(ce_macro_probe_${probe} PRIVATE
-      ce::core ce::warnings ce::binding_http ce::binding_kafka ce::binding_nats
+      ce::core ce::warnings ce::binding_http ce::binding_kafka ce::binding_nats ce::binding_mqtt
       ${probe_codec_targets})
     # Clang warns that -E leaves the -c CMake adds unused, and -Werror makes that fatal.
     target_compile_options(ce_macro_probe_${probe} PRIVATE -dM -E
@@ -119,6 +119,9 @@ if(CE_CODEC_NLOHMANN)
   ce_add_codec_test(nats_binding_test
     SOURCES nats_binding_test.cpp
     LIBS ce::codec_nlohmann ce::binding_nats)
+  ce_add_codec_test(mqtt_binding_test
+    SOURCES mqtt_binding_test.cpp
+    LIBS ce::codec_nlohmann ce::binding_mqtt)
   ce_add_test(extensions_test
     SOURCES extensions_test.cpp
     LIBS ce::codec_nlohmann)

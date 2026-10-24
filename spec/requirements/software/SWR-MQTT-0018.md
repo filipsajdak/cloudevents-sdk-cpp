@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0018
 title: The optional module exports the MQTT binding from ce::v4 only
 type: software
-status: reviewed
+status: approved
 priority: low
 rationale: >
   Slice 1 (CR-0008). The optional cloudevents.cppm exports ce::v4 only (SWR-BUILD-0013); the MQTT
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/cloudevents.cppm]
+verified_by: [test:test/module_test.cpp::module-exports-mqtt-v4-only]
 owner: filip.sajdak
 version: 1
 ---

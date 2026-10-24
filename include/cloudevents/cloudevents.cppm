@@ -4,6 +4,7 @@ module;
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/http.hpp>
 #include <cloudevents/binding/kafka.hpp>
+#include <cloudevents/binding/mqtt.hpp>
 #include <cloudevents/binding/nats.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>
@@ -137,6 +138,15 @@ using ce::v4::kafka::record;
 using ce::v4::kafka::to_message;
 using ce::v4::kafka::to_record;
 }  // namespace kafka
+
+// spec: SWR-MQTT-0018
+namespace mqtt {
+using ce::v4::mqtt::detect_content_mode;
+using ce::v4::mqtt::from_message;
+using ce::v4::mqtt::from_payload;
+using ce::v4::mqtt::to_message;
+using ce::v4::mqtt::to_payload;
+}  // namespace mqtt
 
 namespace nats {
 using ce::v4::nats::detect_content_mode;

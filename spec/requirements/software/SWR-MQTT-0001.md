@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0001
 title: Structured mode on MQTT 5.0 carries the event in the payload under its format media type
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 1 (CR-0008). Binding text :213-244 requires the Content Type property to be the media type of
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-structured-mode-5-0, test:test/mqtt_binding_test.cpp::mqtt-structured-ignores-user-properties, test:test/mqtt_binding_test.cpp::mqtt-writes-structured-mode-only, test:test/mqtt_binding_test.cpp::mqtt-from-message-takes-decode-options]
 owner: filip.sajdak
 version: 1
 ---

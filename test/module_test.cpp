@@ -1,6 +1,17 @@
+#include <algorithm>
+#include <array>
+#include <filesystem>
+#include <fstream>
+#include <set>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include <boost/ut.hpp>
 
 #include <cloudevents/binding/http.hpp>
+#include <cloudevents/binding/mqtt.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>
 #include <cloudevents/extensions.hpp>
@@ -11,16 +22,6 @@
 #include <cloudevents/format/typed_payload.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
-
-#include <algorithm>
-#include <array>
-#include <filesystem>
-#include <fstream>
-#include <set>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <vector>
 
 #ifndef CE_MODULE_FILE
 #error "CE_MODULE_FILE must be defined by the build"
@@ -76,9 +77,13 @@ constexpr std::array exported_names{CE_MODULE_EXPORTS(CE_NAME_STRING)};
 /// Names exported from a nested namespace inside the module. Checked for
 /// presence in the file, and their existence is proven by the includes above.
 constexpr std::array nested_exports{
-    "ce::v4::json::json_codec"sv, "ce::v4::json::kind"sv, "ce::v4::json::decode_options"sv,
-    "ce::v4::http::from_message"sv, "ce::v4::http::to_message"sv,
-    "ce::v4::ext::tracing"sv,       "ce::v4::ext::dataref"sv,
+    "ce::v4::json::json_codec"sv,
+    "ce::v4::json::kind"sv,
+    "ce::v4::json::decode_options"sv,
+    "ce::v4::http::from_message"sv,
+    "ce::v4::http::to_message"sv,
+    "ce::v4::ext::tracing"sv,
+    "ce::v4::ext::dataref"sv,
     "ce::v4::binding::binding_traits"sv,
     "ce::v4::binding::write_attributes"sv,
     "ce::v4::binding::read_attributes"sv,
@@ -95,6 +100,11 @@ constexpr std::array nested_exports{
     "ce::v4::nats::from_payload"sv,
     "ce::v4::nats::to_message"sv,
     "ce::v4::nats::from_message"sv,
+    "ce::v4::mqtt::detect_content_mode"sv,
+    "ce::v4::mqtt::from_message"sv,
+    "ce::v4::mqtt::from_payload"sv,
+    "ce::v4::mqtt::to_message"sv,
+    "ce::v4::mqtt::to_payload"sv,
     "ce::v4::literals::operator\"\"_dataschema"sv,
     "ce::v4::literals::operator\"\"_ext"sv,
     "ce::v4::literals::operator\"\"_id"sv,
@@ -259,6 +269,42 @@ const boost::ut::suite<"module-exports-v4-only"> module_exports_v4_only = [] {
     expect(source.find("from_v3") == std::string::npos);
     expect(source.find("to_v3") == std::string::npos);
     expect(source.find("v3_conversion") == std::string::npos);
+  };
+};
+
+// spec: SWR-MQTT-0018
+const boost::ut::suite<"module-exports-mqtt-v4-only"> module_exports_mqtt_v4_only = [] {
+  using namespace boost::ut;
+
+  // The MQTT binding is new in ce::v4 and has no earlier generation, so the module exports the
+  // v4 namespace alone and no frozen generation gains an MQTT name.
+  "it exports the MQTT binding of ce::v4"_test = [] {
+    const std::string source = read_module();
+    expect(source.find("#include <cloudevents/binding/mqtt.hpp>") != std::string::npos);
+    expect(source.find("namespace mqtt {") != std::string::npos);
+    for (const auto name : {"detect_content_mode"sv,
+                            "from_message"sv,
+                            "from_payload"sv,
+                            "to_message"sv,
+                            "to_payload"sv}) {
+      expect(source.find("using ce::v4::mqtt::" + std::string{name} + ";") != std::string::npos)
+          << name;
+    }
+  };
+
+  "it names no MQTT entity of a frozen generation"_test = [] {
+    const std::string source = read_module();
+    for (const auto frozen : {"ce::v1::mqtt"sv, "ce::v2::mqtt"sv, "ce::v3::mqtt"sv}) {
+      expect(source.find(frozen) == std::string::npos) << frozen;
+    }
+  };
+
+  "no frozen generation declares an MQTT binding header"_test = [] {
+    for (const auto generation : {"v1"sv, "v2"sv, "v3"sv}) {
+      const std::filesystem::path header = std::filesystem::path{CE_INCLUDE_DIR} / "cloudevents" /
+                                           std::string{generation} / "binding" / "mqtt.hpp";
+      expect(!std::filesystem::exists(header)) << header.string();
+    }
   };
 };
 

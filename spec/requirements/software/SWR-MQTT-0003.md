@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0003
 title: The Content Type property is the header content-type and maps to datacontenttype
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 1 (CR-0008). Binding text :146-147: the Content Type property must be mapped directly to
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-content-type-property]
 owner: filip.sajdak
 version: 1
 ---

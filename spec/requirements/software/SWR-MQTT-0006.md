@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0006
 title: The MQTT binding refuses batch mode in both directions
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Slice 1 (CR-0008). The binding text defines no batch mode, and neither does sdk-go
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-refuses-batch]
 owner: filip.sajdak
 version: 1
 ---

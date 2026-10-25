@@ -14,6 +14,7 @@ module;
 #include <cloudevents/format/describe_json.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/format/typed_payload.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
@@ -93,6 +94,8 @@ using ce::v4::event_of;
 using ce::v4::from_value_as;
 using ce::v4::from_json_value;
 using ce::v4::json_format;
+// spec: SWR-PROTO-0015
+using ce::v4::protobuf_format;
 using ce::v4::set_data;
 using ce::v4::to_json_value;
 
@@ -104,6 +107,16 @@ using ce::v4::json::json_codec;
 using ce::v4::json::kind;
 using ce::v4::json::string_adopting_codec;
 }  // namespace json
+
+// spec: SWR-PROTO-0015
+namespace protobuf {
+using ce::v4::protobuf::content_type;
+using ce::v4::protobuf::decode_options;
+using ce::v4::protobuf::default_max_attribute_count;
+using ce::v4::protobuf::default_max_encoded_size;
+using ce::v4::protobuf::fixed_nesting_depth;
+using ce::v4::protobuf::max_varint_bytes;
+}  // namespace protobuf
 
 namespace binding {
 using ce::v4::binding::binding_traits;

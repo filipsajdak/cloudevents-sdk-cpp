@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_data_test.cpp::protobuf-data-read-arms]
 owner: filip.sajdak
 version: 2
 ---

@@ -9,6 +9,7 @@
 #include <cloudevents/attributes.hpp>
 #include <cloudevents/result.hpp>
 
+// spec: SWR-PROTO-0013
 namespace ce::inline v4::protobuf {
 
 // spec: SWR-PROTO-0010

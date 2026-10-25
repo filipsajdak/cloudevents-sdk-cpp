@@ -19,6 +19,7 @@
 #include <cloudevents/format/describe_json.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/format/typed_payload.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
@@ -44,20 +45,21 @@
 // That the module exports exactly that list, and includes every public header,
 // is proven by reading the file. One list drives both, so the two cannot drift.
 
-#define CE_MODULE_EXPORTS(X)                                                                     \
-  X(errc) X(error) X(fail) X(result) X(static_error) X(to_string_view) X(widen)                   \
-  X(datacontenttype) X(dataschema) X(extension_name) X(id) X(source) X(spec_version) X(subject)  \
-  X(type)                                                                                        \
-  X(attribute_value) X(binary) X(content_mode) X(data_t) X(event) X(raw_headers)                     \
-  X(is_json_content_type) X(json_document) X(json_text) X(lint_warning) X(message)          \
-  X(parse_timestamp)                                                                             \
-  X(reserved_name) X(timestamp) X(to_string) X(to_bytes) X(to_text) X(uri) X(uri_ref)\
-  X(valid_attribute_name)           \
-  X(backend_of) X(describe_backend) X(described) X(field_count) X(field_names)                   \
-  X(for_each_field) X(members_supported) X(name) X(reflect) X(skip)                              \
-  X(base64_decode) X(base64_encode) X(data_as) X(decode_as) X(decode_batch_as) X(decoded)       \
-  X(encode_as) X(event_of) X(from_json_value) X(from_value_as) X(json_format) X(set_data)        \
-  X(to_json_value)
+#define CE_MODULE_EXPORTS(X)                                                                    \
+  X(errc)                                                                                       \
+  X(error)                                                                                      \
+  X(fail) X(result) X(static_error) X(to_string_view) X(widen) X(datacontenttype) X(dataschema) \
+      X(extension_name) X(id) X(source) X(spec_version) X(subject) X(type) X(attribute_value)   \
+          X(binary) X(content_mode) X(data_t) X(event) X(raw_headers) X(is_json_content_type)   \
+              X(json_document) X(json_text) X(lint_warning) X(message) X(parse_timestamp)       \
+                  X(reserved_name) X(timestamp) X(to_string) X(to_bytes) X(to_text) X(uri)      \
+                      X(uri_ref) X(valid_attribute_name) X(backend_of) X(describe_backend)      \
+                          X(described) X(field_count) X(field_names) X(for_each_field)          \
+                              X(members_supported) X(name) X(reflect) X(skip) X(base64_decode)  \
+                                  X(base64_encode) X(data_as) X(decode_as) X(decode_batch_as)   \
+                                      X(decoded) X(encode_as) X(event_of) X(from_json_value)    \
+                                          X(from_value_as) X(json_format) X(set_data)           \
+                                              X(to_json_value) X(protobuf_format)
 
 namespace {
 
@@ -80,6 +82,12 @@ constexpr std::array nested_exports{
     "ce::v4::json::json_codec"sv,
     "ce::v4::json::kind"sv,
     "ce::v4::json::decode_options"sv,
+    "ce::v4::protobuf::content_type"sv,
+    "ce::v4::protobuf::decode_options"sv,
+    "ce::v4::protobuf::default_max_attribute_count"sv,
+    "ce::v4::protobuf::default_max_encoded_size"sv,
+    "ce::v4::protobuf::fixed_nesting_depth"sv,
+    "ce::v4::protobuf::max_varint_bytes"sv,
     "ce::v4::http::from_message"sv,
     "ce::v4::http::to_message"sv,
     "ce::v4::ext::tracing"sv,
@@ -310,6 +318,36 @@ const boost::ut::suite<"module-exports-mqtt-v4-only"> module_exports_mqtt_v4_onl
       const std::filesystem::path header = std::filesystem::path{CE_INCLUDE_DIR} / "cloudevents" /
                                            std::string{generation} / "binding" / "mqtt.hpp";
       expect(!std::filesystem::exists(header)) << header.string();
+    }
+  };
+};
+
+// spec: SWR-PROTO-0015
+const boost::ut::suite<"module-exports-protobuf-format"> module_exports_protobuf = [] {
+  using namespace boost::ut;
+
+  "the module exports the format and its options from ce::v4"_test = [] {
+    const std::string source = read_module();
+    expect(source.find("#include <cloudevents/format/protobuf_format.hpp>") != std::string::npos);
+    expect(source.find("using ce::v4::protobuf_format;") != std::string::npos);
+    expect(source.find("using ce::v4::protobuf::decode_options;") != std::string::npos);
+  };
+
+  "the format is declared in ce::v4 only, in no frozen generation"_test = [] {
+    const std::string header = [] {
+      std::ifstream in{std::string{CE_INCLUDE_DIR} + "/cloudevents/format/protobuf_format.hpp"};
+      std::ostringstream buffer;
+      buffer << in.rdbuf();
+      return buffer.str();
+    }();
+    expect(header.find("namespace ce::inline v4") != std::string::npos);
+    for (const auto frozen : {"namespace ce::v1"sv, "namespace ce::v2"sv, "namespace ce::v3"sv}) {
+      expect(header.find(frozen) == std::string::npos) << frozen;
+    }
+    for (const auto generation : {"v1"sv, "v2"sv, "v3"sv}) {
+      const std::filesystem::path copy = std::filesystem::path{CE_INCLUDE_DIR} / "cloudevents" /
+                                         generation / "format" / "protobuf_format.hpp";
+      expect(!std::filesystem::exists(copy)) << copy.string();
     }
   };
 };

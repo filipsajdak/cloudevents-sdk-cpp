@@ -10,8 +10,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/cloudevents.cppm]
+verified_by: [test:test/module_test.cpp::module-exports-protobuf-format]
 owner: filip.sajdak
 version: 1
 ---

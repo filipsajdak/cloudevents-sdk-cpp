@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: [code:include/cloudevents/format/detail/protobuf_wire.hpp]
-verified_by: [test:test/protobuf_wire_test.cpp::protobuf-wire-varint, test:test/protobuf_wire_test.cpp::protobuf-wire-field-headers, test:test/protobuf_wire_test.cpp::protobuf-wire-lengths-and-skipping]
+satisfied_by: [code:include/cloudevents/format/detail/protobuf_wire.hpp, code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_wire_test.cpp::protobuf-wire-varint, test:test/protobuf_wire_test.cpp::protobuf-wire-field-headers, test:test/protobuf_wire_test.cpp::protobuf-wire-lengths-and-skipping, test:test/protobuf_decode_test.cpp::protobuf-decode-error-codes]
 owner: filip.sajdak
 version: 1
 ---

@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp, code:include/cloudevents/format/detail/protobuf_wire.hpp]
+verified_by: [test:test/protobuf_format_test.cpp::protobuf-format-includes-no-third-party-header]
 owner: filip.sajdak
 version: 1
 ---

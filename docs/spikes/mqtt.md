@@ -61,10 +61,10 @@ Read from source, not from a summary. `cloudevents/sdk-go`, module `protocol/mqt
 
 ## 3. Go works offline
 
-`protocol/mqtt_paho` converts an event to and from a caller-supplied `*paho.Publish` (`WritePubMessage`, `write_message.go:22`; `NewMessage`, `message.go:39`), so no client connects. `interop/mqtt-spike/go/main.go` builds eight events in both modes and writes 16 documents to `interop/mqtt-spike/goldens/go/`; running it twice gives identical files (checked).
+`protocol/mqtt_paho` converts an event to and from a caller-supplied `*paho.Publish` (`WritePubMessage`, `write_message.go:22`; `NewMessage`, `message.go:39`), so no client connects. `interop/mqtt/go/main.go` builds eight events in both modes and writes 16 documents to `test/fixtures/interop/mqtt/go/`; running it twice gives identical files (checked).
 
 ```text
-cd interop/mqtt-spike/go && go run . ../goldens/go      # Go 1.27.1, no network after the module download
+cd interop/mqtt/go && go run . ../../../test/fixtures/interop/mqtt/go ../../../test/fixtures/interop/mqtt/cpp      # Go 1.27.1, no network after the module download
 ```
 
 The document shape (`publish`): `mqtt` ("5.0"), `topic`, `payload_base64`, `content_type` (null when the property is absent), and `user_properties` as an ordered list of `[name, value]` text pairs (sorted by name for a stable file; Go emits extensions in map order). For 3.1.1 the same document would have no properties: the structured goldens' `payload_base64` alone is the 3.1.1 PUBLISH payload.
@@ -85,7 +85,7 @@ The document shape (`publish`): `mqtt` ("5.0"), `topic`, `payload_base64`, `cont
 
 Limits: the evidence is the struct, not the MQTT packet bytes (encoding a `Publish` to the wire is paho's job and was not exercised), and no broker ran. A broker that drops or rewrites User Properties is unverified.
 
-Pins: `github.com/cloudevents/sdk-go/protocol/mqtt_paho/v2 v2.0.0-20261020064151-05f0f6812a36`, which resolves `sdk-go/v2 v2.16.2` and `paho.golang v0.23.0` (`interop/mqtt-spike/go/go.mod`). The Kafka interop pins the core at v2.15.2; this one cannot, because the MQTT module at `main` requires the newer core.
+Pins: `github.com/cloudevents/sdk-go/protocol/mqtt_paho/v2 v2.0.0-20261020064151-05f0f6812a36`, which resolves `sdk-go/v2 v2.16.2` and `paho.golang v0.23.0` (`interop/mqtt/go/go.mod`). The Kafka interop pins the core at v2.15.2; this one cannot, because the MQTT module at `main` requires the newer core.
 
 ## 4. Mapping onto `ce::message`
 
@@ -146,8 +146,8 @@ The estimate is the author's, from the sizes above and the sketch; the earlier c
 ## Reproduce
 
 ```text
-cd interop/mqtt-spike/go && go run . ../goldens/go      # regenerates the 16 goldens and runs the probes
-git diff --exit-code interop/mqtt-spike/goldens          # empty: deterministic
+cd interop/mqtt/go && go run . ../../../test/fixtures/interop/mqtt/go ../../../test/fixtures/interop/mqtt/cpp      # regenerates the 16 goldens and runs the probes
+git diff --exit-code test/fixtures/interop/mqtt/go          # empty: deterministic
 ```
 
 The C++ sketch is not in the repository; it was built with `g++-16 -std=c++20 -I include -isystem <ctre>/include -isystem <nlohmann> roundtrip.cpp` against this tree.

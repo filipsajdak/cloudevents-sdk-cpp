@@ -14,7 +14,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
 satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
-verified_by: [test:test/protobuf_data_test.cpp::protobuf-data-read-arms]
+verified_by: [test:test/protobuf_data_test.cpp::protobuf-data-read-arms, test:test/protobuf_batch_test.cpp::protobuf-proto-data-write-rule, test:test/protobuf_batch_test.cpp::protobuf-proto-data-read-rule, test:test/protobuf_batch_test.cpp::protobuf-proto-data-type-url-side-channel]
 owner: filip.sajdak
 version: 1
 ---

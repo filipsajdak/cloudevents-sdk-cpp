@@ -12,6 +12,7 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/detail/protobuf_wire.hpp>
@@ -38,12 +39,38 @@ inline constexpr std::size_t default_max_attribute_count = 1024;
 /// The depth of the schema: event, map entry, value, Timestamp. `Any` is opaque and groups are
 /// refused, so the decoder's call depth is this constant and no input can raise it.
 inline constexpr std::size_t fixed_nesting_depth = 4;
+/// The most events a batch may carry by default. Proposed by the owner's ruling (CR-0009
+/// item 20) and adjustable in review; it was not measured against a workload.
+inline constexpr std::size_t default_max_batch_event_count = 100'000;
+
+// spec: SWR-PROTO-0024
+inline constexpr std::string_view batch_content_type = "application/cloudevents-batch+protobuf";
 
 // spec: SWR-PROTO-0001
 // spec: SWR-PROTO-0010
 struct decode_options {
   std::size_t max_encoded_size = default_max_encoded_size;
   std::size_t max_attribute_count = default_max_attribute_count;
+  std::size_t max_batch_event_count = default_max_batch_event_count;
+};
+
+/// An event with the type URL of its `proto_data` value, which the event cannot hold apart
+/// from its dataschema. The type URL is absent when the data was not `proto_data` or its URL was
+/// empty.
+// spec: SWR-PROTO-0026
+struct detailed_event {
+  ce::event event;
+  std::optional<std::string> type_url = {};
+};
+
+/// An event with the value `Codec` parsed from its JSON payload; the event keeps the payload as
+/// text or bytes and holds no document. The value is empty when the event is not JSON-typed or
+/// has no payload.
+// spec: SWR-PROTO-0025
+template<json::json_codec Codec>
+struct decoded_json {
+  ce::event event;
+  std::optional<typename Codec::value> payload = {};
 };
 
 namespace detail {
@@ -86,6 +113,10 @@ namespace any_field {
 inline constexpr std::uint32_t type_url = 1;
 inline constexpr std::uint32_t value = 2;
 }  // namespace any_field
+
+namespace batch_field {
+inline constexpr std::uint32_t events = 1;
+}  // namespace batch_field
 
 inline constexpr std::string_view datacontenttype_name = "datacontenttype";
 inline constexpr std::string_view dataschema_name = "dataschema";
@@ -641,16 +672,104 @@ template<class Attribute>
   return std::move(builder).build();
 }
 
-[[nodiscard]] inline auto decode_event(bytes encoded, const decode_options& options)
-    -> result<event> {
+/// Reads the structure of one encoded event; the size limit is checked before any of it is read.
+[[nodiscard]] inline auto scan_limited(bytes encoded, const decode_options& options)
+    -> result<raw_event> {
   if (encoded.size() > options.max_encoded_size) {
     return fail(errc::out_of_range, "the encoded event is larger than the limit allows");
   }
-  auto raw = scan_event(encoded, options);
+  return scan_event(encoded, options);
+}
+
+[[nodiscard]] inline auto decode_event(bytes encoded, const decode_options& options)
+    -> result<event> {
+  auto raw = scan_limited(encoded, options);
   if (!raw) {
     return propagate(std::move(raw).error());
   }
   return build_event(*raw);
+}
+
+// spec: SWR-PROTO-0026
+[[nodiscard]] inline auto decode_detailed_event(bytes encoded, const decode_options& options)
+    -> result<detailed_event> {
+  auto raw = scan_limited(encoded, options);
+  if (!raw) {
+    return propagate(std::move(raw).error());
+  }
+  std::optional<std::string> type_url;
+  if (raw->data_kind == data_field::proto_data && !raw->type_url.empty()) {
+    type_url = std::string{raw->type_url};
+  }
+  auto built = build_event(*raw);
+  if (!built) {
+    return propagate(std::move(built).error());
+  }
+  return detailed_event{.event = std::move(*built), .type_url = std::move(type_url)};
+}
+
+// spec: SWR-PROTO-0024
+/// The bodies of the events of a `CloudEventBatch`. The count is checked before a body is
+/// recorded, so a batch above the limit allocates for no more than the limit.
+[[nodiscard]] inline auto batch_bodies(bytes encoded, const decode_options& options)
+    -> result<std::vector<bytes>> {
+  std::vector<bytes> bodies;
+  auto walked = for_each_field(encoded, [&](const field& current) -> result<void> {
+    if (current.kind != wire_type::length_delimited || current.number != batch_field::events) {
+      return {};
+    }
+    if (bodies.size() >= options.max_batch_event_count) {
+      return fail(errc::out_of_range, "the batch has more events than the limit allows");
+    }
+    bodies.push_back(current.body);
+    return {};
+  });
+  if (!walked) {
+    return propagate(std::move(walked).error());
+  }
+  return bodies;
+}
+
+// spec: SWR-PROTO-0024
+[[nodiscard]] inline auto decode_events(bytes encoded, const decode_options& options)
+    -> result<std::vector<event>> {
+  auto bodies = batch_bodies(encoded, options);
+  if (!bodies) {
+    return propagate(std::move(bodies).error());
+  }
+  std::vector<event> events;
+  for (const auto body : *bodies) {
+    auto decoded = decode_event(body, options);
+    if (!decoded) {
+      return propagate(std::move(decoded).error());
+    }
+    events.push_back(std::move(*decoded));
+  }
+  return events;
+}
+
+// spec: SWR-PROTO-0025
+template<json::json_codec Codec>
+[[nodiscard]] auto parse_json_payload(const event& cloud_event)
+    -> result<std::optional<typename Codec::value>> {
+  const auto& media_type = cloud_event.datacontenttype();
+  if (!media_type || !is_json_content_type(media_type->view())) {
+    return std::optional<typename Codec::value>{};
+  }
+  std::optional<std::string_view> text;
+  if (const auto* held = std::get_if<std::string>(&cloud_event.data())) {
+    text = *held;
+  } else if (const auto* octets = std::get_if<binary>(&cloud_event.data())) {
+    text = text_view(*octets);
+  }
+  if (!text) {
+    return std::optional<typename Codec::value>{};
+  }
+  auto parsed = Codec::parse(*text);
+  if (!parsed) {
+    return propagate(std::move(parsed).error(), "data");
+  }
+  return std::optional<typename Codec::value>{std::move(*parsed)};
 }
 
 inline void put_arm(binary& out, bool value) {
@@ -746,38 +865,44 @@ inline void put_entry(binary& out, std::string_view name, const binary& value) {
 
 inline void put_any(binary& out, std::string_view type_url, bytes value) {
   binary any;
-  put_field(any, any_field::type_url, type_url);
+  if (!type_url.empty()) {
+    put_field(any, any_field::type_url, type_url);
+  }
   put_field(any, any_field::value, value);
   put_field(out, event_field::proto_data, any);
 }
 
+/// The `Any` type URL to write for the data, if the data goes to `proto_data`.
+using any_url = std::optional<std::string_view>;
+
 // spec: SWR-PROTO-0007
-inline void put_data(binary& out, const event& cloud_event, const binary& value) {
-  if (const auto type_url = proto_type_url(cloud_event); type_url) {
+inline void put_data(binary& out, const any_url& type_url, const binary& value) {
+  if (type_url) {
     put_any(out, *type_url, value);
   } else {
     put_field(out, event_field::binary_data, value);
   }
 }
 
-inline void put_data(binary& out, const event& /*cloud_event*/, const std::string& value) {
+inline void put_data(binary& out, const any_url& /*type_url*/, std::string_view value) {
   put_field(out, event_field::text_data, value);
 }
 
-inline void put_data(binary& out, const event& /*cloud_event*/, const json_text& value) {
+inline void put_data(binary& out, const any_url& /*type_url*/, const json_text& value) {
   put_field(out, event_field::text_data, value.raw);
 }
 
-inline void put_data(binary& out, const event& /*cloud_event*/, const json_document& value) {
+inline void put_data(binary& out, const any_url& /*type_url*/, const json_document& value) {
   put_field(out, event_field::text_data, value.dump());
 }
 
 inline void put_data(binary& /*out*/,
-                     const event& /*cloud_event*/,
+                     const any_url& /*type_url*/,
                      const std::monostate& /*value*/) {}
 
 // spec: SWR-PROTO-0012
-[[nodiscard]] inline auto encode_event(const event& cloud_event) -> binary {
+[[nodiscard]] inline auto encode_event(const event& cloud_event, const any_url& type_url)
+    -> binary {
   binary out;
   put_field(out, event_field::id, cloud_event.id().view());
   put_field(out, event_field::source, cloud_event.source().view());
@@ -786,7 +911,28 @@ inline void put_data(binary& /*out*/,
   for (const auto& [name, body] : encode_attributes(cloud_event)) {
     put_entry(out, name, body);
   }
-  std::visit([&](const auto& value) { put_data(out, cloud_event, value); }, cloud_event.data());
+  std::visit([&](const auto& value) { put_data(out, type_url, value); }, cloud_event.data());
+  return out;
+}
+
+// spec: SWR-PROTO-0026
+[[nodiscard]] inline auto encode_event_as_any(const event& cloud_event, std::string_view type_url)
+    -> result<binary> {
+  if (!valid_uri_reference(type_url)) {
+    return fail(errc::parse_error, "the type URL is not a URI-reference", "proto_data");
+  }
+  if (!std::holds_alternative<binary>(cloud_event.data())) {
+    return fail(errc::type_mismatch, "proto_data carries a binary payload", "data");
+  }
+  return encode_event(cloud_event, any_url{type_url});
+}
+
+// spec: SWR-PROTO-0024
+[[nodiscard]] inline auto encode_events(std::span<const event> events) -> binary {
+  binary out;
+  for (const auto& cloud_event : events) {
+    put_field(out, batch_field::events, encode_event(cloud_event, proto_type_url(cloud_event)));
+  }
   return out;
 }
 
@@ -802,13 +948,58 @@ struct protobuf_format {
   // spec: SWR-PROTO-0002
   static constexpr std::string_view content_type = protobuf::content_type;
 
+  // spec: SWR-PROTO-0024
+  static constexpr std::string_view batch_content_type = protobuf::batch_content_type;
+
   [[nodiscard]] static auto encode(const event& cloud_event) -> result<binary> {
-    return protobuf::detail::encode_event(cloud_event);
+    return protobuf::detail::encode_event(cloud_event,
+                                          protobuf::detail::proto_type_url(cloud_event));
   }
 
   [[nodiscard]] static auto decode(std::span<const std::byte> encoded,
                                    protobuf::decode_options options = {}) -> result<event> {
     return protobuf::detail::decode_event(encoded, options);
+  }
+
+  // spec: SWR-PROTO-0024
+  [[nodiscard]] static auto encode_batch(std::span<const event> events) -> result<binary> {
+    return protobuf::detail::encode_events(events);
+  }
+
+  // spec: SWR-PROTO-0024
+  [[nodiscard]] static auto decode_batch(std::span<const std::byte> encoded,
+                                         protobuf::decode_options options = {})
+      -> result<std::vector<event>> {
+    return protobuf::detail::decode_events(encoded, options);
+  }
+
+  // spec: SWR-PROTO-0025
+  template<json::json_codec Codec>
+  [[nodiscard]] static auto decode_as(std::span<const std::byte> encoded,
+                                      protobuf::decode_options options = {})
+      -> result<protobuf::decoded_json<Codec>> {
+    auto read = protobuf::detail::decode_event(encoded, options);
+    if (!read) {
+      return protobuf::detail::propagate(std::move(read).error());
+    }
+    auto payload = protobuf::detail::parse_json_payload<Codec>(*read);
+    if (!payload) {
+      return protobuf::detail::propagate(std::move(payload).error());
+    }
+    return protobuf::decoded_json<Codec>{.event = std::move(*read), .payload = std::move(*payload)};
+  }
+
+  // spec: SWR-PROTO-0026
+  [[nodiscard]] static auto decode_detailed(std::span<const std::byte> encoded,
+                                            protobuf::decode_options options = {})
+      -> result<protobuf::detailed_event> {
+    return protobuf::detail::decode_detailed_event(encoded, options);
+  }
+
+  // spec: SWR-PROTO-0026
+  [[nodiscard]] static auto encode_proto_data(const event& cloud_event, std::string_view type_url)
+      -> result<binary> {
+    return protobuf::detail::encode_event_as_any(cloud_event, type_url);
   }
 };
 

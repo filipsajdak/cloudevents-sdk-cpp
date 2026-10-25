@@ -110,10 +110,14 @@ using ce::v4::json::string_adopting_codec;
 
 // spec: SWR-PROTO-0015
 namespace protobuf {
+using ce::v4::protobuf::batch_content_type;
 using ce::v4::protobuf::content_type;
 using ce::v4::protobuf::decode_options;
+using ce::v4::protobuf::decoded_json;
 using ce::v4::protobuf::default_max_attribute_count;
+using ce::v4::protobuf::default_max_batch_event_count;
 using ce::v4::protobuf::default_max_encoded_size;
+using ce::v4::protobuf::detailed_event;
 using ce::v4::protobuf::fixed_nesting_depth;
 using ce::v4::protobuf::max_varint_bytes;
 }  // namespace protobuf

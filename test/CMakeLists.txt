@@ -84,6 +84,7 @@ target_compile_definitions(protobuf_format_test PRIVATE
   "CE_INCLUDE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../include\"")
 ce_add_test(protobuf_data_test SOURCES protobuf_data_test.cpp)
 ce_add_test(protobuf_decode_test SOURCES protobuf_decode_test.cpp)
+ce_add_test(protobuf_batch_test SOURCES protobuf_batch_test.cpp)
 # The binding core names no codec, so this suite runs in a build with none.
 ce_add_test(binding_core_test SOURCES binding_core_test.cpp)
 # The moving entry points exist in ce::v4; test/v3 shows that no frozen generation has them.

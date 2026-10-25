@@ -940,6 +940,7 @@ inline void put_data(binary& /*out*/,
 
 }  // namespace ce::inline v4::protobuf
 
+// spec: SWR-BUILD-0005
 namespace ce::inline v4 {
 
 // spec: SYS-PROTO-0001

@@ -11,8 +11,8 @@ number (SWR-ADOPT-0008 checks that this stays true).
 
 The package installs the project's own cloudeventsConfig.cmake, and Conan's
 CMakeDeps generates nothing for it (`cmake_find_mode` none). That keeps the
-targets the CMake install defines, ce::core and the others, and the
-`codec_nlohmann` component that config reports, so a consumer is written once
+targets the CMake install defines, ce::core, ce::format_protobuf and the others,
+and the `codec_nlohmann` component that config reports, so a consumer is written once
 and builds the same whichever way the SDK arrived.
 """
 

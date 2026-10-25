@@ -78,16 +78,16 @@ ce_add_test(event_builder_test SOURCES event_builder_test.cpp)
 ce_add_test(describe_parity_test SOURCES describe_parity_test.cpp)
 ce_add_test(base64_test SOURCES base64_test.cpp)
 # The Protobuf format names no codec: its wire layer and its format run in a build with none.
-ce_add_test(protobuf_wire_test SOURCES protobuf_wire_test.cpp)
-ce_add_test(protobuf_format_test SOURCES protobuf_format_test.cpp)
+ce_add_test(protobuf_wire_test SOURCES protobuf_wire_test.cpp LIBS ce::format_protobuf)
+ce_add_test(protobuf_format_test SOURCES protobuf_format_test.cpp LIBS ce::format_protobuf)
 target_compile_definitions(protobuf_format_test PRIVATE
   "CE_INCLUDE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../include\"")
-ce_add_test(protobuf_data_test SOURCES protobuf_data_test.cpp)
-ce_add_test(protobuf_decode_test SOURCES protobuf_decode_test.cpp)
-ce_add_test(protobuf_batch_test SOURCES protobuf_batch_test.cpp)
+ce_add_test(protobuf_data_test SOURCES protobuf_data_test.cpp LIBS ce::format_protobuf)
+ce_add_test(protobuf_decode_test SOURCES protobuf_decode_test.cpp LIBS ce::format_protobuf)
+ce_add_test(protobuf_batch_test SOURCES protobuf_batch_test.cpp LIBS ce::format_protobuf)
 # The Protobuf bytes of the Go and Java SDKs, of protoc, and of this SDK (SWR-PROTO-0016). The
 # fixtures are read from the source tree, as the other interop suites read theirs.
-ce_add_test(interop_protobuf_test SOURCES interop_protobuf_test.cpp)
+ce_add_test(interop_protobuf_test SOURCES interop_protobuf_test.cpp LIBS ce::format_protobuf)
 target_compile_definitions(interop_protobuf_test
   PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 # The binding core names no codec, so this suite runs in a build with none.

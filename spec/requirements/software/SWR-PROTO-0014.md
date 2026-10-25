@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:CMakeLists.txt, code:packaging/vcpkg/ports/cloudevents-cpp/usage, code:packaging/conan/conanfile.py]
+verified_by: [test:test/consumer/CMakeLists.txt::consumer-protobuf-roundtrip, test:test/consumer/CMakeLists.txt::consumer-target-graph-protobuf]
 owner: filip.sajdak
 version: 1
 ---

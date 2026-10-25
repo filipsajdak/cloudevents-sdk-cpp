@@ -59,8 +59,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ---------------------------------------------------------------------------
 # Targets
 # ---------------------------------------------------------------------------
-# Four header-only interface libraries per SPEC section 4. The dependency
-# direction runs strictly downward: bindings and formats may see the core, the
+# Header-only interface libraries per SPEC section 4: four, and the Protobuf format
+# as a fifth (SWR-ADOPT-0001). The dependency direction runs strictly downward: bindings and formats may see the core, the
 # core never sees them. CMake enforces it here, so a stray include in the core
 # fails to configure rather than surviving on convention (SWR-ADOPT-0001).
 
@@ -93,6 +93,13 @@ add_library(ce_format_json INTERFACE)
 add_library(ce::format_json ALIAS ce_format_json)
 set_target_properties(ce_format_json PROPERTIES EXPORT_NAME format_json)
 target_link_libraries(ce_format_json INTERFACE ce_core)
+
+# The Protobuf format is hand-written, so it has no dependency beyond the core: the target is
+# defined whenever the core is and needs no switch (SWR-PROTO-0014).
+add_library(ce_format_protobuf INTERFACE)
+add_library(ce::format_protobuf ALIAS ce_format_protobuf)
+set_target_properties(ce_format_protobuf PROPERTIES EXPORT_NAME format_protobuf)
+target_link_libraries(ce_format_protobuf INTERFACE ce_core)
 
 add_library(ce_binding_http INTERFACE)
 add_library(ce::binding_http ALIAS ce_binding_http)
@@ -184,8 +191,8 @@ endif()
 include(CMakePackageConfigHelpers)
 
 ce_codec_targets(CE_CODEC_TARGET_LIST)
-set(CE_INSTALL_TARGETS ce_core ce_format_json ce_binding_http ce_binding_kafka
-    ce_binding_nats ce_binding_mqtt ${CE_CODEC_TARGET_LIST})
+set(CE_INSTALL_TARGETS ce_core ce_format_json ce_format_protobuf ce_binding_http
+    ce_binding_kafka ce_binding_nats ce_binding_mqtt ${CE_CODEC_TARGET_LIST})
 
 install(TARGETS ${CE_INSTALL_TARGETS} EXPORT cloudeventsTargets)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

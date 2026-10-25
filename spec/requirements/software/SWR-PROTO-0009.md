@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0009
 title: Decode is strict and reports with the existing error codes
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Neither SDK validates on decode (docs/spikes/protobuf.md, section 3) and the model of this SDK

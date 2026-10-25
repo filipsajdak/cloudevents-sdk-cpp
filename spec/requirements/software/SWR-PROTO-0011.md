@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0011
 title: Encoding is deterministic
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Protobuf does not define a map order; the Go SDK writes the map in a random order and the Java

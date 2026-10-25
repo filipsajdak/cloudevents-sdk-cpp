@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0002
 title: Protobuf media type constants
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The Protobuf format clause fixes application/cloudevents+protobuf for transports with content

@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0005
 title: Attribute values keep their CloudEvents type
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Protobuf, unlike JSON, carries the attribute type (SWR-JSON-0023 describes the loss in JSON).

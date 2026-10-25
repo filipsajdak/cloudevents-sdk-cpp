@@ -23,6 +23,7 @@ using namespace ce::literals;
 9. [Interoperability](#9-interoperability)
 10. [How you can still get it wrong](#10-how-you-can-still-get-it-wrong)
 11. [API generations](#11-api-generations)
+12. [The Protobuf event format](#12-the-protobuf-event-format)
 
 ## 1. Getting started
 
@@ -45,6 +46,7 @@ Every target is header-only.
 |---|---|---|
 | `ce::core` | the event, attribute types, timestamps, errors | CTRE |
 | `ce::format_json` | the JSON event format, over any codec | `ce::core` |
+| `ce::format_protobuf` | the Protobuf event format, hand-written | `ce::core` |
 | `ce::binding_http` | the HTTP binding | `ce::core` |
 | `ce::binding_kafka` | the Kafka binding | `ce::core` |
 | `ce::binding_nats` | the NATS binding | `ce::core` |
@@ -1083,6 +1085,152 @@ What did not change between the generations is one type through every spelling.
 The attribute types, `timestamp`, `message` and the typed extensions are shared by v2, v3 and v4, so `ce::v2::id` and `ce::id` are one type, and events of those generations exchange attributes and messages without a conversion.
 The v3 codec concept, `json::decode_options` and the model behind a `json_document` are shared by v3 and v4.
 The optional C++20 module exports `ce::v4` only.
+
+## 12. The Protobuf event format
+
+`ce::protobuf_format` reads and writes the [Protobuf event format](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/formats/protobuf-format.md) of CloudEvents v1.0.2: a binary encoding of one event, or of a batch.
+It is hand-written, so it needs `ce::format_protobuf` and nothing else: no `libprotobuf`, no `protoc`, no generated code and no codec.
+The target links `ce::core` only, and `protobuf_format` is declared in `ce::v4` only (it is an addition, so `ce::v3` and older have nothing of it).
+
+```cmake
+find_package(cloudevents REQUIRED)
+target_link_libraries(app PRIVATE ce::core ce::format_protobuf)
+```
+
+### Entry points
+
+| call | does |
+|---|---|
+| `protobuf_format::encode(event)` | `result<binary>`: the bytes of one event |
+| `protobuf_format::decode(bytes, options)` | `result<event>` from a `std::span<const std::byte>`; a `ce::binary` converts to one |
+| `encode_batch(events)` and `decode_batch(bytes, options)` | a `CloudEventBatch`: `std::span<const event>` in, `std::vector<event>` out |
+| `decode_as<Codec>(bytes, options)` | `decode`, and the payload parsed as JSON when `datacontenttype` says it is JSON |
+| `decode_detailed(bytes, options)` and `encode_proto_data(event, type_url)` | the type URL of a `proto_data` payload, beside the event |
+
+The media types are `protobuf_format::content_type` (`application/cloudevents+protobuf`) and `batch_content_type` (`application/cloudevents-batch+protobuf`).
+The format is bytes to event and back; sending them is a binding's job, and the bindings do not carry it yet.
+
+```cpp body
+#include <cloudevents/format/protobuf_format.hpp>
+
+auto when = ce::parse_timestamp("2026-09-20T12:34:56.1+02:00");
+if (!when) {
+  return;
+}
+const ce::event order{"15"_id, "/shop"_source, "com.example.order"_type,
+                      {.datacontenttype = "text/plain"_mediatype,
+                       .time = *when,
+                       .extensions = {{"attempt"_ext, std::int32_t{3}}},
+                       .data = std::string{"two items"}}};
+
+auto bytes = ce::protobuf_format::encode(order);
+if (bytes) {
+  auto back = ce::protobuf_format::decode(*bytes);
+  std::printf("%zu bytes, %s\n", bytes->size(),
+              back && back->extension("attempt") != nullptr ? "read back" : "failed");
+  std::printf("%s\n", back && back->time() ? ce::to_string(*back->time()).c_str() : "no time");
+}
+```
+
+Equal events encode to equal bytes: the attributes are written in ascending order of name, which Protobuf itself does not fix.
+Whatever `decode` accepts, `encode` writes, and decoding that gives an equal event.
+
+### The schema
+
+The field numbers are those of `cloudevents.proto` at the tag v1.0.2, and not those of the prose in `protobuf-format.md`, which differ: the Go and Java SDKs both implement the `.proto`.
+
+| field | number |
+|---|---|
+| `id`, `source`, `spec_version`, `type` | 1, 2, 3, 4 |
+| `attributes` (a map) | 5 |
+| `binary_data`, `text_data`, `proto_data` | 6, 7, 8 |
+
+The four required attributes are fields.
+`datacontenttype`, `dataschema`, `subject`, `time` and every extension are entries of the map, keyed by name.
+A map value keeps the CloudEvents type of the attribute, which JSON cannot: boolean, integer (`int32`), string, binary, URI, URI-reference and timestamp each have their own arm, so an extension comes back as the type it went in as.
+`dataschema` is written as a URI and read from either URI arm; `datacontenttype` and `subject` are strings; `time` is a timestamp.
+
+### The payload
+
+| `data_t` | written to |
+|---|---|
+| `std::monostate` | no data field |
+| `std::string`, `ce::json_text`, `ce::json_document` | `text_data` |
+| `ce::binary` | `binary_data` |
+| `ce::binary` of `application/protobuf` with a `dataschema` | `proto_data`, the `dataschema` as its type URL |
+
+A `json_document` is written as text with no codec argument.
+All three fields are read, whichever SDK wrote them (the Go SDK writes `binary_data` for everything but `proto_data`), and the one that comes last on the wire wins:
+
+- `text_data` is a `std::string` holding the bytes unchanged, `binary_data` a `ce::binary`, and `proto_data` a `ce::binary` of the value; JSON is not recognised on a plain `decode`.
+  `decode_as<Codec>` parses a `std::string` or `ce::binary` payload under a JSON media type with `Codec` and returns the value beside the event; the event keeps the payload as it was read and holds no document.
+- An empty `binary_data` in an event with no `datacontenttype` is no payload, because the Go SDK writes one for an event without data; with a `datacontenttype` it is an empty `ce::binary`.
+  The consequence is that an empty `ce::binary` payload of an event with no `datacontenttype` is read back as no payload.
+- A `proto_data` payload sets `datacontenttype` to `application/protobuf` and `dataschema` to the type URL, each when absent.
+  An empty type URL counts as absent, and one that is not a URI-reference is a `parse_error`.
+  An event cannot hold a type URL apart from `dataschema`, so `decode_detailed` returns it beside the event, and `encode_proto_data` writes one that differs from `dataschema`, which it also writes as an attribute, so that nothing is lost silently.
+
+```cpp body
+auto framed = ce::protobuf_format::encode_proto_data(
+    ce::event{"16"_id, "/s"_source, "t"_type,
+              {.datacontenttype = "application/protobuf"_mediatype,
+               .dataschema = "https://schemas.example/own"_dataschema,
+               .data = ce::binary{std::byte{1}}}},
+    "type.googleapis.com/pkg.Thing");
+if (framed) {
+  auto detailed = ce::protobuf_format::decode_detailed(*framed);
+  std::printf("%s\n", detailed && detailed->type_url ? detailed->type_url->c_str() : "no type URL");
+}
+```
+
+### What decoding refuses, and the limits
+
+Decoding is strict, and uses the error codes that exist:
+
+| failure | `errc` |
+|---|---|
+| truncated input, a length past the end, a varint over ten bytes, a group | `parse_error` |
+| an absent or empty `id`, `source` or `type` | `missing_required_attribute` |
+| a `spec_version` other than `1.0` | `unsupported_spec_version` |
+| a string that is not UTF-8 | `invalid_utf8` |
+| a `ce_integer` outside `int32`; input or a map above a limit | `out_of_range` |
+| an attribute value with no arm set | `invalid_attribute_value` |
+| `time`, `datacontenttype`, `dataschema` or `subject` in the wrong arm | `type_mismatch` |
+| a Timestamp with nanos outside 0 to 999999999, or an instant the timestamp type cannot hold | `invalid_timestamp` |
+
+An unknown field is skipped, and the last of duplicate map keys wins.
+The limits are in `ce::protobuf::decode_options`, a designated-initializer aggregate, and are checked before anything is allocated for what they limit:
+
+| limit | field | default |
+|---|---|---|
+| encoded size of an event | `max_encoded_size` | `default_max_encoded_size`, 16 MiB |
+| attribute map entries of an event | `max_attribute_count` | `default_max_attribute_count`, 1024 |
+| events of a batch | `max_batch_event_count` | `default_max_batch_event_count`, 100,000 |
+
+The size and attribute limits apply to each event of a batch.
+Nothing else can grow with the input: the schema is four messages deep (`fixed_nesting_depth`), a varint is at most `max_varint_bytes` (10) long, a group is refused, and an `Any` is opaque.
+The values were not measured against a workload.
+
+```cpp body
+const ce::binary many(100, std::byte{0});
+auto refused = ce::protobuf_format::decode(many, {.max_encoded_size = 50});
+std::printf("%s\n", refused ? "read" : ce::to_string_view(refused.error().code).data());
+```
+
+### What the mapping loses
+
+- **The offset of a time, and its fraction digits.**
+  A Timestamp is an instant, so a decoded `time` is in UTC, with the fewest of 0, 3, 6 or 9 digits that hold the nanoseconds.
+  `2026-09-20T12:34:56.1+02:00` comes back as `2026-09-20T10:34:56.100Z`.
+- **The range of a time.**
+  The wire holds the years 1 to 9999 and `ce::timestamp` about 1678 to 2262, so a Timestamp outside that is `invalid_timestamp`.
+- **JSON as a type.**
+  A JSON payload is text on the wire; `decode` returns it as text, and `decode_as` parses it on request.
+- **The type URL of a `proto_data` payload**, when it differs from `dataschema` and `decode_detailed` is not used, and the fact that the payload was an `Any` when `datacontenttype` was not `application/protobuf`.
+- **"No payload" against an empty one**, as above.
+
+`D-INTEROP-6` lists how the Go and Java SDKs differ from each other and from this SDK; their bytes agree for one event in thirteen, so compare decoded events and never bytes.
+sdk-go reads a JSON `text_data` back as a quoted JSON string.
 
 ## Also available
 

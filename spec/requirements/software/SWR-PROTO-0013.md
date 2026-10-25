@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0013
 title: The Protobuf format includes no third-party header
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Owner decision 2026-10-24: the codec is hand-written, with no libprotobuf and no generated

@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0015
 title: The Protobuf format is exported by the module in v4 only
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   SWR-BUILD-0010 ships a module wrapper that exports the public headers. The format is an

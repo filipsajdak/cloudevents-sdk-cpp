@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0014
 title: A header-only ce::format_protobuf target, installed and packaged
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A consumer takes the format by linking one target, as it takes ce::format_json, and the

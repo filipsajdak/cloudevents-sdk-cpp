@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0018
 title: The guide states the mapping and what it loses
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A user chooses the format knowing which parts of an event survive it: the offset of a time,
@@ -11,8 +11,8 @@ rationale: >
 verification_method: inspection
 security_classification: operational
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [doc:docs/GUIDE.md]
+verified_by: [test:examples/CMakeLists.txt::guide]
 owner: filip.sajdak
 version: 1
 ---

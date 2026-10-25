@@ -2,7 +2,7 @@
 uid: SYS-PROTO-0001
 title: Protobuf event format, single event
 type: system
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The Go and Java SDKs ship the CloudEvents Protobuf format, so an event written by either onto

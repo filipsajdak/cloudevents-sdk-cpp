@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0016
 title: Protobuf bytes interoperate with the Go and Java SDKs in both directions
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The evidence pattern of SWR-SEC-0008 and D-INTEROP-5: bytes recorded offline from the SDKs, a

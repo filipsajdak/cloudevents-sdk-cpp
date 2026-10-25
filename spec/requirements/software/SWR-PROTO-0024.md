@@ -13,7 +13,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
 satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
-verified_by: [test:test/protobuf_batch_test.cpp::protobuf-batch-round-trip, test:test/protobuf_batch_test.cpp::protobuf-batch-media-type, test:test/protobuf_batch_test.cpp::protobuf-batch-count-limit]
+verified_by: [test:test/protobuf_batch_test.cpp::protobuf-batch-round-trip, test:test/protobuf_batch_test.cpp::protobuf-batch-media-type, test:test/protobuf_batch_test.cpp::protobuf-batch-count-limit, test:test/interop_protobuf_test.cpp::interop-protobuf-batch-golden]
 owner: filip.sajdak
 version: 1
 ---

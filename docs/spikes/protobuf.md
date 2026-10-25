@@ -6,6 +6,11 @@ The decision date in that bet is 2026-11-11. This report does not edit CR-0006; 
 No library code was written. The prototype codec measured in section 5 lives outside the repository;
 only the generators and the goldens are committed, under `interop/protobuf-spike/`.
 
+> **Moved.** CR-0009 stage 1 moved them: the generators are in `interop/protobuf/` (Go, Java and
+> `protoc/gen_edge.py`) and the goldens in `test/fixtures/interop/protobuf/`. The generators gained
+> a `verify` mode and lost the spike's `dump` and `nondet` modes. The "Reproduce" commands below
+> are the spike's own and name the old paths.
+
 ## Verdict
 
 **The two SDKs agree on the schema and on every attribute, but not on the bytes and not on the

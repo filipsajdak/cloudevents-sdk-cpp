@@ -1,4 +1,4 @@
-package spike;
+package interop;
 
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
@@ -10,7 +10,6 @@ import io.cloudevents.protobuf.ProtoCloudEventData;
 import io.cloudevents.protobuf.ProtobufFormat;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,11 +20,11 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Protobuf format spike (CR-0006). Modes:
- *   gen  OUTDIR          write one NAME.pb per corpus event
- *   dump INDIR OUTDIR    decode every NAME.pb with sdk-java, write NAME.txt
+ * Protobuf format interoperability (CR-0009, SWR-PROTO-0016). Modes:
+ *   gen    OUTDIR     write one NAME.pb per corpus event, as sdk-java serializes it
+ *   verify CPPDIR     decode every NAME.pb the C++ SDK wrote and compare it with the corpus event
  */
-public final class Generate {
+public final class ProtobufInterop {
 
   private static final ProtobufFormat FORMAT = new ProtobufFormat();
 
@@ -187,9 +186,11 @@ public final class Generate {
     for (Map.Entry<String, String> a : attrs.entrySet()) {
       sb.append("attr.").append(a.getKey()).append('=').append(a.getValue()).append('\n');
     }
-    byte[] data = e.getData() == null ? new byte[0] : e.getData().toBytes();
-    sb.append("data=").append(hex(data)).append('\n');
     return sb.toString();
+  }
+
+  private static byte[] dataOf(CloudEvent e) {
+    return e.getData() == null ? new byte[0] : e.getData().toBytes();
   }
 
   /** RFC 3339 in UTC with trailing zeros of the fraction trimmed, like Go's RFC3339Nano. */
@@ -213,22 +214,74 @@ public final class Generate {
         Files.write(out.resolve(e.getKey() + ".pb"), b);
         System.out.println("wrote " + e.getKey() + ".pb " + b.length + " bytes");
       }
-    } else if (args[0].equals("dump")) {
-      Path in = Paths.get(args[1]);
-      Path out = Paths.get(args[2]);
-      Files.createDirectories(out);
-      try (DirectoryStream<Path> files = Files.newDirectoryStream(in, "*.pb")) {
-        for (Path f : files) {
-          String name = f.getFileName().toString().replaceAll("\\.pb$", "");
-          String text;
-          try {
-            text = dumpEvent(FORMAT.deserialize(Files.readAllBytes(f)));
-          } catch (Exception ex) {
-            text = "ERROR: " + ex.getClass().getSimpleName() + ": " + ex.getMessage() + "\n";
-          }
-          Files.write(out.resolve(name + ".txt"), utf8(text));
-        }
-      }
+    } else if (args[0].equals("verify")) {
+      System.exit(verify(Paths.get(args[1])));
+    } else {
+      System.err.println("usage: gen OUTDIR | verify CPPDIR");
+      System.exit(2);
     }
+  }
+
+  /**
+   * sdk-java reads a proto_data value as the whole serialized Any, type URL included, where the
+   * Go SDK and this SDK read the value alone (D-INTEROP-6). The expected data is the value, so
+   * the Any the C++ SDK wrote (type URL from the dataschema, then the value) is accepted.
+   */
+  private static boolean sameData(String name, CloudEvent want, CloudEvent got) {
+    byte[] expected = dataOf(want);
+    byte[] actual = dataOf(got);
+    if (java.util.Arrays.equals(expected, actual)) {
+      return true;
+    }
+    if (name.equals("proto_data") && want.getDataSchema() != null) {
+      byte[] url = utf8(want.getDataSchema().toString());
+      java.io.ByteArrayOutputStream any = new java.io.ByteArrayOutputStream();
+      any.write(0x0A);
+      any.write(url.length);
+      any.write(url, 0, url.length);
+      any.write(0x12);
+      any.write(expected.length);
+      any.write(expected, 0, expected.length);
+      return java.util.Arrays.equals(any.toByteArray(), actual);
+    }
+    return false;
+  }
+
+  /** Decodes the bytes the C++ SDK wrote for each corpus event and fails on any difference. */
+  private static int verify(Path dir) throws Exception {
+    int failures = 0;
+    int checked = 0;
+    for (Map.Entry<String, CloudEvent> entry : corpus().entrySet()) {
+      String name = entry.getKey();
+      CloudEvent want = entry.getValue();
+      Path file = dir.resolve(name + ".pb");
+      if (!Files.exists(file)) {
+        System.err.println("FAIL " + name + ": " + file + " is missing");
+        failures++;
+        continue;
+      }
+      CloudEvent got;
+      try {
+        got = FORMAT.deserialize(Files.readAllBytes(file));
+      } catch (Exception ex) {
+        System.err.println("FAIL " + name + ": java refused it: " + ex);
+        failures++;
+        continue;
+      }
+      if (!dumpEvent(want).equals(dumpEvent(got))) {
+        System.err.println("FAIL " + name + ": want\n" + dumpEvent(want) + "got\n" + dumpEvent(got));
+        failures++;
+        continue;
+      }
+      if (!sameData(name, want, got)) {
+        System.err.println("FAIL " + name + ": data " + hex(dataOf(want)) + " != " + hex(dataOf(got)));
+        failures++;
+        continue;
+      }
+      System.out.println("java accepted " + name);
+      checked++;
+    }
+    System.out.println("java verified " + checked + " event(s) produced by the C++ SDK, " + failures + " failure(s)");
+    return checked == 0 ? 1 : failures;
   }
 }

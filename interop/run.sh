@@ -35,6 +35,12 @@ ctre_include="$(find "$build/_deps" -type d -path '*ctre-src/include' | head -1)
   $(pkg-config --cflags nlohmann_json 2>/dev/null || echo "-isystem /usr/local/include -isystem /opt/homebrew/include") \
   "$root/interop/mqtt/cpp/produce.cpp" -o "$build/produce-mqtt"
 
+# The Protobuf format has no dependency beyond the core, so no JSON library is on this line.
+"$CXX" -std=c++20 -O1 \
+  -I "$root/include" \
+  ${ctre_include:+-isystem "$ctre_include"} \
+  "$root/interop/protobuf/cpp/produce.cpp" -o "$build/produce-protobuf"
+
 if [ "$mode" != "verify" ]; then
   echo "==> producing the C++ documents"
   "$build/produce" "$fixtures/cpp"
@@ -67,6 +73,19 @@ else
 fi
 echo "==> producing the C++ MQTT messages"
 "$build/produce-mqtt" "$mqtt_cpp"
+# Like the Kafka records, the Protobuf bytes are produced afresh in verify mode: both SDKs must
+# decode what the library writes today, and the committed copy must be what it writes today.
+if [ "$mode" = "verify" ]; then
+  protobuf_cpp="$root/build/interop-verify/protobuf-cpp"
+  rm -rf "$protobuf_cpp"
+  mkdir -p "$protobuf_cpp"
+  protobuf_cpp_in_container=/w/build/interop-verify/protobuf-cpp
+else
+  protobuf_cpp="$fixtures/protobuf/cpp"
+  protobuf_cpp_in_container=/w/test/fixtures/interop/protobuf/cpp
+fi
+echo "==> producing the C++ Protobuf events"
+"$build/produce-protobuf" "$protobuf_cpp"
 
 # Container-side paths only. Verify mode writes inside the repository rather
 # than to a temporary directory, because only the repository is mounted; the
@@ -77,15 +96,20 @@ if [ "$mode" = "verify" ]; then
   kafka_go_out=/w/build/interop-verify/kafka-go
   kafka_java_out=/w/build/interop-verify/kafka-java
   mqtt_go_out=/w/build/interop-verify/mqtt-go
+  protobuf_go_out=/w/build/interop-verify/protobuf-go
+  protobuf_java_out=/w/build/interop-verify/protobuf-java
   mkdir -p "$root/build/interop-verify/go" "$root/build/interop-verify/java" \
     "$root/build/interop-verify/kafka-go" "$root/build/interop-verify/kafka-java" \
-    "$root/build/interop-verify/mqtt-go"
+    "$root/build/interop-verify/mqtt-go" \
+    "$root/build/interop-verify/protobuf-go" "$root/build/interop-verify/protobuf-java"
 else
   go_out=/w/test/fixtures/interop/go
   java_out=/w/test/fixtures/interop/java
   kafka_go_out=/w/test/fixtures/interop/kafka/go
   kafka_java_out=/w/test/fixtures/interop/kafka/java
   mqtt_go_out=/w/test/fixtures/interop/mqtt/go
+  protobuf_go_out=/w/test/fixtures/interop/protobuf/go
+  protobuf_java_out=/w/test/fixtures/interop/protobuf/java
 fi
 
 echo "==> Go: generating goldens and reading the C++ documents"
@@ -126,6 +150,36 @@ docker run --rm -v "$root:/w" -w /w/interop/mqtt/go -e GOFLAGS=-mod=mod golang:1
   sh -ec 'cd /w/interop/mqtt/go
           test -f go.mod || { echo "go.mod is not where run.sh expects it"; ls -la; exit 1; }
           exec go run . "$1" "$2"' sh "$mqtt_go_out" "$mqtt_cpp_in_container"
+# The Protobuf format needs no broker either: the bytes are the whole interface. Each program
+# writes its own bytes and then decodes the C++ ones, failing on the first event that does not
+# decode to the corpus event. The protoc cases are not regenerated here; see
+# interop/protobuf/protoc/gen_edge.py, which needs protoc and the v1.0.2 cloudevents.proto.
+echo "==> Go: Protobuf bytes, written and read"
+docker run --rm -v "$root:/w" -w /w/interop/protobuf/go -e GOFLAGS=-mod=mod golang:1.22 \
+  sh -ec 'cd /w/interop/protobuf/go
+          test -f go.mod || { echo "go.mod is not where run.sh expects it"; ls -la; exit 1; }
+          go run . gen "$1"
+          exec go run . verify "$2"' sh "$protobuf_go_out" "$protobuf_cpp_in_container"
+
+echo "==> Java: Protobuf bytes, written and read"
+docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/protobuf/java \
+  maven:3.9-eclipse-temurin-17 \
+  sh -ec 'cd /w/interop/protobuf/java
+          mvn -q -B compile org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
+              -Dexec.args="gen $1"
+          exec mvn -q -B compile org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
+               -Dexec.args="verify $2"' sh "$protobuf_java_out" "$protobuf_cpp_in_container"
+
+if [ "$mode" = "verify" ]; then
+  # What each side writes today must be the committed bytes, file for file.
+  for side in go java cpp; do
+    produced="$root/build/interop-verify/protobuf-$side"
+    diff -r "$fixtures/protobuf/$side" "$produced" || {
+      echo "the committed Protobuf bytes for $side are not what the producer writes now" >&2
+      exit 1
+    }
+  done
+fi
 
 if [ "$mode" = "verify" ]; then
   # What each side writes today must be the committed record, byte for byte.
@@ -156,3 +210,4 @@ fi
 echo
 echo "both SDKs accepted every document and every Kafka record this SDK produced"
 echo "and Go accepted every MQTT message this SDK produced"
+echo "both SDKs accepted every document, every Kafka record and every Protobuf event this SDK produced"

@@ -1,10 +1,16 @@
-"""Hand-built wire cases, encoded by protoc from the v1.0.2 cloudevents.proto (a third producer)."""
+"""Hand-built wire cases, encoded by protoc from the v1.0.2 cloudevents.proto (a third producer).
+
+usage: python3 -I gen_edge.py <directory holding cloudevents.proto at v1.0.2> <output directory>
+
+The output directory is test/fixtures/interop/protobuf/protoc. interop/run.sh does not run this,
+because it needs protoc and the .proto from the specification repository at the tag v1.0.2.
+"""
 import os
 import subprocess
 import sys
 
 spec = sys.argv[1]  # directory holding the v1.0.2 cloudevents.proto
-out = sys.argv[2]   # goldens/protoc
+out = sys.argv[2]   # test/fixtures/interop/protobuf/protoc
 root = out
 os.makedirs(out, exist_ok=True)
 

@@ -1,0 +1,4 @@
+
+id-unicode-é文/interop/protobuf/événement1.0"com.example.unicode*%
+datacontenttypeapplication/json*
+subject日本語 😀:{"text":"é文 😀"}

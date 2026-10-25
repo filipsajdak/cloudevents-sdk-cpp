@@ -1,12 +1,16 @@
-// Protobuf format spike (CR-0006): writes application/cloudevents+protobuf bytes with
-// the Go SDK and decodes bytes from any producer into a neutral text dump.
+// Protobuf format interoperability (CR-0009, SWR-PROTO-0016): writes the
+// application/cloudevents+protobuf bytes the Go SDK produces, and checks that the bytes
+// this SDK produced decode there to the event they encode.
 //
-//	spike gen  <outdir>            one <name>.pb per corpus event (map entries sorted)
-//	spike dump <indir> <outdir>    decode every <name>.pb with the Go SDK, write <name>.txt
-//	spike nondet                   marshal one event 200 times with the SDK's own Marshal
+// No broker or network is involved; the bytes are the whole interface.
+//
+//	go run . gen    <outdir>   one <name>.pb per corpus event (map entries sorted)
+//	go run . verify <cppdir>   decode every <name>.pb the C++ SDK wrote, compare to the corpus
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -124,10 +128,19 @@ func corpus() map[string]event.Event {
 	return out
 }
 
+func names() []string {
+	out := make([]string, 0)
+	for name := range corpus() {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func gen(dir string) {
 	must(os.MkdirAll(dir, 0o755))
-	for name, e := range corpus() {
-		e := e
+	for _, name := range names() {
+		e := corpus()[name]
 		pbe, err := pbfmt.ToProto(&e)
 		must(err)
 		// Deterministic orders map entries by key; the SDK's own Marshal does not.
@@ -138,18 +151,8 @@ func gen(dir string) {
 	}
 }
 
-func nondet() {
-	e := corpus()["extension_types"]
-	seen := map[string]int{}
-	for i := 0; i < 200; i++ {
-		b, err := pbfmt.Protobuf.Marshal(&e)
-		must(err)
-		seen[fmt.Sprintf("%x", b)]++
-	}
-	fmt.Println("distinct encodings of one event in 200 SDK Marshal calls:", len(seen))
-}
-
-// dumpEvent renders an event in a form both SDKs can print identically.
+// dumpEvent renders the attributes of an event in a form both SDKs can print identically.
+// The payload is compared on its own, by sameData.
 func dumpEvent(e *event.Event) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "specversion=%s\nid=%s\nsource=%s\ntype=%s\n", e.SpecVersion(), e.ID(), e.Source(), e.Type())
@@ -186,44 +189,88 @@ func dumpEvent(e *event.Event) string {
 			attrs[name] = fmt.Sprintf("?%T", v)
 		}
 	}
-	names := make([]string, 0, len(attrs))
+	keys := make([]string, 0, len(attrs))
 	for n := range attrs {
-		names = append(names, n)
+		keys = append(keys, n)
 	}
-	sort.Strings(names)
-	for _, n := range names {
+	sort.Strings(keys)
+	for _, n := range keys {
 		fmt.Fprintf(&sb, "attr.%s=%s\n", n, attrs[n])
 	}
-	fmt.Fprintf(&sb, "data=%x\n", e.Data())
 	return sb.String()
 }
 
-func dump(in, out string) {
-	must(os.MkdirAll(out, 0o755))
-	files, err := filepath.Glob(filepath.Join(in, "*.pb"))
-	must(err)
-	for _, f := range files {
-		name := strings.TrimSuffix(filepath.Base(f), ".pb")
-		b, err := os.ReadFile(f)
-		must(err)
-		var e event.Event
-		text := ""
-		if err := pbfmt.Protobuf.Unmarshal(b, &e); err != nil {
-			text = "ERROR: " + err.Error() + "\n"
-		} else {
-			text = dumpEvent(&e)
-		}
-		must(os.WriteFile(filepath.Join(out, name+".txt"), []byte(text), 0o644))
+// sameData compares the payload. The C++ SDK writes a JSON payload to text_data, as the
+// specification says text must be stored. The Go SDK reads a text_data of application/json
+// back as a JSON string, so the document comes back quoted (D-INTEROP-6). That read is accepted
+// alongside the correct one, so the check says what the SDK does and fails on anything else.
+func sameData(want, got *event.Event) error {
+	if bytes.Equal(want.Data(), got.Data()) {
+		return nil
 	}
+	quoted, err := json.Marshal(string(want.Data()))
+	must(err)
+	if strings.HasPrefix(want.DataContentType(), "application/json") && bytes.Equal(quoted, got.Data()) {
+		return nil
+	}
+	return fmt.Errorf("data %q != %q", want.Data(), got.Data())
+}
+
+// verify decodes the bytes the C++ SDK wrote for each corpus event, with the Go SDK, and fails
+// on the first difference in any attribute or in the payload.
+func verify(dir string) int {
+	failures, checked := 0, 0
+	for _, name := range names() {
+		want := corpus()[name]
+		raw, err := os.ReadFile(filepath.Join(dir, name+".pb"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "FAIL %s: %v\n", name, err)
+			failures++
+			continue
+		}
+		var got event.Event
+		if err := pbfmt.Protobuf.Unmarshal(raw, &got); err != nil {
+			fmt.Fprintf(os.Stderr, "FAIL %s: go refused it: %v\n", name, err)
+			failures++
+			continue
+		}
+		// Validate refuses a dataschema that is a bare protobuf type URL (type.googleapis.com/...),
+		// which is the value the Go SDK itself writes for proto_data, so that one event skips it.
+		if name != "proto_data" {
+			if err := got.Validate(); err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL %s: invalid: %v\n", name, err)
+				failures++
+				continue
+			}
+		}
+		if dumpEvent(&want) != dumpEvent(&got) {
+			fmt.Fprintf(os.Stderr, "FAIL %s: want\n%sgot\n%s", name, dumpEvent(&want), dumpEvent(&got))
+			failures++
+			continue
+		}
+		if err := sameData(&want, &got); err != nil {
+			fmt.Fprintf(os.Stderr, "FAIL %s: %v\n", name, err)
+			failures++
+			continue
+		}
+		fmt.Printf("go accepted %s\n", name)
+		checked++
+	}
+	fmt.Printf("go verified %d event(s) produced by the C++ SDK, %d failure(s)\n", checked, failures)
+	if checked == 0 {
+		return 1
+	}
+	return failures
 }
 
 func main() {
-	switch os.Args[1] {
-	case "gen":
+	if len(os.Args) == 3 && os.Args[1] == "gen" {
 		gen(os.Args[2])
-	case "dump":
-		dump(os.Args[2], os.Args[3])
-	case "nondet":
-		nondet()
+		return
 	}
+	if len(os.Args) == 3 && os.Args[1] == "verify" {
+		os.Exit(verify(os.Args[2]))
+	}
+	fmt.Fprintln(os.Stderr, "usage: go run . gen <outdir> | go run . verify <cppdir>")
+	os.Exit(2)
 }

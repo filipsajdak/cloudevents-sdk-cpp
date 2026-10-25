@@ -14,7 +14,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
 satisfied_by: []
-verified_by: []
+verified_by: [test:test/protobuf_wire_test.cpp::protobuf-wire-writer]
 owner: filip.sajdak
 version: 1
 ---

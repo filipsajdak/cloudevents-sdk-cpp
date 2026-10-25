@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/detail/protobuf_wire.hpp]
+verified_by: [test:test/protobuf_wire_test.cpp::protobuf-wire-named-limits]
 owner: filip.sajdak
 version: 2
 ---

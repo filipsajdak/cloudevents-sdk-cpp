@@ -1,0 +1,4 @@
+
+id-text/interop/protobuf1.0"com.example.text*
+datacontenttype
+text/plain:plain text payload

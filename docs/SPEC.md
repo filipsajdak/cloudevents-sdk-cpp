@@ -18,9 +18,10 @@ with the other SDKs (Go, Java, Rust, C#) is the measure of correctness.
 **Delivered after v0.1**, on the shared binding core (ADR-0007)
 - Kafka and NATS protocol bindings
 - RapidJSON and Boost.JSON codecs
+- The MQTT protocol binding, in two slices (CR-0008): structured mode on MQTT 5.0 and 3.1.1, then binary mode on 5.0
 
 **Out of scope** (design must not block them)
-- MQTT, AMQP, WebSocket bindings
+- AMQP, WebSocket bindings
 - Protobuf, Avro, XML formats
 - CloudEvents SQL, Subscriptions, Discovery, CESQL
 - Any transport adapter doing real I/O (Beast, libcurl, Paho)

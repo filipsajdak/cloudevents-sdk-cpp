@@ -2,6 +2,24 @@
 
 Notable changes per release. Dates are the tag date.
 
+## Unreleased
+
+### Added
+
+- **An MQTT binding, structured mode (`binding/mqtt.hpp`, `ce::mqtt`, CR-0008 slice 1).**
+  An event travels as an MQTT 5.0 PUBLISH held in a `ce::message`: the JSON event as the payload, the Content Type property `application/cloudevents+json` as the header `content-type`, and no User Property written or read.
+  `ce::mqtt::to_message<Codec>(event, ce::content_mode::structured)` and `ce::mqtt::from_message<Codec>(message, options)` are the 5.0 pair, with `detect_content_mode`; `ce::mqtt::to_payload<Codec>(event)` and `from_payload<Codec>(payload_or_message, options)` are the MQTT 3.1.1 pair, which has no properties, so the caller names the version by the function.
+  A message with no CloudEvents Content Type is `not_a_cloudevent`, a malformed payload is the codec's error, a batch is refused with `invalid_argument` and so is a second header named `content-type`, and names match byte for byte.
+  Binary mode, and with it the `prefixed_names` option for sdk-go's `ce-` User Property names, is the next slice: `to_message` refuses it for now.
+  The binding is header-only, names no MQTT client library and adds the target `ce::binding_mqtt`, the module export `ce::v4::mqtt` and the fuzz target `fuzz_mqtt_message`; the Go SDK reads and writes the same structured messages (sixteen recorded goldens, no broker, sdk-java has no MQTT binding).
+  It is an addition to `ce::v4`: `python3 scripts/frozen_api_diff.py --base v0.6.1` finds no changed declaration.
+  *Use:*
+
+  ```cpp
+  auto publish = ce::mqtt::to_message<codec>(event, ce::content_mode::structured);
+  auto received = ce::mqtt::from_message<codec>(*publish);
+  ```
+
 ## v0.6.1 - 2026-10-21
 
 A forwarder can keep a binary-mode JSON body unparsed, and a receiver that is done with its message can move a non-JSON binary-mode body instead of copying it.

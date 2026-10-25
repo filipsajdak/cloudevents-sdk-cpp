@@ -5,12 +5,11 @@ type: software
 status: reviewed
 priority: medium
 rationale: >
-  Slice 2 (CR-0008). OPEN QUESTION 1, proposal only: the text does not say what a receiver does with a
-  User Property that is not an attribute, such as x-request-id (not a valid attribute name). Proposal:
+  Slice 2 (CR-0008). Ruled by the owner on 2026-10-25 (CR-0008, item 5): the text does not say what a receiver does with a
+  User Property that is not an attribute, such as x-request-id (not a valid attribute name). The ruling:
   ignore it. The alternative, refusing the message, would make every broker-side annotation fatal.
   sdk-go ignores every key without the ce- prefix (message.go:82-89). Under the prefixed-names policy
-  a name without ce- is ignored in every case. The owner decides; this statement changes with the
-  ruling.
+  a name without ce- is ignored in every case.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]

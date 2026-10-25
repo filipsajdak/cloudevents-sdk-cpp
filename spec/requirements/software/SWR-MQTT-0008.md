@@ -5,12 +5,11 @@ type: software
 status: reviewed
 priority: medium
 rationale: >
-  Slice 1 (CR-0008). OPEN QUESTION 2, proposal only: the Content Type property and a User Property
+  Slice 1 (CR-0008). Ruled by the owner on 2026-10-25 (CR-0008, item 6): the Content Type property and a User Property
   share one namespace once both are header fields, and MQTT allows a User Property literally named
   content-type. It collides with no attribute (names are [a-z0-9]+), so it is no break, but an adapter
-  that copies User Properties cannot tell it from the property. The proposal refuses it where the
-  adapter is called; the alternative is to drop it. The owner decides; this statement changes with the
-  ruling and is not approved before it.
+  that copies User Properties cannot tell it from the property. The ruling refuses it where the
+  adapter is called; the alternative, to drop it, is declined.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]

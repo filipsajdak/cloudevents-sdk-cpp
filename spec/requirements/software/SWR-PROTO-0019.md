@@ -6,7 +6,8 @@ status: reviewed
 priority: medium
 rationale: >
   An HTTP message in structured mode carries the whole event in the body with the content type
-  of the format. The entry-point names are an open question of CR-0009.
+  of the format. The owner ruled on 2026-10-25 (CR-0009, items 11 and 12) that the entry points are new names, for example
+  to_message_protobuf and from_message_protobuf, and that the published from_message does not detect the format.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]

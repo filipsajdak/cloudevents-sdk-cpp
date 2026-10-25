@@ -5,6 +5,7 @@
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/http.hpp>
 #include <cloudevents/binding/kafka.hpp>
+#include <cloudevents/binding/mqtt.hpp>
 #include <cloudevents/binding/nats.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/describe.hpp>

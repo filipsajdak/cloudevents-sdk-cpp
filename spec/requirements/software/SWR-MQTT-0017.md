@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0017
 title: The MQTT binding is a header-only target with no new dependency
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Slice 1 (CR-0008). Kafka and NATS are header-only targets over ce::core (SWR-BUILD-0004) and the
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:CMakeLists.txt]
+verified_by: [test:test/consumer/CMakeLists.txt::consumer-mqtt-target]
 owner: filip.sajdak
 version: 1
 ---

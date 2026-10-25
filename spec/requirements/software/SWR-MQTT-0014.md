@@ -2,20 +2,20 @@
 uid: SWR-MQTT-0014
 title: Structured MQTT messages interoperate with the Go SDK in both directions
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 1 (CR-0008). STK-INTEROP-0001 makes agreement with the established SDKs the external measure,
   and SWR-SEC-0008 did it for Kafka. sdk-go (protocol/mqtt_paho/v2) converts an event to and from a
   caller-supplied paho Publish without a client (write_message.go:22, message.go:39), so 16 goldens
-  exist offline (interop/mqtt-spike/, PR 112). sdk-java has no MQTT binding (README row not supported;
+  exist offline (interop/mqtt/, test/fixtures/interop/mqtt/, PR 112). sdk-java has no MQTT binding (README row not supported;
   no mqtt path at 81d64ac), so the evidence has one peer, not two. Not verified by the spike: the MQTT
   packet bytes, and any broker.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:interop/mqtt/go/main.go, code:interop/mqtt/cpp/produce.cpp, code:interop/run.sh]
+verified_by: [test:test/interop_mqtt_test.cpp::interop-mqtt-structured-decode, test:test/interop_mqtt_test.cpp::interop-mqtt-structured-produce]
 owner: filip.sajdak
 version: 1
 ---

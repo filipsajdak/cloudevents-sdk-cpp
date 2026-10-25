@@ -29,6 +29,12 @@ ctre_include="$(find "$build/_deps" -type d -path '*ctre-src/include' | head -1)
   $(pkg-config --cflags nlohmann_json 2>/dev/null || echo "-isystem /usr/local/include -isystem /opt/homebrew/include") \
   "$root/interop/kafka/cpp/produce.cpp" -o "$build/produce-kafka"
 
+"$CXX" -std=c++20 -O1 \
+  -I "$root/include" \
+  ${ctre_include:+-isystem "$ctre_include"} \
+  $(pkg-config --cflags nlohmann_json 2>/dev/null || echo "-isystem /usr/local/include -isystem /opt/homebrew/include") \
+  "$root/interop/mqtt/cpp/produce.cpp" -o "$build/produce-mqtt"
+
 if [ "$mode" != "verify" ]; then
   echo "==> producing the C++ documents"
   "$build/produce" "$fixtures/cpp"
@@ -49,6 +55,19 @@ fi
 echo "==> producing the C++ Kafka records"
 "$build/produce-kafka" "$kafka_cpp"
 
+# The MQTT messages are produced afresh in the same way, for the same reason.
+if [ "$mode" = "verify" ]; then
+  mqtt_cpp="$root/build/interop-verify/mqtt-cpp"
+  rm -rf "$mqtt_cpp"
+  mkdir -p "$mqtt_cpp"
+  mqtt_cpp_in_container=/w/build/interop-verify/mqtt-cpp
+else
+  mqtt_cpp="$fixtures/mqtt/cpp"
+  mqtt_cpp_in_container=/w/test/fixtures/interop/mqtt/cpp
+fi
+echo "==> producing the C++ MQTT messages"
+"$build/produce-mqtt" "$mqtt_cpp"
+
 # Container-side paths only. Verify mode writes inside the repository rather
 # than to a temporary directory, because only the repository is mounted; the
 # scratch output is removed afterwards and never committed.
@@ -57,13 +76,16 @@ if [ "$mode" = "verify" ]; then
   java_out=/w/build/interop-verify/java
   kafka_go_out=/w/build/interop-verify/kafka-go
   kafka_java_out=/w/build/interop-verify/kafka-java
+  mqtt_go_out=/w/build/interop-verify/mqtt-go
   mkdir -p "$root/build/interop-verify/go" "$root/build/interop-verify/java" \
-    "$root/build/interop-verify/kafka-go" "$root/build/interop-verify/kafka-java"
+    "$root/build/interop-verify/kafka-go" "$root/build/interop-verify/kafka-java" \
+    "$root/build/interop-verify/mqtt-go"
 else
   go_out=/w/test/fixtures/interop/go
   java_out=/w/test/fixtures/interop/java
   kafka_go_out=/w/test/fixtures/interop/kafka/go
   kafka_java_out=/w/test/fixtures/interop/kafka/java
+  mqtt_go_out=/w/test/fixtures/interop/mqtt/go
 fi
 
 echo "==> Go: generating goldens and reading the C++ documents"
@@ -96,8 +118,24 @@ docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/kafka/java 
           exec mvn -q -B compile org.codehaus.mojo:exec-maven-plugin:3.1.0:java \
                -Dexec.args="$1 $2"' sh "$kafka_java_out" "$kafka_cpp_in_container"
 
+# The MQTT binding of sdk-go converts an event to and from an in-memory paho.Publish,
+# which is the topic, the payload and the properties a broker would carry, so no
+# broker is started. sdk-java has no MQTT binding, so Go is the only peer.
+echo "==> Go: MQTT messages, written and read without a broker"
+docker run --rm -v "$root:/w" -w /w/interop/mqtt/go -e GOFLAGS=-mod=mod golang:1.26 \
+  sh -ec 'cd /w/interop/mqtt/go
+          test -f go.mod || { echo "go.mod is not where run.sh expects it"; ls -la; exit 1; }
+          exec go run . "$1" "$2"' sh "$mqtt_go_out" "$mqtt_cpp_in_container"
+
 if [ "$mode" = "verify" ]; then
   # What each side writes today must be the committed record, byte for byte.
+  for side in go cpp; do
+    produced="$root/build/interop-verify/mqtt-$side"
+    diff -r "$fixtures/mqtt/$side" "$produced" || {
+      echo "the committed MQTT messages for $side are not what the producer writes now" >&2
+      exit 1
+    }
+  done
   for side in go java cpp; do
     produced="$root/build/interop-verify/kafka-$side"
     diff -r "$fixtures/kafka/$side" "$produced" || {
@@ -117,3 +155,4 @@ fi
 
 echo
 echo "both SDKs accepted every document and every Kafka record this SDK produced"
+echo "and Go accepted every MQTT message this SDK produced"

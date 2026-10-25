@@ -2,7 +2,7 @@
 uid: SYS-MQTT-0001
 title: Events map to and from MQTT PUBLISH messages
 type: system
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   MQTT is the transport of constrained and device-side estates, and the CloudEvents project specifies
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [STK-INTEROP-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-structured-mode-5-0, test:test/mqtt_binding_test.cpp::mqtt-3-1-1-payload-round-trip]
 owner: filip.sajdak
 version: 1
 ---

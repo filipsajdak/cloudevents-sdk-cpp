@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0002
 title: MQTT 3.1.1 carries structured JSON in the payload and has no properties
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 1 (CR-0008). Binding text :135-136: with MQTT 3.1.1 the content mode is always structured and
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-3-1-1-payload-round-trip, test:test/mqtt_binding_test.cpp::mqtt-3-1-1-ignores-headers]
 owner: filip.sajdak
 version: 1
 ---

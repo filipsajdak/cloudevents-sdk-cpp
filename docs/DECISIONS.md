@@ -1780,6 +1780,23 @@ CR-0005: the moving path pays for building without the payload and moving the me
 out and back, which nearly equals the copy it avoids at that size, and it still saves an
 allocation and 73% of the bytes.
 
+## D-MQTT-1: Slice 1 entry points: the mode argument, the 3.1.1 message form and the binary refusal
+
+CR-0008 names `to_message`, `from_message`, `to_payload` and `from_payload` and leaves three details to the code; each is a choice, and the owner may overrule it.
+
+- **`to_message` takes the mode, as Kafka's does, and slice 1 refuses `binary_mode`.**
+  SWR-MQTT-0006 needs a way to ask for a batch, and slice 2 adds binary mode to the same function, so the signature does not change between them.
+  Until then a binary request answers `invalid_argument` with the detail "the MQTT binding writes structured mode only".
+  On receipt a message with the `specversion` User Property but no CloudEvents Content Type answers `not_a_cloudevent`, which slice 2 revises to read the binary form.
+- **`from_payload` also takes a `ce::message`.**
+  SWR-MQTT-0002 says the 3.1.1 entry points read "the payload whatever headers a message carries". The `string_view` form is the NATS one; the `message` form reads the body of an adapter's message without looking at its headers, which is what an adapter that cannot tell the version from the message wants.
+  It is the same call as the structured decode of a 5.0 message minus the header checks, so it adds no behaviour.
+- **A second header named `content-type` is refused on `from_message` only.**
+  `to_message` builds a fresh message, so the collision cannot arise on the write side (SWR-MQTT-0008; CR-0008 ruling 6).
+  `from_payload` ignores it, because it ignores every header.
+
+SWR-BIND-0009 and SWR-BIND-0017 state their scope as the HTTP, Kafka and NATS entry points, and CR-0008 changes no existing requirement, so the MQTT entry points apply the decode options and leave the message intact without being listed there. `mqtt-from-message-takes-decode-options` is their evidence under SWR-MQTT-0001. Whether those two requirements should name MQTT is left to the owner.
+
 ## D-CODEC-4: A codec takes over a string through `adopt_string`
 
 The encoder builds the RFC 3339 text of a timestamp and the base64 text of

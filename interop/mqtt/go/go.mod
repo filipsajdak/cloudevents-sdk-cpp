@@ -1,4 +1,4 @@
-module cloudevents-interop-mqtt-spike-go
+module cloudevents-interop-mqtt-go
 
 go 1.26.0
 

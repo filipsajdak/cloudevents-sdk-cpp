@@ -71,9 +71,19 @@ add_executable(consumer_no_nlohmann no_nlohmann_main.cpp)
 target_link_libraries(consumer_no_nlohmann PRIVATE ce::core)
 target_compile_features(consumer_no_nlohmann PRIVATE cxx_std_20)
 
+# SWR-MQTT-0017: the MQTT binding is a target of the installed package, depends on ce::core and
+# names no client library, so it links with nothing else on the line.
+if(NOT TARGET ce::binding_mqtt)
+  message(FATAL_ERROR "consumer-mqtt-target: the installed package has no ce::binding_mqtt")
+endif()
+add_executable(consumer_mqtt_target mqtt_main.cpp)
+target_link_libraries(consumer_mqtt_target PRIVATE ce::binding_mqtt)
+target_compile_features(consumer_mqtt_target PRIVATE cxx_std_20)
+
 enable_testing()
 add_test(NAME consumer-find-package COMMAND consumer_find_package)
 add_test(NAME consumer-target-graph COMMAND consumer_target_graph)
+add_test(NAME consumer-mqtt-target COMMAND consumer_mqtt_target)
 add_test(NAME consumer-no-nlohmann COMMAND consumer_no_nlohmann)
 add_test(NAME consumer-fno-exceptions COMMAND consumer_fno_exceptions)
 if(TARGET consumer_codec)

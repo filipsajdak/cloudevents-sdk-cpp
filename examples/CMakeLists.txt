@@ -30,6 +30,7 @@ if(CE_CODEC_NLOHMANN)
 
   # Every C++ block in the user guide, compiled and run, so the guide cannot
   # show an API the headers no longer have. Regenerated whenever the guide is.
+  # The test is example_guide (D-DOCS-1).
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   set(guide_source "${CMAKE_CURRENT_BINARY_DIR}/guide_snippets.cpp")
   add_custom_command(
@@ -41,5 +42,6 @@ if(CE_CODEC_NLOHMANN)
     COMMENT "Extracting the C++ blocks from docs/GUIDE.md")
   ce_add_example(guide
     SOURCES "${guide_source}"
-    LIBS ce::codec_nlohmann ce::binding_http ce::binding_kafka ce::binding_nats)
+    LIBS ce::codec_nlohmann ce::binding_http ce::binding_kafka ce::binding_nats
+         ce::binding_mqtt)
 endif()

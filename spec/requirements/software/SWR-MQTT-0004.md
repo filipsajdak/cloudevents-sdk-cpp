@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0004
 title: The mode is read from the Content Type, then from the specversion User Property
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 1 for the structured branch, slice 2 for the binary one (CR-0008). Binding text :114-119: a
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-mode-detection, test:test/mqtt_binding_test.cpp::mqtt-content-type-with-parameters]
 owner: filip.sajdak
 version: 1
 ---

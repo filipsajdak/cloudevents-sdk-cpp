@@ -521,16 +521,16 @@ When you build a message, use `set` rather than `add` unless you mean to repeat 
 
 ### The bindings side by side
 
-| | HTTP | Kafka | NATS |
-|---|---|---|---|
-| namespace | `ce::http` | `ce::kafka` | `ce::nats` |
-| attribute prefix | `ce-` | `ce_` | `ce-` |
-| `datacontenttype` travels as | `Content-Type` | `content-type` | `ce-datacontenttype` |
-| field names match | case-insensitively | byte for byte | case-insensitively |
-| values | percent-encoded | UTF-8, not escaped | percent-encoded |
-| binary mode | yes | yes | yes, NATS 2.2 or later |
-| structured mode | yes | yes | yes |
-| batched mode | yes | no | no |
+| | HTTP | Kafka | NATS | MQTT |
+|---|---|---|---|---|
+| namespace | `ce::http` | `ce::kafka` | `ce::nats` | `ce::mqtt` |
+| attribute prefix | `ce-` | `ce_` | `ce-` | none yet |
+| `datacontenttype` travels as | `Content-Type` | `content-type` | `ce-datacontenttype` | `content-type` (the Content Type property) |
+| field names match | case-insensitively | byte for byte | case-insensitively | byte for byte |
+| values | percent-encoded | UTF-8, not escaped | percent-encoded | UTF-8, not escaped |
+| binary mode | yes | yes | yes, NATS 2.2 or later | not yet |
+| structured mode | yes | yes | yes | yes, MQTT 5.0 and 3.1.1 |
+| batched mode | yes | no | no | no |
 
 Every binding offers `to_message<Codec>(event, mode)`, `from_message<Codec>(message, options)` and `detect_content_mode(message)`.
 The last parameter of `from_message`, of `http::from_batch_message` and of `nats::from_payload` is a `ce::json::decode_options`, with the same 16 KiB retention default as `json_format::decode`, applied to every JSON payload the call decodes, in structured, batched and binary mode.
@@ -601,6 +601,45 @@ std::printf("%s / %zu headers\n", payload ? payload->c_str() : "failed",
 
 Choosing a NATS subject is up to you, because the binding defines no mapping from an event to one.
 `from_payload` cannot answer `not_a_cloudevent`: a bare payload has no header to consult, so an unrelated JSON document looks exactly like a malformed event.
+
+### MQTT
+
+An MQTT PUBLISH is a payload, a Content Type property and a list of User Properties, and the binding maps it to a `ce::message` without naming a client library: the payload is the `body`, the Content Type property is the header `content-type`, and each User Property is a header after it, in order.
+The protocol version is chosen by the function you call, because a message with no headers cannot be told from an MQTT 5.0 message with no properties.
+
+MQTT 5.0 has `to_message` and `from_message`.
+Structured mode writes the JSON event as the payload, sets the Content Type to `application/cloudevents+json` and writes no User Property:
+
+```cpp body
+const ce::event reading{"11"_id, "/sensors/7"_source, "com.example.reading"_type};
+
+auto publish = ce::mqtt::to_message<codec>(reading, ce::content_mode::structured);
+if (publish) {
+  // The caller's client sends publish->body with the Content Type property
+  // publish->header_fields.find_exact("content-type") and no User Property.
+  auto received = ce::mqtt::from_message<codec>(*publish);
+  std::printf("%s, %zu header\n", received ? received->id().str().c_str() : "failed",
+              publish->header_fields.size());
+}
+```
+
+On receipt every User Property is ignored in structured mode, so a broker that annotates messages does not break them.
+A message with no CloudEvents Content Type answers `not_a_cloudevent`, and a payload that does not parse answers the codec's error such as `parse_error`.
+A User Property named `content-type` next to the Content Type property is `invalid_argument`, because the two share one header name and an adapter that copies every property cannot tell them apart.
+Names match byte for byte, so `Content-Type` is another name.
+Binary mode is not available yet: `to_message` refuses it with `invalid_argument`, and so it does a batch, which the binding defines no mode for.
+
+MQTT 3.1.1 has no Content Type and no User Properties, so its PUBLISH is always the JSON event as the payload.
+`to_payload` and `from_payload` are that pair, as the NATS ones are.
+`from_payload` also takes a `ce::message` and reads its body whatever headers it carries:
+
+```cpp body
+auto bytes = ce::mqtt::to_payload<codec>(ce::event{"12"_id, "/sensors/7"_source, "com.example.reading"_type});
+if (bytes) {
+  auto back = ce::mqtt::from_payload<codec>(*bytes);
+  std::printf("3.1.1 payload: %s\n", back ? back->id().str().c_str() : "failed");
+}
+```
 
 ### Forwarding a binary-mode message without parsing it
 
@@ -889,6 +928,11 @@ The Kafka bindings of sdk-go and sdk-java also run in `interop/run.sh`, in memor
 Name `partitionkey_mapper` if a Go consumer or a partitioned topic expects the key sdk-go sets on its own.
 Capitalised header names such as `CE_id` are read by sdk-go and refused by sdk-java and by this SDK.
 `D-INTEROP-5` has the full list.
+
+**MQTT.**
+`interop/run.sh` has the Go SDK read the structured MQTT 5.0 messages this SDK writes and has this SDK's test read the ones Go wrote, in memory and without a broker.
+sdk-java has no MQTT binding, so Go is the only peer, and the MQTT packet bytes are not under test.
+Structured mode agrees with Go; binary mode will not, by default, because sdk-go prefixes User Property names with `ce-` and the binding specification says to use them unchanged.
 
 ## 10. How you can still get it wrong
 

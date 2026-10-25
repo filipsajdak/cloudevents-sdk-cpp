@@ -51,7 +51,7 @@ if(NOT MSVC)
   foreach(probe IN ITEMS headers baseline)
     add_library(ce_macro_probe_${probe} OBJECT macro_probe/${probe}.cpp)
     target_link_libraries(ce_macro_probe_${probe} PRIVATE
-      ce::core ce::warnings ce::binding_http ce::binding_kafka ce::binding_nats
+      ce::core ce::warnings ce::binding_http ce::binding_kafka ce::binding_nats ce::binding_mqtt
       ${probe_codec_targets})
     # Clang warns that -E leaves the -c CMake adds unused, and -Werror makes that fatal.
     target_compile_options(ce_macro_probe_${probe} PRIVATE -dM -E
@@ -119,6 +119,9 @@ if(CE_CODEC_NLOHMANN)
   ce_add_codec_test(nats_binding_test
     SOURCES nats_binding_test.cpp
     LIBS ce::codec_nlohmann ce::binding_nats)
+  ce_add_codec_test(mqtt_binding_test
+    SOURCES mqtt_binding_test.cpp
+    LIBS ce::codec_nlohmann ce::binding_mqtt)
   ce_add_test(extensions_test
     SOURCES extensions_test.cpp
     LIBS ce::codec_nlohmann)
@@ -155,6 +158,15 @@ if(CE_CODEC_NLOHMANN)
     SOURCES interop_kafka_test.cpp
     LIBS ce::codec_nlohmann ce::binding_kafka)
   target_compile_definitions(interop_kafka_test
+    PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
+  # The MQTT messages of the Go SDK and this one (SWR-MQTT-0014), over every codec. The events
+  # are the ones interop/mqtt/cpp/produce.cpp writes, so the suite includes that corpus.
+  ce_add_codec_test(interop_mqtt_test
+    SOURCES interop_mqtt_test.cpp
+    LIBS ce::codec_nlohmann ce::binding_mqtt)
+  target_include_directories(interop_mqtt_test
+    PRIVATE "${PROJECT_SOURCE_DIR}/interop/mqtt/cpp")
+  target_compile_definitions(interop_mqtt_test
     PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 endif()
 

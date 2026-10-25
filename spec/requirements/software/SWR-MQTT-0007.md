@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0007
 title: User Property names compare byte for byte
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Slice 1 for the content-type lookup, slice 2 for attribute names (CR-0008). An MQTT User Property
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-names-are-byte-exact]
 owner: filip.sajdak
 version: 1
 ---

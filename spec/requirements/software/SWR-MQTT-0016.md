@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0016
 title: A libFuzzer target covers the decode path of the MQTT binding
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slices 1 and 2 (CR-0008). SWR-SEC-0001 already requires a target for the decode path of every
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:fuzz/fuzz_mqtt_message.cpp, code:fuzz/CMakeLists.txt]
+verified_by: [test:fuzz/fuzz_mqtt_message.cpp::fuzz-mqtt-message]
 owner: filip.sajdak
 version: 1
 ---

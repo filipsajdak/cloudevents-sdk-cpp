@@ -10,7 +10,7 @@ Notable changes per release. Dates are the tag date.
   An event travels as an MQTT 5.0 PUBLISH held in a `ce::message`: the JSON event as the payload, the Content Type property `application/cloudevents+json` as the header `content-type`, and no User Property written or read.
   `ce::mqtt::to_message<Codec>(event, ce::content_mode::structured)` and `ce::mqtt::from_message<Codec>(message, options)` are the 5.0 pair, with `detect_content_mode`; `ce::mqtt::to_payload<Codec>(event)` and `from_payload<Codec>(payload_or_message, options)` are the MQTT 3.1.1 pair, which has no properties, so the caller names the version by the function.
   A message with no CloudEvents Content Type is `not_a_cloudevent`, a malformed payload is the codec's error, a batch is refused with `invalid_argument` and so is a second header named `content-type`, and names match byte for byte.
-  Binary mode, and with it the `prefixed_names` option for sdk-go's `ce-` User Property names, is the next slice: `to_message` refuses it for now.
+  Binary mode is the next bullet.
   The binding is header-only, names no MQTT client library and adds the target `ce::binding_mqtt`, the module export `ce::v4::mqtt` and the fuzz target `fuzz_mqtt_message`; the Go SDK reads and writes the same structured messages (sixteen recorded goldens, no broker, sdk-java has no MQTT binding).
   It is an addition to `ce::v4`: `python3 scripts/frozen_api_diff.py --base v0.6.1` finds no changed declaration.
   *Use:*
@@ -18,6 +18,21 @@ Notable changes per release. Dates are the tag date.
   ```cpp
   auto publish = ce::mqtt::to_message<codec>(event, ce::content_mode::structured);
   auto received = ce::mqtt::from_message<codec>(*publish);
+  ```
+
+- **MQTT binary mode, with sdk-go's `ce-` prefix as an opt-in (`ce::mqtt`, CR-0008 slice 2).**
+  `ce::mqtt::to_message<Codec>(event, ce::content_mode::binary_mode)` writes an MQTT 5.0 PUBLISH whose payload is the data, whose Content Type property is `datacontenttype` and whose User Properties are every other attribute and extension; `from_message<Codec>` reads it.
+  The names follow the binding text, unchanged (`specversion`, `id`), by default.
+  Name the policy for the form the Go SDK writes and requires: `to_message<Codec, ce::mqtt::prefixed_names>(...)` and `from_message<Codec, ce::mqtt::prefixed_names>(...)` use `ce-specversion`, `ce-id`; `unprefixed_names` is the default and the concept is `name_policy`.
+  A message with a CloudEvents Content Type is still structured; any other is binary when it carries the `specversion` User Property under the policy, and `not_a_cloudevent` otherwise, where slice 1 answered `not_a_cloudevent` for every such message (slice 1 is unreleased).
+  A User Property that is not an attribute name under the policy is ignored; a `datacontenttype` User Property must equal the Content Type property; values are well-formed UTF-8 without NUL and at most 65,535 bytes.
+  The eight Go binary goldens recorded with slice 1 now decode under `prefixed_names`, are `not_a_cloudevent` under the default, and Go reads the binary messages this SDK writes under the policy.
+  `fuzz_mqtt_message` covers binary mode under both policies, and the module also exports `name_policy`, `unprefixed_names` and `prefixed_names`.
+  *Use:*
+
+  ```cpp
+  auto for_go = ce::mqtt::to_message<codec, ce::mqtt::prefixed_names>(event, ce::content_mode::binary_mode);
+  auto back = ce::mqtt::from_message<codec, ce::mqtt::prefixed_names>(*for_go);
   ```
 
 ## v0.6.1 - 2026-10-21

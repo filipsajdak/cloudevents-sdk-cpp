@@ -1,0 +1,5 @@
+id:id-minimal
+source:/interop/go
+specversion:1.0
+type:com.example.minimal
+

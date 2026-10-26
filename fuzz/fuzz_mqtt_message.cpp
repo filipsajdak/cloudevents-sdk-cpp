@@ -3,9 +3,11 @@
 ///
 /// The input is a Content Type property and User Properties as `name: value` lines, a blank line,
 /// then the payload, so one input drives the 5.0 entry point with any header list and the 3.1.1
-/// entry points with the same bytes (SWR-MQTT-0016). Not a duplicate of fuzz_kafka_message: this
-/// binding compares the content-type name byte for byte, refuses a second header of that name and
-/// refuses a batch, none of which the Kafka target reaches.
+/// entry points with the same bytes (SWR-MQTT-0016). Binary mode is reached under both name
+/// policies, so the input steers the attribute filter, the datacontenttype copy and the value
+/// rules. Not a duplicate of fuzz_kafka_message: this binding compares the content-type name byte
+/// for byte, refuses a second header of that name, refuses a batch and ignores foreign User
+/// Properties, none of which the Kafka target reaches.
 
 #include <cstddef>
 #include <cstdint>
@@ -47,6 +49,36 @@ auto build(std::string_view input) -> ce::message {
   return incoming;
 }
 
+/// Reads `incoming` under one name policy and checks what the binding promises of the result.
+template<class Names>
+void exercise(const ce::message& incoming) {
+  // The text path above the retention limit takes the same input (SWR-BIND-0007).
+  (void)ce::mqtt::from_message<codec, Names>(incoming, {.retain_document_up_to = 0});
+
+  auto decoded = ce::mqtt::from_message<codec, Names>(incoming);
+  if (!decoded) {
+    return;
+  }
+
+  if (ce::mqtt::detect_content_mode(incoming) == ce::content_mode::structured) {
+    // Whatever a structured 5.0 message decoded to is what its payload alone decodes to on 3.1.1.
+    auto from_payload = ce::mqtt::from_payload<codec>(incoming);
+    if (!from_payload || !(*decoded == *from_payload)) {
+      __builtin_trap();
+    }
+  }
+
+  // A decoded event writes back out in structured mode, and in binary mode when its values fit an
+  // MQTT string; what binary mode wrote reads back under the same policy.
+  if (!ce::mqtt::to_message<codec, Names>(*decoded, ce::content_mode::structured)) {
+    __builtin_trap();
+  }
+  if (auto written = ce::mqtt::to_message<codec, Names>(*decoded, ce::content_mode::binary_mode);
+      written && !ce::mqtt::from_message<codec, Names>(*written)) {
+    __builtin_trap();
+  }
+}
+
 }  // namespace
 
 extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) -> int {
@@ -54,23 +86,9 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
   const ce::message incoming = build(input);
 
   (void)ce::mqtt::detect_content_mode(incoming);
-  // The text path above the retention limit takes the same input (SWR-BIND-0007).
-  (void)ce::mqtt::from_message<codec>(incoming, {.retain_document_up_to = 0});
   (void)ce::mqtt::from_payload<codec>(incoming, {.retain_document_up_to = 0});
 
-  auto decoded = ce::mqtt::from_message<codec>(incoming);
-  if (decoded) {
-    // Whatever a 5.0 message decoded to is what its payload alone decodes to on 3.1.1.
-    auto from_payload = ce::mqtt::from_payload<codec>(incoming);
-    if (!from_payload || !(*decoded == *from_payload)) {
-      __builtin_trap();
-    }
-
-    // A decoded event writes back out, on 5.0 and as a 3.1.1 payload.
-    if (!ce::mqtt::to_message<codec>(*decoded, ce::content_mode::structured) ||
-        !ce::mqtt::to_payload<codec>(*decoded)) {
-      __builtin_trap();
-    }
-  }
+  exercise<ce::mqtt::unprefixed_names>(incoming);
+  exercise<ce::mqtt::prefixed_names>(incoming);
   return 0;
 }

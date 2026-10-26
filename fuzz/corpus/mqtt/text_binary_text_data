@@ -1,0 +1,7 @@
+content-type:text/plain
+id:id-text
+source:/interop/go
+specversion:1.0
+type:com.example.text
+
+plain text payload

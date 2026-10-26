@@ -1,0 +1,7 @@
+content-type:text/plain
+ce-id:id-text
+ce-source:/interop/go
+ce-specversion:1.0
+ce-type:com.example.text
+
+plain text payload

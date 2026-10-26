@@ -1,0 +1,8 @@
+content-type:application/json
+specversion:1.0
+id:1
+source:/s
+type:t
+datacontenttype:text/plain
+
+{"a":1}

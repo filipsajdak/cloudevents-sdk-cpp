@@ -393,6 +393,9 @@ jobs:
         run: cmake --build build
       - name: coverage-report
         run: cmake --build build --target coverage-report
+      - name: versions
+        if: always()
+        run: gcovr --version; gcov-13 --version | head -1; dpkg -l gcovr gcc-13 | tail -2
       - uses: actions/upload-artifact@v4
         if: always()
         with:

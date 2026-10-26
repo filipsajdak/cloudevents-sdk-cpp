@@ -320,5 +320,6 @@ add_custom_target(coverage-report
           --html-details ${CMAKE_BINARY_DIR}/coverage/index.html
           --xml ${CMAKE_BINARY_DIR}/coverage/coverage.xml
           --fail-under-line ${CE_COVERAGE_FLOOR}
+          --exclude-throw-branches --fail-under-branch 0
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   COMMENT "Measuring line coverage for the SDK headers, floor ${CE_COVERAGE_FLOOR} percent")

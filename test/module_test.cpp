@@ -103,8 +103,11 @@ constexpr std::array nested_exports{
     "ce::v4::mqtt::detect_content_mode"sv,
     "ce::v4::mqtt::from_message"sv,
     "ce::v4::mqtt::from_payload"sv,
+    "ce::v4::mqtt::name_policy"sv,
+    "ce::v4::mqtt::prefixed_names"sv,
     "ce::v4::mqtt::to_message"sv,
     "ce::v4::mqtt::to_payload"sv,
+    "ce::v4::mqtt::unprefixed_names"sv,
     "ce::v4::literals::operator\"\"_dataschema"sv,
     "ce::v4::literals::operator\"\"_ext"sv,
     "ce::v4::literals::operator\"\"_id"sv,
@@ -286,7 +289,10 @@ const boost::ut::suite<"module-exports-mqtt-v4-only"> module_exports_mqtt_v4_onl
                             "from_message"sv,
                             "from_payload"sv,
                             "to_message"sv,
-                            "to_payload"sv}) {
+                            "to_payload"sv,
+                            "name_policy"sv,
+                            "prefixed_names"sv,
+                            "unprefixed_names"sv}) {
       expect(source.find("using ce::v4::mqtt::" + std::string{name} + ";") != std::string::npos)
           << name;
     }

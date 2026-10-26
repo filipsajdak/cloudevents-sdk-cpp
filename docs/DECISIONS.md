@@ -1786,8 +1786,8 @@ CR-0008 names `to_message`, `from_message`, `to_payload` and `from_payload` and 
 
 - **`to_message` takes the mode, as Kafka's does, and slice 1 refuses `binary_mode`.**
   SWR-MQTT-0006 needs a way to ask for a batch, and slice 2 adds binary mode to the same function, so the signature does not change between them.
-  Until then a binary request answers `invalid_argument` with the detail "the MQTT binding writes structured mode only".
-  On receipt a message with the `specversion` User Property but no CloudEvents Content Type answers `not_a_cloudevent`, which slice 2 revises to read the binary form.
+  Slice 1 refused a binary request with `invalid_argument` ("the MQTT binding writes structured mode only"); slice 2 writes it (D-MQTT-2).
+  On receipt slice 1 answered `not_a_cloudevent` for a message with the `specversion` User Property but no CloudEvents Content Type; slice 2 reads it as binary mode (D-MQTT-2).
 - **`from_payload` also takes a `ce::message`.**
   SWR-MQTT-0002 says the 3.1.1 entry points read "the payload whatever headers a message carries". The `string_view` form is the NATS one; the `message` form reads the body of an adapter's message without looking at its headers, which is what an adapter that cannot tell the version from the message wants.
   It is the same call as the structured decode of a 5.0 message minus the header checks, so it adds no behaviour.
@@ -1796,6 +1796,22 @@ CR-0008 names `to_message`, `from_message`, `to_payload` and `from_payload` and 
   `from_payload` ignores it, because it ignores every header.
 
 SWR-BIND-0009 and SWR-BIND-0017 state their scope as the HTTP, Kafka and NATS entry points, and CR-0008 changes no existing requirement, so the MQTT entry points apply the decode options and leave the message intact without being listed there. `mqtt-from-message-takes-decode-options` is their evidence under SWR-MQTT-0001. Whether those two requirements should name MQTT is left to the owner.
+
+## D-MQTT-2: Slice 2 binary mode: the policy, the foreign-name test and the datacontenttype copy
+
+CR-0008 and ADR-0014 fix the carrier (a defaulted trailing `name_policy Names = unprefixed_names` on `to_message` and `from_message`), the default (the text's names) and two rulings (a foreign User Property is ignored, SWR-MQTT-0013; a `content-type` User Property is refused, SWR-MQTT-0008). The code leaves these details to the author, and the owner may overrule each.
+
+- **"Foreign" means: not a valid attribute name once the policy's prefix is removed.**
+  A name that does not start with the prefix is foreign, so is one whose remainder fails `valid_attribute_name` (`[a-z0-9]+`), so `ce-Upper`, `ce-x-y` and `ce-` are ignored under `prefixed_names`, as `x-request-id` and `Trace_Id` are under the default. The CR states the rule for the unprefixed names and for names without `ce-`; applying the same test to the remainder keeps one rule for both. The consequence is that a `ce-` User Property with an invalid attribute name is not an error, where the HTTP and Kafka bindings refuse it.
+- **A `datacontenttype` User Property needs the Content Type property to equal it.**
+  SWR-MQTT-0010 accepts the copy that example 3.1.4 shows "equal to the Content Type" and refuses it when "the two differ". With no Content Type property the two differ, so the message is `invalid_argument`; so is a second copy. This is the literal reading and the owner may prefer to accept a lone copy as the attribute (open question below). Under `prefixed_names` there is no tolerance: `ce-datacontenttype` is `invalid_argument` whatever the property holds (SWR-MQTT-0012; D-BIND-1 for HTTP and Kafka).
+- **Binary mode is entered by the `specversion` User Property under the policy.**
+  A CloudEvents Content Type still wins (structured, every User Property ignored). Otherwise a message with `specversion` (`ce-specversion` under `prefixed_names`) is binary and any other is `not_a_cloudevent`, so the Go form is `not_a_cloudevent` under the default and the text's form is `not_a_cloudevent` under `prefixed_names` (SWR-MQTT-0015). Foreign duplicates do not matter: the repeated-attribute test runs on the attribute fields only.
+- **The value rules of SWR-MQTT-0011 apply on read as well.**
+  Well-formed UTF-8 (`invalid_utf8`), no U+0000 and at most 65,535 bytes (`invalid_argument`, the only existing code that fits; OASIS MQTT 5.0, 1.5.4). Read applies them too, so a message built in memory is held to what the wire carries. The Content Type property value is not length-checked.
+- **3.1.1 has no mode argument.**
+  `to_payload` and `from_payload` are structured only, so "binary mode on 3.1.1" cannot be asked for and needs no refusal.
+- **Open question for the owner:** a lone `datacontenttype` User Property, with no Content Type property, is refused (above); accepting it as the attribute is the alternative. `from_message_moving` for MQTT stays unruled (CR-0008, open question 3), with no requirement and no code.
 
 ## D-CODEC-4: A codec takes over a string through `adopt_string`
 

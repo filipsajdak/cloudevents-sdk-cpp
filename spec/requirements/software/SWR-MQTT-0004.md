@@ -15,7 +15,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
 satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
-verified_by: [test:test/mqtt_binding_test.cpp::mqtt-mode-detection, test:test/mqtt_binding_test.cpp::mqtt-content-type-with-parameters]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-mode-detection, test:test/mqtt_binding_test.cpp::mqtt-content-type-with-parameters, test:test/mqtt_binding_test.cpp::mqtt-binary-mode-detection]
 owner: filip.sajdak
 version: 1
 ---

@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0012
 title: The ce- prefix of sdk-go is an opt-in name policy, defaulting to the text
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 2 (CR-0008). Owner ruling 2026-10-24 (ruling 2): follow the text by default and offer an
@@ -15,8 +15,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-prefixed-names-write, test:test/mqtt_binding_test.cpp::mqtt-prefixed-names-read, test:test/mqtt_binding_test.cpp::mqtt-default-names-are-the-text, test:test/mqtt_binding_test.cpp::mqtt-prefixed-datacontenttype-refused]
 owner: filip.sajdak
 version: 1
 ---

@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0010
 title: Binary mode reads each User Property named like an attribute as an attribute or an extension
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 2 (CR-0008). Binding text :156-158: all other context attributes, including extensions, must
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-binary-extensions, test:test/mqtt_binding_test.cpp::mqtt-duplicate-datacontenttype, test:test/mqtt_binding_test.cpp::mqtt-repeated-attribute-refused]
 owner: filip.sajdak
 version: 1
 ---

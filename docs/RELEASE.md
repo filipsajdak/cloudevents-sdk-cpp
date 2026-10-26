@@ -33,9 +33,19 @@ Run every command from a clean `main` at the commit being tagged.
 - [ ] Every preset configures, builds and tests locally, judged by exit code at
       each stage rather than by reading ctest's summary.
 - [ ] `cmake --build build --target asan-ubsan-suite` is clean (`SWR-SEC-0002`).
-- [ ] `cmake --build build --target coverage-report` meets the floor
-      (`SWR-SEC-0007`). It fails the build below it; do not lower
-      `CE_COVERAGE_FLOOR` to make a release go out.
+- [ ] `cmake --build build --target coverage-report` meets both floors
+      (`SWR-SEC-0007`): `CE_COVERAGE_FLOOR` for lines and
+      `CE_COVERAGE_BRANCH_FLOOR` for branches, counted without the compiler's
+      exception edges. It fails the build below either; do not lower
+      either to make a release go out. The branch floor is valid only for the
+      gcovr and gcov that the `coverage floor` job pins (`GCOVR_VERSION` and
+      `GCC_MAJOR` in its env), and the job fails before measuring when the
+      installed tools differ. **To change that toolchain, re-baseline in the
+      same pull request**: run the job with the branch gate at `0`, record the
+      old and the new figure in a `D-SEC` entry, and set
+      `CE_COVERAGE_BRANCH_FLOOR` to the new measurement minus 2 points, rounded
+      down. A person raises the floor, in the pull request that raises the
+      measurement by a whole point; nothing does it automatically.
       **The `coverage floor` CI job is the measurement of record**, because
       the local toolchain has twice reported a number that was not the
       coverage. Apple's `gcov` cannot read GCC's `.gcda` and returns

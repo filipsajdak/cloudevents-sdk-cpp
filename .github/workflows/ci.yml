@@ -371,28 +371,69 @@ jobs:
     name: coverage floor
     needs: gate
     runs-on: ubuntu-24.04
+    # The branch floor (CE_COVERAGE_BRANCH_FLOOR, D-SEC-5) is valid only for these
+    # tools: which edges gcov calls exception edges is not stable across versions.
+    # Naming them once here and asserting them below means an image update cannot
+    # move the figure without this job failing first. Changing either is a
+    # re-baseline (docs/RELEASE.md).
+    env:
+      GCC_MAJOR: "13"
+      GCOVR_VERSION: "7.0"
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build gcovr nlohmann-json3-dev
-      # SWR-SEC-0007. The floor is enforced by gcovr's exit code, not printed
+          sudo apt-get install -y "g++-${GCC_MAJOR}" ninja-build gcovr nlohmann-json3-dev
+      - name: Check the coverage toolchain
+        run: |
+          gcovr_found="$(gcovr --version | head -n 1)"
+          gcov_found="$("gcov-${GCC_MAJOR}" --version | head -n 1)"
+          echo "${gcovr_found}"
+          echo "${gcov_found}"
+          if [ "${gcovr_found}" != "gcovr ${GCOVR_VERSION}" ]; then
+            echo "::error::gcovr is '${gcovr_found}', the branch floor is valid for 'gcovr ${GCOVR_VERSION}'. Re-baseline CE_COVERAGE_BRANCH_FLOOR (docs/RELEASE.md) instead of loosening this check."
+            exit 1
+          fi
+          case "${gcov_found}" in
+            *" ${GCC_MAJOR}."*) ;;
+            *)
+              echo "::error::gcov-${GCC_MAJOR} is '${gcov_found}', the branch floor is valid for GCC ${GCC_MAJOR}. Re-baseline CE_COVERAGE_BRANCH_FLOOR (docs/RELEASE.md) instead of loosening this check."
+              exit 1 ;;
+          esac
+      # SWR-SEC-0007. The floors are enforced by gcovr's exit code, not printed
       # for someone to read, and the examples are built so their lines count.
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
-          -DCMAKE_CXX_COMPILER=g++-13
+          "-DCMAKE_CXX_COMPILER=g++-${GCC_MAJOR}"
           -DCMAKE_CXX_STANDARD=20
           -DCMAKE_BUILD_TYPE=Debug
           -DCE_BUILD_EXAMPLES=ON
-          -DCE_GCOV_EXECUTABLE=gcov-13
+          "-DCE_GCOV_EXECUTABLE=gcov-${GCC_MAJOR}"
           "-DCMAKE_CXX_FLAGS=--coverage -fprofile-update=atomic -O0 -g"
           "-DCMAKE_EXE_LINKER_FLAGS=--coverage"
       - name: Build
         run: cmake --build build
       - name: coverage-report
         run: cmake --build build --target coverage-report
+      # gcovr writes the XML before it checks the floors, so the summary is there
+      # on a failing run too, which is when someone reads it.
+      - name: Coverage summary
+        if: always()
+        run: |
+          python3 - >> "${GITHUB_STEP_SUMMARY}" <<'PY'
+          import xml.etree.ElementTree as ET
+          try:
+              root = ET.parse("build/coverage/coverage.xml").getroot()
+          except (OSError, ET.ParseError):
+              print("coverage: no report was written")
+          else:
+              print("| metric | covered |")
+              print("|---|---|")
+              print(f"| lines | {float(root.get('line-rate')):.1%} |")
+              print(f"| branches, exception edges excluded | {float(root.get('branch-rate')):.1%} |")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

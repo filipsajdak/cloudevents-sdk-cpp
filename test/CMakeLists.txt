@@ -203,6 +203,13 @@ if(Python3_Interpreter_FOUND)
     COMMAND Python3::Interpreter -m unittest discover
             -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_vcpkg_release_*.py")
   set_tests_properties(vcpkg_release_guard_tools PROPERTIES LABELS "tools")
+  # The coverage gate's configuration (SWR-SEC-0007): the named branch floor, both
+  # gcovr flags and the pinned toolchain of the CI job. Dropping any of them leaves
+  # the job green and ungating, so a build that runs ctest has to notice.
+  add_test(NAME coverage_gate_tools
+    COMMAND Python3::Interpreter -m unittest discover
+            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_coverage_gate*.py")
+  set_tests_properties(coverage_gate_tools PROPERTIES LABELS "tools")
   # The frozen-API diff (SWR-BUILD-0015). Its verdict suites need a clang++ and
   # its release suites also the tags and the dependencies' headers; each skips
   # when one is missing, so a shallow clone or a GCC-only host still passes.
@@ -300,10 +307,17 @@ add_custom_target(asan-ubsan-suite
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   COMMENT "Running the whole suite under AddressSanitizer and UndefinedBehaviorSanitizer")
 
-# SWR-SEC-0007: line coverage for core, format and binding, with the floor
-# enforced rather than reported. gcovr exits non-zero below it, so the target
-# fails the build instead of printing a number nobody reads.
+# SWR-SEC-0007: line and branch coverage for core, format and binding, with both
+# floors enforced rather than reported. gcovr exits non-zero below either, so the
+# target fails the build instead of printing a number nobody reads.
 set(CE_COVERAGE_FLOOR 90 CACHE STRING "Minimum line coverage percent for the headers")
+# Branches are counted without the compiler's exception edges: the library throws
+# nothing, and every allocating call carries an edge no test can take. The floor is
+# the measurement minus 2 points, rounded down (D-SEC-5 has the measurement). It is
+# valid for the toolchain the `coverage floor` CI job pins, is raised by a person in the pull request that raises the
+# measurement, and is set again from a new measurement when that toolchain changes.
+set(CE_COVERAGE_BRANCH_FLOOR 86 CACHE STRING
+  "Minimum branch coverage percent for the headers, exception edges excluded")
 # gcovr defaults to `gcov`, which on macOS is Apple's and cannot read GCC's
 # .gcda. It reports every header as 0 percent rather than failing, so the
 # executable is named explicitly and defaults to the one beside the compiler.
@@ -319,6 +333,8 @@ add_custom_target(coverage-report
           --print-summary
           --html-details ${CMAKE_BINARY_DIR}/coverage/index.html
           --xml ${CMAKE_BINARY_DIR}/coverage/coverage.xml
+          --exclude-throw-branches
           --fail-under-line ${CE_COVERAGE_FLOOR}
+          --fail-under-branch ${CE_COVERAGE_BRANCH_FLOOR}
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-  COMMENT "Measuring line coverage for the SDK headers, floor ${CE_COVERAGE_FLOOR} percent")
+  COMMENT "Measuring coverage for the SDK headers: lines at ${CE_COVERAGE_FLOOR} percent, branches without exception edges at ${CE_COVERAGE_BRANCH_FLOOR} percent")

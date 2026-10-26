@@ -15,8 +15,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-SEC-0001]
-satisfied_by: []
-verified_by: [test:test/CMakeLists.txt::coverage-report]
+satisfied_by: [code:test/CMakeLists.txt, code:.github/workflows/ci.yml, code:scripts/check_coverage_gate.py]
+verified_by: [test:test/CMakeLists.txt::coverage-report, test:scripts/test_coverage_gate.py::TheBranchFlags, test:scripts/test_coverage_gate.py::TheFloorConstant, test:scripts/test_coverage_gate.py::ThePinnedToolchain, test:scripts/test_coverage_gate.py::TheExitStatus, test:scripts/test_coverage_gate.py::ThisRepository]
 owner: filip.sajdak
 version: 2
 ---

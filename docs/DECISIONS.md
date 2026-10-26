@@ -719,6 +719,57 @@ depth is restored by a guard object so an error path cannot leak it. The limit
 is a constant rather than an option: a caller who needs deeper nesting in a
 CloudEvent has a different problem.
 
+## D-SEC-5: Branch coverage is gated with exception edges excluded, at a floor of 86
+
+`D-SEC-3` gated lines and left branches at 60.5 percent, ungated. A line that holds
+`if (!x) return fail(...)` counts as covered when only the passing arm runs, so a release
+could meet the line floor with every error return untested. CR-0007 records the analysis;
+this entry records what was decided and measured.
+
+**The metric.** Branch coverage with gcovr's `--exclude-throw-branches`, gated by
+`--fail-under-branch ${CE_COVERAGE_BRANCH_FLOOR}`, over the same files as the line gate:
+v1 to v4 and the shared headers together, one figure (the owner's ruling of 2026-10-26;
+the frozen generations are not split out). The default metric stays out of the gate: of the
+3188 uncovered branches before pull request #110, 2269 were exception edges of allocating
+calls that no test can take, so a floor on it would move when a function's allocation pattern
+changed and not when a test was removed. Functions are not gated.
+
+**The measurement.** Taken from the `coverage floor` job on a throwaway pull request that
+added the two flags with `--fail-under-branch 0` (ci run 40409577837, gcovr 7.0, gcov 13.3.0
+from Ubuntu 24.04): branches **88.1 percent** (5196 of 5895) with throw edges excluded; lines
+98.0 percent (4573 of 4665); functions 92.0 percent. That agrees with the 88.1 percent that
+CR-0007 took from the side measurement in #110. The same job reports 63.5 percent of
+branches by the default metric, which is no longer printed once the flag is set.
+
+**The floor.** `CE_COVERAGE_BRANCH_FLOOR` is 86: the measurement minus 2 points, rounded
+down. The 2 points are the measured drift between unrelated changes (about 0.2 points) with
+room for a pull request that adds a few decisions together with their tests. The ratchet is
+manual: the floor is raised by a person, in the same diff as the tests that raise the
+measurement by a whole point, and it is never lowered to let a release go out.
+
+**The toolchain is pinned.** Which edges count as exception edges is decided by the compiler's
+exception-handling edges as `gcov` reports them, so a different GCC, `gcov` or gcovr can
+move the figure by points with no change to the tests. The job installs `g++-13` and `gcovr`
+from Ubuntu 24.04 and asserts, in a step that fails with a message naming both versions,
+that `gcovr --version` reports 7.0 and that `gcov-13` is GCC 13; the numbers live once, in
+the job's `env`.
+
+**Re-baselining on a toolchain bump.** The pull request that changes the compiler, `gcov-N`
+or the source of gcovr changes the pinned versions in the same diff, runs the job with the
+gate at `0`, records both figures (the old toolchain's and the new one's) in a `D-SEC` entry,
+and sets the floor again by the rule above, measurement minus 2 points rounded down. The
+floor is not left as it was, and not set below what the rule gives.
+
+**The unreachable defensive branches are left as they are.** `json_format.hpp` lines 131,
+553, 608 and 633, `timestamp.hpp:153`, `attributes.hpp:443`, `codec/nlohmann.hpp:93`,
+`result.hpp:54` and `json_slice.hpp:139` get no exclusion marker and are not removed. Markers
+were declined because a comment per branch also hides a real error branch beside it on the
+same line; removal was declined because it edits headers that `v1` to `v3` share and freeze.
+The gate asks that the measurement not fall, not that the residual vanish.
+
+Assertion-free tests still meet a branch floor; the advisory mutation line of
+`SWR-BUILD-0014` is the guard, and stays advisory.
+
 ## D-ADOPT-1: nlohmann is looked up softly, so the package stays usable without it
 
 The package configuration called `find_dependency(nlohmann_json 3.12.0)` whenever

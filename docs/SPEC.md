@@ -283,7 +283,8 @@ header mapping. Consumers must never branch on the backend.
   `http::from_message`, base64 decode. Must not crash, leak or time out; seed corpus
   from fixtures. Not part of the default build.
 - Sanitizers: ASan+UBSan job on the full suite.
-- Coverage target: 90 percent lines for `core`, `format`, `binding`.
+- Coverage target: 90 percent lines for `core`, `format`, `binding`, and a branch floor,
+  exception edges excluded (`SWR-SEC-0007`).
 
 ## 7. Milestones
 

@@ -316,7 +316,7 @@ set(CE_COVERAGE_FLOOR 90 CACHE STRING "Minimum line coverage percent for the hea
 # the measurement minus 2 points, rounded down (D-SEC-5 has the measurement). It is
 # valid for the toolchain the `coverage floor` CI job pins, is raised by a person in the pull request that raises the
 # measurement, and is set again from a new measurement when that toolchain changes.
-set(CE_COVERAGE_BRANCH_FLOOR 86 CACHE STRING
+set(CE_COVERAGE_BRANCH_FLOOR 99 CACHE STRING
   "Minimum branch coverage percent for the headers, exception edges excluded")
 # gcovr defaults to `gcov`, which on macOS is Apple's and cannot read GCC's
 # .gcda. It reports every header as 0 percent rather than failing, so the

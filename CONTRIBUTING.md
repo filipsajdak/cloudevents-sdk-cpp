@@ -27,6 +27,14 @@ A snippet in the guide is fenced `cpp` for declarations, `cpp body` for statemen
 The `perf` workflow measures every pull request against main and against `bench/budgets.json`, and fails when an operation gets costlier.
 [docs/PERFORMANCE.md](docs/PERFORMANCE.md) explains its table, how to reproduce it with Docker, and how to raise a budget for a deliberate cost.
 
+## Coverage floors
+
+The `coverage floor` job fails a pull request below `CE_COVERAGE_FLOOR` (lines) or `CE_COVERAGE_BRANCH_FLOOR` (branches, exception edges excluded), both set in `test/CMakeLists.txt`.
+A pull request that adds a decision adds a test for each outcome of it.
+When your tests raise the branch measurement by a whole point, raise `CE_COVERAGE_BRANCH_FLOOR` in the same diff to the new measurement minus 2 points, rounded down; nothing does it for you, and it is never lowered to make a build pass.
+A test that runs both arms and checks nothing meets the floor, so the mutation line below is how that is caught.
+The floor holds only for the gcovr and GCC versions the job pins; [docs/RELEASE.md](docs/RELEASE.md) says how to re-baseline when they change.
+
 ## Mutation testing
 
 A pull request that changes source runs [Mull](https://mull.readthedocs.io) on the lines it changes and ends its Verification with one line.

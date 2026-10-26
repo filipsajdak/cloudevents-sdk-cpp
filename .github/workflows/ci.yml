@@ -378,7 +378,7 @@ jobs:
     # re-baseline (docs/RELEASE.md).
     env:
       GCC_MAJOR: "13"
-      GCOVR_VERSION: "7.0"
+      GCOVR_VERSION: "7.1"
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain

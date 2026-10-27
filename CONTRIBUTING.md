@@ -113,7 +113,7 @@ It needs `git fetch --tags`, a clang++ (`CE_FROZEN_API_CLANG`, default `clang++`
 Exit 0 means nothing frozen moved, 1 means a declaration was removed or changed, and 2 means the check did not run, which is not a pass.
 The suites run as the CTest `frozen_api_tools` and skip where clang, the tags or those headers are missing.
 
-- **A failure means the change belongs in a new generation.** Do not edit the frozen declaration to make the job pass; declare the changed entity in the next generation (D-BUILD-4: before 1.0 a break bumps the minor version, an addition or a fix the patch).
+- **A failure means the change belongs in a new generation.** Do not edit the frozen declaration to make the job pass; declare the changed entity in the next generation (D-BUILD-4 and D-BUILD-5: before 1.0 a break or a feature release bumps the minor version, any other release the patch).
 - **Required check.** It is meant to be one: the toolchain it uses is pinned and both revisions are parsed by the same install, so a run does not vary. It stays advisory until it has run green on a few pull requests without a failure that was not a real break; then the owner adds `frozen API` to branch protection.
 
 ## Packaging recipes

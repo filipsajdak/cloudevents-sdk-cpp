@@ -13,7 +13,11 @@
 #include <boost/ut.hpp>
 
 #include <cloudevents/binding/common.hpp>
+#include <cloudevents/binding/http.hpp>
+#include <cloudevents/binding/kafka.hpp>
+#include <cloudevents/binding/nats.hpp>
 #include <cloudevents/core.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
@@ -1112,6 +1116,136 @@ const boost::ut::suite<"copying-entry-points-leave-the-message-intact"> copying_
         expect(by_lvalue.has_value() && by_move.has_value());
         // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
         expect(moving::unchanged(structured, before));
+      };
+    };
+
+// spec: SWR-PROTO-0022
+const boost::ut::suite<"protobuf-content-type-does-not-change-json-entry-points"> protobuf_pins =
+    [] {
+      using boost::ut::expect;
+      using namespace boost::ut::literals;
+      namespace http = ce::http;
+      namespace kafka = ce::kafka;
+      namespace nats = ce::nats;
+
+      constexpr std::string_view protobuf_type = "application/cloudevents+protobuf";
+      constexpr std::string_view json_event =
+          R"({"specversion":"1.0","id":"7","source":"/s","type":"t"})";
+
+      const auto protobuf_body = ce::protobuf_format::encode(base_event());
+      expect(protobuf_body.has_value());
+      if (!protobuf_body) {
+        return;
+      }
+
+      // The JSON entry points hard-wire JSON: the content type picks structured mode, and the
+      // body is then read as JSON whatever the type says.
+      const auto message_of = [](std::string_view header, std::string_view type, ce::binary body) {
+        return ce::message{.header_fields = {{std::string{header}, std::string{type}}},
+                           .body = std::move(body)};
+      };
+      const auto code_of = [](const ce::result<ce::event>& result) {
+        return result ? ce::errc::invalid_argument : result.error().code;
+      };
+
+      "http reads the protobuf body as JSON and refuses it"_test = [&] {
+        const auto given = message_of("Content-Type", protobuf_type, *protobuf_body);
+        const auto read = http::from_message<mini>(given);
+        expect(!read.has_value());
+        expect(code_of(read) == ce::errc::parse_error);
+        auto moved = given;
+        const auto by_move = http::from_message_moving<mini>(std::move(moved));
+        expect(!by_move.has_value() && code_of(by_move) == code_of(read));
+      };
+
+      "http reads a JSON body under the protobuf type as JSON"_test = [&] {
+        const auto given = message_of("content-TYPE", protobuf_type, bytes_of(json_event));
+        const auto read = http::from_message<mini>(given);
+        expect(read.has_value());
+        if (read) {
+          expect(read->id() == "7"_id);
+        }
+        auto moved = given;
+        expect(http::from_message_moving<mini>(std::move(moved)).has_value());
+      };
+
+      "http compares the media type ignoring case, as it always did"_test = [&] {
+        const auto given =
+            message_of("Content-Type", "APPLICATION/CloudEvents+Protobuf", bytes_of(json_event));
+        expect(http::detect_content_mode(given) == ce::content_mode::structured);
+        expect(http::from_message<mini>(given).has_value());
+      };
+
+      "http binary mode of a protobuf body is unchanged"_test = [&] {
+        ce::message given = message_of("Content-Type", protobuf_type, *protobuf_body);
+        given.header_fields.add("ce-specversion", "1.0");
+        expect(!http::from_message<mini>(given).has_value());
+      };
+
+      "kafka reads the protobuf body as JSON and refuses it"_test = [&] {
+        const auto given = message_of("content-type", protobuf_type, *protobuf_body);
+        const auto read = kafka::from_message<mini>(given);
+        expect(!read.has_value());
+        expect(code_of(read) == ce::errc::parse_error);
+        auto moved = given;
+        const auto by_move = kafka::from_message_moving<mini>(std::move(moved));
+        expect(!by_move.has_value() && code_of(by_move) == code_of(read));
+      };
+
+      "kafka reads a JSON body under the protobuf type as JSON"_test = [&] {
+        const auto given = message_of("content-type", protobuf_type, bytes_of(json_event));
+        const auto read = kafka::from_message<mini>(given);
+        expect(read.has_value());
+        if (read) {
+          expect(read->id() == "7"_id);
+        }
+      };
+
+      "kafka matches the media type by its bytes, as it always did"_test = [&] {
+        const auto given =
+            message_of("content-type", "APPLICATION/CLOUDEVENTS+PROTOBUF", bytes_of(json_event));
+        expect(kafka::detect_content_mode(given) == ce::content_mode::binary_mode);
+        const auto read = kafka::from_message<mini>(given);
+        expect(!read.has_value() && code_of(read) == ce::errc::not_a_cloudevent);
+      };
+
+      "nats reads the protobuf body as JSON and refuses it"_test = [&] {
+        const auto given = message_of("Content-Type", protobuf_type, *protobuf_body);
+        const auto read = nats::from_message<mini>(given);
+        expect(!read.has_value());
+        expect(code_of(read) == ce::errc::parse_error);
+        auto moved = given;
+        const auto by_move = nats::from_message_moving<mini>(std::move(moved));
+        expect(!by_move.has_value() && code_of(by_move) == code_of(read));
+      };
+
+      "nats reads a JSON body under the protobuf type as JSON"_test = [&] {
+        const auto given = message_of("Content-Type", protobuf_type, bytes_of(json_event));
+        const auto read = nats::from_message<mini>(given);
+        expect(read.has_value());
+        if (read) {
+          expect(read->id() == "7"_id);
+        }
+      };
+
+      "nats from_payload reads protobuf bytes as JSON and refuses them"_test = [&] {
+        const auto read = nats::from_payload<mini>(ce::to_text(*protobuf_body));
+        expect(!read.has_value());
+        expect(code_of(read) == ce::errc::parse_error);
+      };
+
+      "the JSON structured writers still write the JSON content type"_test = [&] {
+        const auto subject = base_event();
+        const auto over_http = http::to_message<mini>(subject, ce::content_mode::structured);
+        const auto over_kafka = kafka::to_message<mini>(subject, ce::content_mode::structured);
+        const auto over_nats = nats::to_message<mini>(subject, ce::content_mode::structured);
+        expect(over_http.has_value() && over_kafka.has_value() && over_nats.has_value());
+        if (over_http && over_kafka && over_nats) {
+          expect(*over_http->header_fields.find("Content-Type") == "application/cloudevents+json");
+          expect(*over_kafka->header_fields.find_exact("content-type") ==
+                 "application/cloudevents+json");
+          expect(*over_nats->header_fields.find("Content-Type") == "application/cloudevents+json");
+        }
       };
     };
 

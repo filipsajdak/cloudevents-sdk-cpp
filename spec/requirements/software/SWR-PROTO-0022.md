@@ -11,7 +11,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
 satisfied_by: []
-verified_by: []
+verified_by: [test:test/binding_core_test.cpp::protobuf-content-type-does-not-change-json-entry-points]
 owner: filip.sajdak
 version: 1
 ---

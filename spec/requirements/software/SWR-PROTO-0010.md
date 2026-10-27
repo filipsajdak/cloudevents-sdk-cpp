@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0010
 title: Decode limits are named constants
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The decoder parses untrusted bytes. The schema has a fixed depth (event, map entry, value,
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/detail/protobuf_wire.hpp, code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_wire_test.cpp::protobuf-wire-named-limits, test:test/protobuf_format_test.cpp::protobuf-named-limits, test:test/protobuf_decode_test.cpp::protobuf-limit-encoded-size, test:test/protobuf_decode_test.cpp::protobuf-limit-attribute-count, test:test/protobuf_decode_test.cpp::protobuf-fixed-depth, test:test/protobuf_batch_test.cpp::protobuf-batch-count-limit]
 owner: filip.sajdak
 version: 2
 ---

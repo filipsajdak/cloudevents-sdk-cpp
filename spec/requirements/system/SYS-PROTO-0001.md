@@ -2,7 +2,7 @@
 uid: SYS-PROTO-0001
 title: Protobuf event format, single event
 type: system
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The Go and Java SDKs ship the CloudEvents Protobuf format, so an event written by either onto
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [STK-INTEROP-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_format_test.cpp::protobuf-format-entry-points]
 owner: filip.sajdak
 version: 1
 ---

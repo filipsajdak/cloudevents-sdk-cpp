@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0025
 title: JSON-typed data can be classified on decode
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Ruled by the owner on 2026-10-25 (CR-0009, item 8). The default decode returns text_data as a
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_batch_test.cpp::protobuf-decode-as-classifies-json, test:test/protobuf_batch_test.cpp::protobuf-default-decode-keeps-text]
 owner: filip.sajdak
 version: 1
 ---

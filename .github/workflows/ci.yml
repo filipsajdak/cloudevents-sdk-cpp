@@ -232,7 +232,7 @@ jobs:
             'if(cloudevents_codec_nlohmann_FOUND)' \
             '  message(FATAL_ERROR "nlohmann was not hidden; this check proves nothing")' \
             'endif()' \
-            'foreach(t ce::core ce::format_json ce::binding_http)' \
+            'foreach(t ce::core ce::format_json ce::format_protobuf ce::binding_http)' \
             '  if(NOT TARGET ${t})' \
             '    message(FATAL_ERROR "${t} is missing without nlohmann")' \
             '  endif()' \

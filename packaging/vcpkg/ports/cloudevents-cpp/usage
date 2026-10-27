@@ -3,6 +3,11 @@ cloudevents-cpp provides CMake targets:
     find_package(cloudevents CONFIG REQUIRED)
     target_link_libraries(main PRIVATE ce::core ce::format_json ce::binding_http)
 
+The Protobuf format is a target of its own with no dependency beyond the core, so it needs
+no feature:
+
+    target_link_libraries(main PRIVATE ce::core ce::format_protobuf)
+
 The default feature "nlohmann" adds the codec, which is a component:
 
     find_package(cloudevents CONFIG REQUIRED COMPONENTS codec_nlohmann)

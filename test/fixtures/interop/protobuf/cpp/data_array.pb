@@ -1,0 +1,3 @@
+
+id-array/interop/protobuf1.0"com.example.array*%
+datacontenttypeapplication/json:[1,"two",3.5]

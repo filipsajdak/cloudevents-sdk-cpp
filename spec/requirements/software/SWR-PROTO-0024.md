@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0024
 title: Batch is encoded and decoded as format functions
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Ruled by the owner on 2026-10-25 (CR-0009, item 10). The Protobuf format has a CloudEventBatch message
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_batch_test.cpp::protobuf-batch-round-trip, test:test/protobuf_batch_test.cpp::protobuf-batch-media-type, test:test/protobuf_batch_test.cpp::protobuf-batch-count-limit, test:test/interop_protobuf_test.cpp::interop-protobuf-batch-golden]
 owner: filip.sajdak
 version: 1
 ---

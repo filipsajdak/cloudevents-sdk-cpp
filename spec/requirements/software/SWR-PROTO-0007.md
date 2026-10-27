@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0007
 title: Data is written to the field the specification names
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Rule 2 and rule 3 of the format: text goes to text_data and binary to binary_data. The Java
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_data_test.cpp::protobuf-data-write-arms]
 owner: filip.sajdak
 version: 2
 ---

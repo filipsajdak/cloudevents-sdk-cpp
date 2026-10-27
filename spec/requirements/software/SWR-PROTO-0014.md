@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0014
 title: A header-only ce::format_protobuf target, installed and packaged
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   A consumer takes the format by linking one target, as it takes ce::format_json, and the
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:CMakeLists.txt, code:packaging/vcpkg/ports/cloudevents-cpp/usage, code:packaging/conan/conanfile.py]
+verified_by: [test:test/consumer/CMakeLists.txt::consumer-protobuf-roundtrip, test:test/consumer/CMakeLists.txt::consumer-target-graph-protobuf]
 owner: filip.sajdak
 version: 1
 ---

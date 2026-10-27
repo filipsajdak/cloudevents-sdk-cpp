@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0017
 title: A fuzz target for the Protobuf decoder
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   SWR-SEC-0001 requires a libFuzzer target for every decode path of untrusted input. The decoder
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001, SYS-SEC-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:fuzz/fuzz_protobuf_format.cpp]
+verified_by: [test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format]
 owner: filip.sajdak
 version: 1
 ---

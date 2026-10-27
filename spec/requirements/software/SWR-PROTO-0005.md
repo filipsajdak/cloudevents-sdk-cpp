@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0005
 title: Attribute values keep their CloudEvents type
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Protobuf, unlike JSON, carries the attribute type (SWR-JSON-0023 describes the loss in JSON).
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_format_test.cpp::protobuf-attribute-types-round-trip]
 owner: filip.sajdak
 version: 1
 ---

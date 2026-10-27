@@ -48,6 +48,8 @@ jobs:
           - { target: fuzz_mqtt_message, dir: fuzz, seeds: mqtt }
           - { target: fuzz_nats_payload, dir: fuzz, seeds: nats }
           - { target: fuzz_typed, dir: fuzz, seeds: typed }
+          # The Protobuf decoder is new in ce::v4, so it has no frozen generation to repeat it in.
+          - { target: fuzz_protobuf_format, dir: fuzz, seeds: protobuf }
           # The ce::v1 decoders parse the same untrusted input, so SWR-SEC-0001
           # covers them too. They share the seed corpora with the v4 targets.
           - { target: v1_fuzz_timestamp, dir: fuzz/v1, seeds: timestamp }

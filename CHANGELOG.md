@@ -35,6 +35,21 @@ Notable changes per release. Dates are the tag date.
   auto back = ce::mqtt::from_message<codec, ce::mqtt::prefixed_names>(*for_go);
   ```
 
+- **The Protobuf event format: `ce::protobuf_format`, target `ce::format_protobuf`.**
+  Bytes to event and event to bytes for the CloudEvents v1.0.2 Protobuf format, one event or a batch, hand-written over the standard library and `ce::core`: no `libprotobuf`, no `protoc`, no generated code and no codec.
+  `encode`, `decode`, `encode_batch` and `decode_batch`; `decode_as<Codec>`, which parses a JSON payload on request and holds no document; and `decode_detailed` and `encode_proto_data`, which carry the type URL of a `proto_data` payload beside the event.
+  The field numbers are those of `cloudevents.proto`, not the prose of the specification.
+  The writer follows the specification (`text_data` for text, the attributes in ascending order of name) and the reader accepts all three data fields, so the bytes of the Go and Java SDKs decode here and the bytes written here decode there.
+  Decoding is strict, uses the existing error codes, and is bounded by `protobuf::decode_options` (16 MiB per event, 1024 attributes per event, 100,000 events per batch, all adjustable and checked before an allocation); a libFuzzer target and the goldens of both SDKs and of `protoc` back it.
+  A decoded `time` is in UTC with the fewest of 0, 3, 6 or 9 fraction digits, and a Timestamp outside the range of `ce::timestamp` is `invalid_timestamp`.
+  It is an addition to `ce::v4` and changes no declaration of any generation (CR-0009, SWR-PROTO-0001 to SWR-PROTO-0018, SWR-PROTO-0024 to SWR-PROTO-0026); structured mode in the bindings is a later slice.
+  *Use:*
+
+  ```cpp
+  auto bytes = ce::protobuf_format::encode(event);
+  auto back = ce::protobuf_format::decode(*bytes);
+  ```
+
 ## v0.6.1 - 2026-10-21
 
 A forwarder can keep a binary-mode JSON body unparsed, and a receiver that is done with its message can move a non-JSON binary-mode body instead of copying it.

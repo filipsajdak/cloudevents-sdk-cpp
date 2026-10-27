@@ -32,6 +32,7 @@
 !interop/go/go.mod
 !interop/kafka/go/go.mod
 !interop/mqtt/go/go.mod
+!interop/protobuf/go/go.mod
 
 # Maven build output. The generator sources are committed; its .class files are
 # not.

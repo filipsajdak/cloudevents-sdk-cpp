@@ -51,7 +51,7 @@ if(cloudevents_codec_rapidjson_FOUND)
   target_compile_features(consumer_roundtrip_rapidjson PRIVATE cxx_std_20)
 endif()
 
-# SWR-ADOPT-0001: all four targets exist in the installed package, with the
+# SWR-ADOPT-0001: the targets exist in the installed package, with the
 # dependency direction the SPEC fixes. A missing or misnamed target fails at
 # configure time, which is earlier and clearer than a link error.
 foreach(expected ce::core ce::format_json ce::binding_http)
@@ -64,6 +64,30 @@ add_executable(consumer_target_graph target_graph_main.cpp)
 target_link_libraries(consumer_target_graph
   PRIVATE ce::core ce::format_json ce::binding_http)
 target_compile_features(consumer_target_graph PRIVATE cxx_std_20)
+
+# SWR-PROTO-0014: the Protobuf format is a target of its own that links ce::core and nothing
+# else. It has no dependency, so it is found whenever the package is, with no component.
+if(NOT TARGET ce::format_protobuf)
+  message(FATAL_ERROR "consumer-target-graph-protobuf: the installed package has no ce::format_protobuf")
+endif()
+get_target_property(protobuf_links ce::format_protobuf INTERFACE_LINK_LIBRARIES)
+if(NOT "${protobuf_links}" STREQUAL "ce::core")
+  message(FATAL_ERROR
+    "consumer-target-graph-protobuf: ce::format_protobuf links '${protobuf_links}', not ce::core only")
+endif()
+
+add_executable(consumer_target_graph_protobuf protobuf_graph_main.cpp)
+target_link_libraries(consumer_target_graph_protobuf PRIVATE ce::format_protobuf)
+target_compile_features(consumer_target_graph_protobuf PRIVATE cxx_std_20)
+
+# The format with exceptions off, as the core is checked (SWR-ADOPT-0003): it runs the library, so
+# an event goes out and comes back equal through nothing but the installed target.
+add_executable(consumer_protobuf_roundtrip protobuf_main.cpp)
+target_link_libraries(consumer_protobuf_roundtrip PRIVATE ce::format_protobuf)
+target_compile_features(consumer_protobuf_roundtrip PRIVATE cxx_std_20)
+if(NOT MSVC)
+  target_compile_options(consumer_protobuf_roundtrip PRIVATE -fno-exceptions)
+endif()
 
 # SWR-ADOPT-0002: ce::core alone, with nothing else on the link line. If core
 # ever grows a dependency, this is where it surfaces.
@@ -85,6 +109,8 @@ add_test(NAME consumer-find-package COMMAND consumer_find_package)
 add_test(NAME consumer-target-graph COMMAND consumer_target_graph)
 add_test(NAME consumer-mqtt-target COMMAND consumer_mqtt_target)
 add_test(NAME consumer-no-nlohmann COMMAND consumer_no_nlohmann)
+add_test(NAME consumer-target-graph-protobuf COMMAND consumer_target_graph_protobuf)
+add_test(NAME consumer-protobuf-roundtrip COMMAND consumer_protobuf_roundtrip)
 add_test(NAME consumer-fno-exceptions COMMAND consumer_fno_exceptions)
 if(TARGET consumer_codec)
   add_test(NAME consumer-codec-link COMMAND consumer_codec)

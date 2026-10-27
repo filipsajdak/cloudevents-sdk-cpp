@@ -1,0 +1,7 @@
+
+id-full%https://example.test/interop/protobuf1.0"com.example.full*%
+datacontenttypeapplication/json*-
+
+dataschema*https://example.test/schema/1*
+subjectthe-subject*
+time:№ЅПе2{"count":3,"label":"interop"}

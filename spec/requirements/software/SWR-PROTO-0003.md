@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0003
 title: Field numbers follow cloudevents.proto at v1.0.2
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The prose of protobuf-format.md numbers the attribute map 1 and the data fields 2 to 4, and
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_wire_test.cpp::protobuf-wire-writer, test:test/protobuf_format_test.cpp::protobuf-field-numbers-match-the-proto]
 owner: filip.sajdak
 version: 1
 ---

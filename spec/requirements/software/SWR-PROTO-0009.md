@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0009
 title: Decode is strict and reports with the existing error codes
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Neither SDK validates on decode (docs/spikes/protobuf.md, section 3) and the model of this SDK
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/format/detail/protobuf_wire.hpp, code:include/cloudevents/format/protobuf_format.hpp]
+verified_by: [test:test/protobuf_wire_test.cpp::protobuf-wire-varint, test:test/protobuf_wire_test.cpp::protobuf-wire-field-headers, test:test/protobuf_wire_test.cpp::protobuf-wire-lengths-and-skipping, test:test/protobuf_decode_test.cpp::protobuf-decode-error-codes, test:test/interop_protobuf_test.cpp::interop-protobuf-protoc-cases]
 owner: filip.sajdak
 version: 1
 ---

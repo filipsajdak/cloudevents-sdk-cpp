@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0016
 title: Protobuf bytes interoperate with the Go and Java SDKs in both directions
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The evidence pattern of SWR-SEC-0008 and D-INTEROP-5: bytes recorded offline from the SDKs, a
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:interop/protobuf/go/main.go, code:interop/protobuf/java/src/main/java/interop/ProtobufInterop.java, code:interop/protobuf/cpp/produce.cpp]
+verified_by: [test:test/interop_protobuf_test.cpp::interop-protobuf-goldens-decode, test:test/interop_protobuf_test.cpp::interop-protobuf-cpp-bytes-read-by-sdks, test:test/interop_protobuf_test.cpp::interop-protobuf-differences, test:test/interop_protobuf_test.cpp::interop-protobuf-protoc-cases]
 owner: filip.sajdak
 version: 1
 ---

@@ -14,6 +14,7 @@
 #include <cloudevents/format/describe_json.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/format/typed_payload.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>

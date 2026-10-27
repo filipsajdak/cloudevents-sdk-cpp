@@ -2,8 +2,7 @@
 uid: SWR-SEC-0001
 title: Fuzz targets for every untrusted-input parser
 type: software
-status: implemented
-delivered_in: v0.2.0
+status: approved
 priority: high
 rationale: >
   SPEC 6 names timestamp parsing, JSON decode, HTTP message decode and base64 decode
@@ -22,12 +21,12 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-SEC-0001]
 satisfied_by: []
-verified_by: [test:fuzz/fuzz_json_decode.cpp::fuzz-json-decode]
+verified_by: [test:fuzz/fuzz_json_decode.cpp::fuzz-json-decode, test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format]
 owner: filip.sajdak
-version: 3
+version: 4
 ---
-The SDK shall provide a libFuzzer target for timestamp parsing, JSON decoding, base64
-decoding, and the decode path of every protocol binding, each seeded from the
-conformance fixtures, each replaying its seed corpus on every pull request, and each
-completing a ten-minute run without a crash, a leak or a timeout in a scheduled daily
-job.
+The SDK shall provide a libFuzzer target for timestamp parsing, JSON decoding, Protobuf
+decoding (SWR-PROTO-0017), base64 decoding, and the decode path of every protocol binding,
+each seeded from the conformance fixtures or the recorded goldens, each replaying its seed
+corpus on every pull request, and each completing a ten-minute run without a crash, a leak
+or a timeout in a scheduled daily job.

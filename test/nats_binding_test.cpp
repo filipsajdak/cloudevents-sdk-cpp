@@ -8,6 +8,7 @@
 #include <cloudevents/binding/nats.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
@@ -17,6 +18,7 @@
 #include "mini_codec.hpp"
 #include "moving_entry_points.hpp"
 #include "payload.hpp"
+#include "protobuf_binding_checks.hpp"
 
 namespace {
 
@@ -617,5 +619,166 @@ const boost::ut::suite<"payload-moving-never-modifies-the-string"> nats_payload_
     };
   });
 };
+
+namespace {
+
+/// The NATS binding's Protobuf message entry points, as protobuf_binding_checks.hpp drives them.
+struct nats_protobuf {
+  static constexpr std::string_view label = "nats";
+  static constexpr std::string_view header = "Content-Type";
+  static constexpr bool names_ignore_case = true;
+
+  static auto lay_out(const ce::event& cloud_event) -> ce::result<ce::message> {
+    return ce::nats::to_message_protobuf(cloud_event);
+  }
+
+  static auto read(const ce::message& incoming, ce::protobuf::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::nats::from_message_protobuf(incoming, options);
+  }
+};
+
+// None is a template, and the options default: a pointer to each names one function.
+static_assert(std::is_same_v<decltype(&ce::nats::to_message_protobuf),
+                             ce::result<ce::message> (*)(const ce::event&)>);
+static_assert(
+    std::is_same_v<decltype(&ce::nats::from_message_protobuf),
+                   ce::result<ce::event> (*)(const ce::message&, ce::protobuf::decode_options)>);
+static_assert(std::is_same_v<decltype(&ce::nats::to_payload_protobuf),
+                             ce::result<ce::binary> (*)(const ce::event&)>);
+static_assert(std::is_same_v<decltype(&ce::nats::from_payload_protobuf),
+                             ce::result<ce::event> (*)(std::span<const std::byte>,
+                                                       ce::protobuf::decode_options)>);
+
+/// The payload and the decoder disagree: true when `from_payload_protobuf` and
+/// `protobuf_format::decode` give the same result for `bytes`.
+[[nodiscard]] auto reads_as_the_decoder_does(const ce::binary& bytes) -> bool {
+  const auto by_payload = ce::nats::from_payload_protobuf(bytes);
+  const auto by_decoder = ce::protobuf_format::decode(bytes);
+  if (by_payload.has_value() != by_decoder.has_value()) {
+    return false;
+  }
+  return by_payload ? bool{*by_payload == *by_decoder}
+                    : by_payload.error().code == by_decoder.error().code;
+}
+
+}  // namespace
+
+// spec: SWR-PROTO-0021
+const boost::ut::suite<"nats-to-message-protobuf"> nats_to_message_protobuf = [] {
+  using namespace boost::ut::literals;
+  "one Content-Type header and the bytes of protobuf_format::encode"_test = [] {
+    ce_test::protobuf_binding::lays_out_one_header_and_the_encoded_bytes<nats_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0021
+const boost::ut::suite<"nats-from-message-protobuf"> nats_from_message_protobuf = [] {
+  using namespace boost::ut::literals;
+  "a message it laid out is read back to the event"_test = [] {
+    ce_test::protobuf_binding::reads_what_it_lays_out<nats_protobuf>();
+  };
+  "a message another writer built is read"_test = [] {
+    ce_test::protobuf_binding::reads_a_message_another_writer_built<nats_protobuf>();
+  };
+  "the decode limits are passed through"_test = [] {
+    ce_test::protobuf_binding::passes_the_decode_limits_through<nats_protobuf>();
+  };
+  "a bad body is the error of the decoder"_test = [] {
+    ce_test::protobuf_binding::gives_the_decoder_error_for_a_bad_body<nats_protobuf>();
+  };
+  "a message given with std::move is read and left as it was"_test = [] {
+    ce_test::protobuf_binding::leaves_a_moved_message_alone<nats_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0021
+const boost::ut::suite<"nats-from-message-protobuf-refuses-other-content-type"> nats_refuses = [] {
+  using namespace boost::ut::literals;
+  "any other media type, or none, is not_a_cloudevent"_test = [] {
+    ce_test::protobuf_binding::refuses_another_content_type<nats_protobuf>();
+  };
+  "the media type is compared ignoring case and parameters"_test = [] {
+    ce_test::protobuf_binding::ignores_case_and_parameters<nats_protobuf>();
+  };
+  "the header name is found ignoring case"_test = [] {
+    ce_test::protobuf_binding::honours_the_binding_rule_for_header_name_case<nats_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0021
+const boost::ut::suite<"nats-to-payload-protobuf"> nats_to_payload_protobuf = [] {
+  using boost::ut::expect;
+  using namespace boost::ut::literals;
+  "the payload is the bytes of protobuf_format::encode, with nothing around them"_test = [] {
+    for (const auto& subject : ce_test::protobuf_binding::samples()) {
+      const auto payload = ce::nats::to_payload_protobuf(subject);
+      const auto encoded = ce::protobuf_format::encode(subject);
+      expect(payload.has_value() && encoded.has_value());
+      if (payload && encoded) {
+        expect(*payload == *encoded);
+      }
+    }
+  };
+  "the payload is the body of the message form"_test = [] {
+    const auto subject = ce::test::pb::base_event();
+    const auto payload = ce::nats::to_payload_protobuf(subject);
+    const auto message = ce::nats::to_message_protobuf(subject);
+    expect(payload.has_value() && message.has_value());
+    if (payload && message) {
+      expect(*payload == message->body);
+    }
+  };
+};
+
+// spec: SWR-PROTO-0021
+const boost::ut::suite<"nats-from-payload-protobuf-always-reads-protobuf"> nats_payload_reads = [] {
+  using boost::ut::expect;
+  using namespace boost::ut::literals;
+  "a payload it wrote is read back to the event"_test = [] {
+    for (const auto& subject : ce_test::protobuf_binding::samples()) {
+      const auto payload = ce::nats::to_payload_protobuf(subject);
+      expect(payload.has_value());
+      if (!payload) {
+        continue;
+      }
+      const auto read = ce::nats::from_payload_protobuf(*payload);
+      expect(read.has_value() && bool{*read == subject});
+    }
+  };
+  "bytes another writer built are read, with no content type to tell"_test = [] {
+    const auto read = ce::nats::from_payload_protobuf(ce::test::pb::event_bytes());
+    expect(read.has_value() && bool{*read == ce::test::pb::base_event()});
+  };
+  "the decode limits are passed through"_test = [] {
+    const ce::binary bytes = ce::test::pb::event_bytes();
+    expect(ce::nats::from_payload_protobuf(bytes, {.max_encoded_size = bytes.size()}).has_value());
+    const auto refused = ce::nats::from_payload_protobuf(bytes, {.max_encoded_size = 0});
+    expect(!refused.has_value() && refused.error().code == ce::errc::out_of_range);
+  };
+  "any bytes are read as Protobuf, JSON text included"_test = [] {
+    const auto json = ce::to_bytes(R"({"specversion":"1.0","id":"1","source":"/s","type":"t"})");
+    expect(reads_as_the_decoder_does(json));
+    expect(!ce::nats::from_payload_protobuf(json).has_value());
+    // The JSON entry point reads the same bytes as JSON: the name decides, not the bytes.
+    expect(ce::nats::from_payload<ce::test::mini_codec>(ce::to_text(json)).has_value());
+  };
+};
+
+// spec: SWR-PROTO-0021
+const boost::ut::suite<"nats-from-payload-protobuf-garbage-is-parse-error"> nats_payload_garbage =
+    [] {
+      using boost::ut::expect;
+      using namespace boost::ut::literals;
+      "bytes that are not an event are parse_error"_test = [] {
+        const ce::binary garbage(ce_test::protobuf_binding::garbage_bytes, std::byte{0xFF});
+        const auto read = ce::nats::from_payload_protobuf(garbage);
+        expect(!read.has_value() && read.error().code == ce::errc::parse_error);
+      };
+      "no payload at all is the decoder's answer for an empty message"_test = [] {
+        expect(reads_as_the_decoder_does(ce::binary{}));
+        expect(!ce::nats::from_payload_protobuf(ce::binary{}).has_value());
+      };
+    };
 
 int main() {}

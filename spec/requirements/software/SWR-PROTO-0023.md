@@ -14,8 +14,9 @@ derived_from: [SYS-PROTO-0002]
 satisfied_by: []
 verified_by: []
 owner: filip.sajdak
-version: 1
+version: 2
 ---
-The SDK shall decode, through each binding, the structured-mode messages recorded from the Go
+The SDK shall decode, through the `from_message_protobuf` entry point of each of the HTTP and
+Kafka bindings, the structured-mode messages recorded from the Go
 and Java SDKs with the Protobuf format, and shall produce messages that those SDKs decode to the
-event this SDK encoded, with the recordings, generators and verifiers committed together.
+event this SDK encoded (through `to_message_protobuf`), with the recordings, generators and verifiers committed together.

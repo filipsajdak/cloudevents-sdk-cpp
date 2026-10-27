@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0023
 title: Protobuf-encoded messages interoperate through the bindings
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   The Go and Java SDKs carry the Protobuf event as the body of an HTTP request and the value of

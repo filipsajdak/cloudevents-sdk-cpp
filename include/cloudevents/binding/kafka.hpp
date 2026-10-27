@@ -83,6 +83,7 @@ template <json::json_codec Codec>
   return out;
 }
 
+// spec: SWR-PROTO-0022
 // spec: SWR-KAFKA-0006
 // spec: SWR-BIND-0009
 // spec: SWR-BIND-0017
@@ -211,6 +212,7 @@ template <json::json_codec Codec, key_mapper Keys = no_key_mapper>
   return record{.value = std::move(*laid_out), .key = Keys::key_of(cloud_event)};
 }
 
+// spec: SYS-PROTO-0002
 // spec: SWR-PROTO-0020
 /// The structured-mode record value of `cloud_event` in the Protobuf format. It sets no key: the
 /// key is the caller's. There is no content mode: structured is the only one.

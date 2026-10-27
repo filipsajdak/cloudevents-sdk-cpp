@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0020
 title: kafka structured mode in the Protobuf format
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   As SWR-PROTO-0019, for a Kafka record, whose content-type header carries the media type. The names and the
@@ -10,8 +10,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
-satisfied_by: [code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/detail/protobuf_structured.hpp]
-verified_by: [test:test/kafka_binding_test.cpp::kafka-to-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf-refuses-other-content-type, test:test/kafka_binding_test.cpp::kafka-protobuf-content-type-ignores-case-and-parameters, test:test/kafka_binding_test.cpp::kafka-to-message-protobuf-sets-no-key, test:test/kafka_binding_test.cpp::kafka-protobuf-has-no-moving-variant, test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format]
+satisfied_by: [code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/detail/protobuf_structured.hpp, code:include/cloudevents/cloudevents.cppm]
+verified_by: [test:test/kafka_binding_test.cpp::kafka-to-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf-refuses-other-content-type, test:test/kafka_binding_test.cpp::kafka-protobuf-content-type-ignores-case-and-parameters, test:test/kafka_binding_test.cpp::kafka-to-message-protobuf-sets-no-key, test:test/kafka_binding_test.cpp::kafka-protobuf-has-no-moving-variant, test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format, test:test/module_test.cpp::module-exports-protobuf-bindings]
 owner: filip.sajdak
 version: 3
 ---

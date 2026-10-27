@@ -28,6 +28,7 @@ template <json::json_codec Codec>
   return json_format<Codec>::encode(cloud_event);
 }
 
+// spec: SWR-PROTO-0022
 // spec: SWR-NATS-0004
 // spec: SWR-BIND-0009
 template<json::json_codec Codec>
@@ -158,6 +159,7 @@ template<json::json_codec Codec>
       std::move(*under_construction), incoming.body, options);
 }
 
+// spec: SYS-PROTO-0002
 // spec: SWR-PROTO-0021
 /// The structured-mode message of `cloud_event` in the Protobuf format, with a Content-Type header.
 /// There is no content mode: structured is the only one.

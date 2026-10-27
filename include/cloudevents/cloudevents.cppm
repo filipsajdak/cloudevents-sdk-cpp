@@ -134,25 +134,31 @@ using ce::v4::binding::write_attributes;
 using ce::v4::binding::write_body;
 }  // namespace binding
 
+// spec: SWR-PROTO-0019
 namespace http {
 using ce::v4::http::detect_content_mode;
 using ce::v4::http::from_batch_message;
 using ce::v4::http::from_batch_message_moving;
 using ce::v4::http::from_message;
 using ce::v4::http::from_message_moving;
+using ce::v4::http::from_message_protobuf;
 using ce::v4::http::to_batch_message;
 using ce::v4::http::to_message;
+using ce::v4::http::to_message_protobuf;
 }  // namespace http
 
+// spec: SWR-PROTO-0020
 namespace kafka {
 using ce::v4::kafka::detect_content_mode;
 using ce::v4::kafka::from_message;
 using ce::v4::kafka::from_message_moving;
+using ce::v4::kafka::from_message_protobuf;
 using ce::v4::kafka::key_mapper;
 using ce::v4::kafka::no_key_mapper;
 using ce::v4::kafka::partitionkey_mapper;
 using ce::v4::kafka::record;
 using ce::v4::kafka::to_message;
+using ce::v4::kafka::to_message_protobuf;
 using ce::v4::kafka::to_record;
 }  // namespace kafka
 
@@ -168,14 +174,19 @@ using ce::v4::mqtt::to_payload;
 using ce::v4::mqtt::unprefixed_names;
 }  // namespace mqtt
 
+// spec: SWR-PROTO-0021
 namespace nats {
 using ce::v4::nats::detect_content_mode;
 using ce::v4::nats::from_message;
 using ce::v4::nats::from_message_moving;
+using ce::v4::nats::from_message_protobuf;
 using ce::v4::nats::from_payload;
 using ce::v4::nats::from_payload_moving;
+using ce::v4::nats::from_payload_protobuf;
 using ce::v4::nats::to_message;
+using ce::v4::nats::to_message_protobuf;
 using ce::v4::nats::to_payload;
+using ce::v4::nats::to_payload_protobuf;
 }  // namespace nats
 
 namespace ext {

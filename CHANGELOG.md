@@ -42,12 +42,25 @@ Notable changes per release. Dates are the tag date.
   The writer follows the specification (`text_data` for text, the attributes in ascending order of name) and the reader accepts all three data fields, so the bytes of the Go and Java SDKs decode here and the bytes written here decode there.
   Decoding is strict, uses the existing error codes, and is bounded by `protobuf::decode_options` (16 MiB per event, 1024 attributes per event, 100,000 events per batch, all adjustable and checked before an allocation); a libFuzzer target and the goldens of both SDKs and of `protoc` back it.
   A decoded `time` is in UTC with the fewest of 0, 3, 6 or 9 fraction digits, and a Timestamp outside the range of `ce::timestamp` is `invalid_timestamp`.
-  It is an addition to `ce::v4` and changes no declaration of any generation (CR-0009, SWR-PROTO-0001 to SWR-PROTO-0018, SWR-PROTO-0024 to SWR-PROTO-0026); structured mode in the bindings is a later slice.
+  It is an addition to `ce::v4` and changes no declaration of any generation (CR-0009, SWR-PROTO-0001 to SWR-PROTO-0018, SWR-PROTO-0024 to SWR-PROTO-0026); structured mode in the bindings is the next bullet.
   *Use:*
 
   ```cpp
   auto bytes = ce::protobuf_format::encode(event);
   auto back = ce::protobuf_format::decode(*bytes);
+  ```
+
+- **Structured Protobuf in the HTTP, Kafka and NATS bindings (CR-0009 slice 2).**
+  `ce::http::`, `ce::kafka::` and `ce::nats::` each get `to_message_protobuf(event)`, which writes the `application/cloudevents+protobuf` content type under the binding's own header spelling and the bytes of `protobuf_format::encode`, and `from_message_protobuf(message, options)`, which returns `not_a_cloudevent` for a message whose media type, compared ignoring case and parameters, is another one.
+  NATS also gets the payload form, `to_payload_protobuf(event)` and `from_payload_protobuf(bytes, options)`, which always reads Protobuf.
+  The functions are new names and not templates, there is no content mode and no moving variant, Kafka sets no key, and the published `to_message`, `from_message` and `from_payload` return what they returned for every input, a message of the Protobuf content type included.
+  The Go and Java SDKs' HTTP and Kafka bindings write and read the same messages (thirteen events each, no server and no broker), and the fuzz target for the decoder drives the new functions.
+  It is an addition to `ce::v4` (SWR-PROTO-0019 to SWR-PROTO-0023).
+  *Use:*
+
+  ```cpp
+  auto record = ce::kafka::to_message_protobuf(event);
+  auto back = ce::kafka::from_message_protobuf(*record);
   ```
 
 ## v0.6.1 - 2026-10-21

@@ -163,6 +163,7 @@ template <json::json_codec Codec>
   return out;
 }
 
+// spec: SWR-PROTO-0022
 // spec: SWR-HTTP-0004
 // spec: SWR-HTTP-0013
 // spec: SWR-HTTP-0014
@@ -276,6 +277,7 @@ template<json::json_codec Codec>
   return from_batch_message<Codec>(request, options);
 }
 
+// spec: SYS-PROTO-0002
 // spec: SWR-PROTO-0019
 /// The structured-mode message of `cloud_event` in the Protobuf format. There is no content mode:
 /// structured is the only one.

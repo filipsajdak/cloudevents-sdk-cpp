@@ -29,6 +29,7 @@ inline constexpr std::string_view media_type_padding = " \t";
   return bare;
 }
 
+// spec: SYS-PROTO-0002
 // spec: SWR-PROTO-0019
 // spec: SWR-PROTO-0020
 // spec: SWR-PROTO-0021

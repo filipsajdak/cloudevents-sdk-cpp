@@ -5,6 +5,8 @@
 Accepted 2026-10-24 for the four owner rulings of CR-0009: the bet goes ahead as an addition to `ce::v4`, the codec is hand-written, text data is written to `text_data` and read from any data field, and the field numbers follow `cloudevents.proto`.
 On 2026-10-25 the owner approved CR-0009 and accepted its 15 mapping proposals (limits, timestamps, empty data, JSON classification, `proto_data`, batch, binding names and the rest; CR-0009, "Owner decisions", items 5 to 19).
 They are rules of the format and not part of this decision, which they do not change; CR-0009 is their record.
+On 2026-10-27 the owner ruled the slice 2 names (CR-0009, items 23 to 26): `to_message_protobuf` and `from_message_protobuf` in each binding, `to_payload_protobuf` and `from_payload_protobuf` also in NATS, the format carried by the name and not by a tag, `not_a_cloudevent` for another content type.
+They are additions that touch no published declaration, so they do not change this decision.
 ADR-0014 belongs to another change request; the gap is intended.
 
 ## Context

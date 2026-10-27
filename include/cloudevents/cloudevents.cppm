@@ -144,8 +144,11 @@ namespace mqtt {
 using ce::v4::mqtt::detect_content_mode;
 using ce::v4::mqtt::from_message;
 using ce::v4::mqtt::from_payload;
+using ce::v4::mqtt::name_policy;
+using ce::v4::mqtt::prefixed_names;
 using ce::v4::mqtt::to_message;
 using ce::v4::mqtt::to_payload;
+using ce::v4::mqtt::unprefixed_names;
 }  // namespace mqtt
 
 namespace nats {

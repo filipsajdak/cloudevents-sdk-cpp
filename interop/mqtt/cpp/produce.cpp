@@ -1,5 +1,5 @@
 /// \file
-/// \brief Emits the MQTT 5.0 PUBLISH messages the Go SDK is asked to accept.
+/// \brief Emits the MQTT 5.0 PUBLISH messages the Go SDK is asked to accept, in both modes.
 ///
 /// A message is the topic, the payload, the Content Type property and the User Properties this
 /// SDK's MQTT binding puts on a PUBLISH, in the JSON shape the Go generator writes, so that no
@@ -31,6 +31,8 @@ constexpr int json_indent = 2;
 constexpr std::string_view protocol_version = "5.0";
 constexpr std::string_view topic = "mytopic";
 constexpr std::string_view content_type_name = "content-type";
+constexpr std::string_view structured = "structured";
+constexpr std::string_view binary = "binary";
 
 int failures = 0;
 
@@ -56,15 +58,21 @@ int failures = 0;
   };
 }
 
-void write(const std::filesystem::path& dir, const mqtt_interop::named_event& entry) {
-  auto produced = ce::mqtt::to_message<codec>(entry.subject, ce::content_mode::structured);
+/// One message of the corpus in one mode. Binary mode is written under `prefixed_names`, the only
+/// form the Go SDK reads (SWR-MQTT-0015); structured mode has no names to choose.
+void write(const std::filesystem::path& dir,
+           const mqtt_interop::named_event& entry,
+           std::string_view mode) {
+  auto produced = mode == structured
+                      ? ce::mqtt::to_message<codec>(entry.subject, ce::content_mode::structured)
+                      : ce::mqtt::to_message<codec, ce::mqtt::prefixed_names>(
+                            entry.subject, ce::content_mode::binary_mode);
+  const std::string file = entry.name + "." + std::string{mode} + ".json";
   if (!produced) {
-    std::fprintf(
-        stderr, "FAIL %s.structured: %s\n", entry.name.c_str(), produced.error().detail.c_str());
+    std::fprintf(stderr, "FAIL %s: %s\n", file.c_str(), produced.error().detail.c_str());
     ++failures;
     return;
   }
-  const std::string file = entry.name + ".structured.json";
   std::ofstream out{dir / file, std::ios::binary};
   out << document_of(*produced).dump(json_indent) << '\n';
   std::printf("wrote %s\n", file.c_str());
@@ -81,7 +89,9 @@ int main(int argc, char** argv) {
   std::filesystem::create_directories(dir);
 
   for (const auto& entry : mqtt_interop::corpus("cpp")) {
-    write(dir, entry);
+    for (const auto mode : {structured, binary}) {
+      write(dir, entry, mode);
+    }
   }
   return failures == 0 ? 0 : 1;
 }

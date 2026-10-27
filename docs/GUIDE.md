@@ -524,11 +524,11 @@ When you build a message, use `set` rather than `add` unless you mean to repeat 
 | | HTTP | Kafka | NATS | MQTT |
 |---|---|---|---|---|
 | namespace | `ce::http` | `ce::kafka` | `ce::nats` | `ce::mqtt` |
-| attribute prefix | `ce-` | `ce_` | `ce-` | none yet |
+| attribute prefix | `ce-` | `ce_` | `ce-` | none, `ce-` with `prefixed_names` |
 | `datacontenttype` travels as | `Content-Type` | `content-type` | `ce-datacontenttype` | `content-type` (the Content Type property) |
 | field names match | case-insensitively | byte for byte | case-insensitively | byte for byte |
-| values | percent-encoded | UTF-8, not escaped | percent-encoded | UTF-8, not escaped |
-| binary mode | yes | yes | yes, NATS 2.2 or later | not yet |
+| values | percent-encoded | UTF-8, not escaped | percent-encoded | UTF-8, not escaped, at most 65,535 bytes |
+| binary mode | yes | yes | yes, NATS 2.2 or later | yes, MQTT 5.0 |
 | structured mode | yes | yes | yes | yes, MQTT 5.0 and 3.1.1 |
 | batched mode | yes | no | no | no |
 
@@ -627,7 +627,51 @@ On receipt every User Property is ignored in structured mode, so a broker that a
 A message with no CloudEvents Content Type answers `not_a_cloudevent`, and a payload that does not parse answers the codec's error such as `parse_error`.
 A User Property named `content-type` next to the Content Type property is `invalid_argument`, because the two share one header name and an adapter that copies every property cannot tell them apart.
 Names match byte for byte, so `Content-Type` is another name.
-Binary mode is not available yet: `to_message` refuses it with `invalid_argument`, and so it does a batch, which the binding defines no mode for.
+A batch is `invalid_argument` in both directions, because the binding defines no mode for it.
+
+Binary mode (MQTT 5.0 only) writes the data as the payload, `datacontenttype` as the Content Type property and every other attribute and extension as a User Property.
+The binding specification says the attribute names are used unchanged, so the default writes `specversion`, `id`, `type` and reads the same:
+
+```cpp body
+const ce::event reading{"13"_id,
+                        "/sensors/7"_source,
+                        "com.example.reading"_type,
+                        {.datacontenttype = "text/plain"_mediatype, .data = std::string{"21.5"}}};
+
+auto publish = ce::mqtt::to_message<codec>(reading, ce::content_mode::binary_mode);
+if (publish) {
+  // The Content Type property is "text/plain", the payload is the bytes of "21.5", and
+  // the User Properties are specversion, id, source and type, with no ce- in front.
+  auto received = ce::mqtt::from_message<codec>(*publish);
+  std::printf("%s, %zu header\n", received ? received->id().str().c_str() : "failed",
+              publish->header_fields.size());
+}
+```
+
+**Talking to a Go publisher or subscriber.**
+sdk-go writes and requires the names with a `ce-` prefix (`ce-specversion`), against the text.
+Name the policy to speak that form; it applies to the write and to the read, and the default stays the text:
+
+```cpp body
+const ce::event reading{"14"_id, "/sensors/7"_source, "com.example.reading"_type};
+
+auto for_go = ce::mqtt::to_message<codec, ce::mqtt::prefixed_names>(
+    reading, ce::content_mode::binary_mode);
+if (for_go) {
+  auto from_go = ce::mqtt::from_message<codec, ce::mqtt::prefixed_names>(*for_go);
+  std::printf("with ce-: %s, %zu header\n", from_go ? from_go->id().str().c_str() : "failed",
+              for_go->header_fields.size());
+}
+```
+
+The two forms do not read each other: a message with `ce-specversion` read under the default, and one with `specversion` read under `prefixed_names`, is `not_a_cloudevent`.
+A message with a CloudEvents Content Type is structured whatever the policy, and its User Properties are ignored.
+Otherwise it is binary when it carries the `specversion` User Property under the policy in force.
+
+In binary mode a User Property that is not an attribute name under the policy is ignored (`x-request-id`, a name with capitals, a name without `ce-` under `prefixed_names`), so a broker that annotates messages does not break them.
+Under the default a User Property named like an attribute, such as `region`, is read as an extension, which is what the text asks for; extensions come back as strings.
+The text's example lists `datacontenttype` as a User Property as well as the Content Type property: the default accepts it when it equals the Content Type property and answers `invalid_argument` when it differs or is repeated, and `ce-datacontenttype` is always `invalid_argument` under `prefixed_names`.
+A value that is not well-formed UTF-8 is `invalid_utf8`, and one that contains NUL or is over 65,535 bytes is `invalid_argument`, on writing and on reading.
 
 MQTT 3.1.1 has no Content Type and no User Properties, so its PUBLISH is always the JSON event as the payload.
 `to_payload` and `from_payload` are that pair, as the NATS ones are.
@@ -930,9 +974,10 @@ Capitalised header names such as `CE_id` are read by sdk-go and refused by sdk-j
 `D-INTEROP-5` has the full list.
 
 **MQTT.**
-`interop/run.sh` has the Go SDK read the structured MQTT 5.0 messages this SDK writes and has this SDK's test read the ones Go wrote, in memory and without a broker.
+`interop/run.sh` has the Go SDK read the structured and the binary (`prefixed_names`) MQTT 5.0 messages this SDK writes and has this SDK's test read the ones Go wrote, in memory and without a broker.
 sdk-java has no MQTT binding, so Go is the only peer, and the MQTT packet bytes are not under test.
-Structured mode agrees with Go; binary mode will not, by default, because sdk-go prefixes User Property names with `ce-` and the binding specification says to use them unchanged.
+Structured mode agrees with Go. Binary mode agrees only under `ce::mqtt::prefixed_names`, because sdk-go prefixes User Property names with `ce-` and the binding specification says to use them unchanged: with the policy this SDK reads every binary message Go recorded and Go reads every one this SDK writes, and without it each Go binary message is `not_a_cloudevent`.
+The recorded messages are not edited to hide the difference (`D-MQTT-2`).
 
 ## 10. How you can still get it wrong
 

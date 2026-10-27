@@ -1,6 +1,7 @@
 // Generates the MQTT 5.0 PUBLISH goldens the Go CloudEvents SDK produces, and checks
-// that the structured PUBLISH messages this SDK produced decode there to the event they
-// encode (SWR-MQTT-0014; CR-0006 spike, docs/spikes/mqtt.md).
+// that the PUBLISH messages this SDK produced, structured and binary (with the ce- prefix
+// policy), decode there to the event they encode (SWR-MQTT-0014, SWR-MQTT-0015; CR-0006
+// spike, docs/spikes/mqtt.md).
 //
 // protocol/mqtt_paho/v2 converts an event to and from a caller-supplied
 // *paho.Publish, which is the topic, the payload and the properties (Content Type,
@@ -45,9 +46,9 @@ type publish struct {
 
 var modes = []string{"binary", "structured"}
 
-// verified is the modes of the C++ messages this program reads back. Binary mode is
-// read once this SDK writes it.
-var verified = []string{"structured"}
+// verified is the modes of the C++ messages this program reads back. The C++ binary
+// messages are written under the prefixed_names policy, the only form Go reads.
+var verified = []string{"structured", "binary"}
 
 func must(err error) {
 	if err != nil {

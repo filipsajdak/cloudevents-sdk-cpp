@@ -1,0 +1,10 @@
+content-type:application/json
+dataschema:https://example.test/schema/1
+id:id-full
+source:https://example.test/interop/go
+specversion:1.0
+subject:the-subject
+time:2026-09-20T12:34:56Z
+type:com.example.full
+
+{"count":3,"label":"go"}

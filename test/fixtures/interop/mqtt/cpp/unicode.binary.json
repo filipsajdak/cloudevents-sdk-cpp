@@ -1,0 +1,28 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "eyJ0ZXh0Ijoiw6nmlocg8J+YgCJ9",
+  "content_type": "application/json",
+  "user_properties": [
+    [
+      "ce-specversion",
+      "1.0"
+    ],
+    [
+      "ce-id",
+      "id-unicode-é文"
+    ],
+    [
+      "ce-source",
+      "/interop/cpp/événement"
+    ],
+    [
+      "ce-type",
+      "com.example.unicode"
+    ],
+    [
+      "ce-subject",
+      "日本語 😀"
+    ]
+  ]
+}

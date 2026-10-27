@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0009
 title: Binary mode on MQTT 5.0 writes attribute names unchanged as User Properties
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 2 (CR-0008). Binding text :168-169: attribute names must be used unchanged in each mapped User
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-binary-mode-unprefixed-names, test:test/mqtt_binding_test.cpp::mqtt-binary-mode-no-ce-prefix]
 owner: filip.sajdak
 version: 1
 ---

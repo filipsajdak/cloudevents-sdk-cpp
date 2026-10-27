@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0013
 title: A foreign User Property in binary mode is ignored
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Slice 2 (CR-0008). Ruled by the owner on 2026-10-25 (CR-0008, item 5): the text does not say what a receiver does with a
@@ -13,8 +13,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/mqtt_binding_test.cpp::mqtt-foreign-user-property-ignored]
 owner: filip.sajdak
 version: 1
 ---

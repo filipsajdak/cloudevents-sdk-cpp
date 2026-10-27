@@ -1,0 +1,36 @@
+{
+  "mqtt": "5.0",
+  "topic": "mytopic",
+  "payload_base64": "eyJjb3VudCI6MywibGFiZWwiOiJjcHAifQ==",
+  "content_type": "application/json",
+  "user_properties": [
+    [
+      "ce-specversion",
+      "1.0"
+    ],
+    [
+      "ce-id",
+      "id-full"
+    ],
+    [
+      "ce-source",
+      "https://example.test/interop/cpp"
+    ],
+    [
+      "ce-type",
+      "com.example.full"
+    ],
+    [
+      "ce-dataschema",
+      "https://example.test/schema/1"
+    ],
+    [
+      "ce-subject",
+      "the-subject"
+    ],
+    [
+      "ce-time",
+      "2026-09-20T12:34:56Z"
+    ]
+  ]
+}

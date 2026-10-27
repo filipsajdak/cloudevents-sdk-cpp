@@ -2,7 +2,7 @@
 uid: SWR-MQTT-0015
 title: Binary MQTT messages interoperate with the Go SDK under the prefixed-names policy, and the difference is pinned
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Slice 2 (CR-0008). The only place the SDKs and the text disagree is the binary-mode prefix
@@ -14,8 +14,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:interop/mqtt/go/main.go, code:interop/mqtt/cpp/produce.cpp, code:interop/run.sh]
+verified_by: [test:test/interop_mqtt_test.cpp::interop-mqtt-binary-prefixed, test:test/interop_mqtt_test.cpp::interop-mqtt-binary-default-differs]
 owner: filip.sajdak
 version: 1
 ---

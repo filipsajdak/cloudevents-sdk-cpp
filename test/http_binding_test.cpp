@@ -17,6 +17,7 @@
 #include <cloudevents/detail/timestamp.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
@@ -26,6 +27,7 @@
 #include "mini_codec.hpp"
 #include "moving_entry_points.hpp"
 #include "payload.hpp"
+#include "protobuf_binding_checks.hpp"
 
 // The binding is a template over the JSON codec, exactly as json_format is. So
 // every assertion that touches a codec is written once, as a function template,
@@ -2196,5 +2198,84 @@ const boost::ut::suite<"from-batch-message-leaves-the-message-intact"> http_batc
         };
       });
     };
+
+namespace {
+
+/// The HTTP binding's Protobuf message entry points, as protobuf_binding_checks.hpp drives them.
+struct http_protobuf {
+  static constexpr std::string_view label = "http";
+  static constexpr std::string_view header = "Content-Type";
+  static constexpr bool names_ignore_case = true;
+
+  static auto lay_out(const ce::event& cloud_event) -> ce::result<ce::message> {
+    return ce::http::to_message_protobuf(cloud_event);
+  }
+
+  static auto read(const ce::message& request, ce::protobuf::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::http::from_message_protobuf(request, options);
+  }
+};
+
+// Neither is a template, and the options default: a pointer to each names one function.
+static_assert(std::is_same_v<decltype(&ce::http::to_message_protobuf),
+                             ce::result<ce::message> (*)(const ce::event&)>);
+static_assert(
+    std::is_same_v<decltype(&ce::http::from_message_protobuf),
+                   ce::result<ce::event> (*)(const ce::message&, ce::protobuf::decode_options)>);
+
+}  // namespace
+
+// spec: SWR-PROTO-0019
+const boost::ut::suite<"http-to-message-protobuf"> http_to_message_protobuf = [] {
+  using namespace boost::ut::literals;
+  "one Content-Type header and the bytes of protobuf_format::encode"_test = [] {
+    ce_test::protobuf_binding::lays_out_one_header_and_the_encoded_bytes<http_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0019
+const boost::ut::suite<"http-from-message-protobuf"> http_from_message_protobuf = [] {
+  using namespace boost::ut::literals;
+  "a message it laid out is read back to the event"_test = [] {
+    ce_test::protobuf_binding::reads_what_it_lays_out<http_protobuf>();
+  };
+  "a message another writer built is read"_test = [] {
+    ce_test::protobuf_binding::reads_a_message_another_writer_built<http_protobuf>();
+  };
+  "the decode limits are passed through"_test = [] {
+    ce_test::protobuf_binding::passes_the_decode_limits_through<http_protobuf>();
+  };
+  "a bad body is the error of the decoder"_test = [] {
+    ce_test::protobuf_binding::gives_the_decoder_error_for_a_bad_body<http_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0019
+const boost::ut::suite<"http-from-message-protobuf-refuses-other-content-type"> http_refuses = [] {
+  using namespace boost::ut::literals;
+  "any other media type, or none, is not_a_cloudevent"_test = [] {
+    ce_test::protobuf_binding::refuses_another_content_type<http_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0019
+const boost::ut::suite<"http-protobuf-content-type-ignores-case-and-parameters"> http_ignores = [] {
+  using namespace boost::ut::literals;
+  "the media type is compared ignoring case and parameters"_test = [] {
+    ce_test::protobuf_binding::ignores_case_and_parameters<http_protobuf>();
+  };
+  "the header name is found ignoring case"_test = [] {
+    ce_test::protobuf_binding::honours_the_binding_rule_for_header_name_case<http_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0019
+const boost::ut::suite<"http-protobuf-has-no-moving-variant"> http_no_moving = [] {
+  using namespace boost::ut::literals;
+  "a message given with std::move is read and left as it was"_test = [] {
+    ce_test::protobuf_binding::leaves_a_moved_message_alone<http_protobuf>();
+  };
+};
 
 int main() {}

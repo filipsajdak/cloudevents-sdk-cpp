@@ -85,9 +85,11 @@ target_compile_definitions(protobuf_format_test PRIVATE
 ce_add_test(protobuf_data_test SOURCES protobuf_data_test.cpp LIBS ce::format_protobuf)
 ce_add_test(protobuf_decode_test SOURCES protobuf_decode_test.cpp LIBS ce::format_protobuf)
 ce_add_test(protobuf_batch_test SOURCES protobuf_batch_test.cpp LIBS ce::format_protobuf)
-# The Protobuf bytes of the Go and Java SDKs, of protoc, and of this SDK (SWR-PROTO-0016). The
-# fixtures are read from the source tree, as the other interop suites read theirs.
-ce_add_test(interop_protobuf_test SOURCES interop_protobuf_test.cpp LIBS ce::format_protobuf)
+# The Protobuf bytes of the Go and Java SDKs, of protoc, and of this SDK (SWR-PROTO-0016), and the
+# HTTP and Kafka messages the SDKs' bindings wrote around them (SWR-PROTO-0023). The fixtures are
+# read from the source tree, as the other interop suites read theirs.
+ce_add_test(interop_protobuf_test SOURCES interop_protobuf_test.cpp
+            LIBS ce::format_protobuf ce::binding_http ce::binding_kafka)
 target_compile_definitions(interop_protobuf_test
   PRIVATE "CE_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
 # The binding core names no codec, so this suite runs in a build with none.

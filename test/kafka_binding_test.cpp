@@ -10,6 +10,7 @@
 #include <cloudevents/core.hpp>
 #include <cloudevents/extensions.hpp>
 #include <cloudevents/format/json_codec.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
@@ -19,6 +20,7 @@
 #include "mini_codec.hpp"
 #include "moving_entry_points.hpp"
 #include "payload.hpp"
+#include "protobuf_binding_checks.hpp"
 
 // Every assertion that touches a codec is a function template instantiated for
 // each enabled codec, as in the HTTP suite. A suite that ran over one codec would
@@ -561,6 +563,109 @@ const boost::ut::suite<"kafka-from-message-leaves-the-message-intact"> kafka_cop
       ce_test::moving::check_copying_entry_point_leaves_the_message<kafka_under_test<C>>(codec);
     };
   });
+};
+
+namespace {
+
+/// The Kafka binding's Protobuf message entry points, as protobuf_binding_checks.hpp drives them.
+struct kafka_protobuf {
+  static constexpr std::string_view label = "kafka";
+  static constexpr std::string_view header = "content-type";
+  static constexpr bool names_ignore_case = false;
+
+  static auto lay_out(const ce::event& cloud_event) -> ce::result<ce::message> {
+    return ce::kafka::to_message_protobuf(cloud_event);
+  }
+
+  static auto read(const ce::message& incoming, ce::protobuf::decode_options options)
+      -> ce::result<ce::event> {
+    return ce::kafka::from_message_protobuf(incoming, options);
+  }
+};
+
+// Neither is a template, and the options default: a pointer to each names one function.
+static_assert(std::is_same_v<decltype(&ce::kafka::to_message_protobuf),
+                             ce::result<ce::message> (*)(const ce::event&)>);
+static_assert(
+    std::is_same_v<decltype(&ce::kafka::from_message_protobuf),
+                   ce::result<ce::event> (*)(const ce::message&, ce::protobuf::decode_options)>);
+
+}  // namespace
+
+// spec: SWR-PROTO-0020
+const boost::ut::suite<"kafka-to-message-protobuf"> kafka_to_message_protobuf = [] {
+  using namespace boost::ut::literals;
+  "one content-type header and the bytes of protobuf_format::encode"_test = [] {
+    ce_test::protobuf_binding::lays_out_one_header_and_the_encoded_bytes<kafka_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0020
+const boost::ut::suite<"kafka-to-message-protobuf-sets-no-key"> kafka_sets_no_key = [] {
+  using boost::ut::expect;
+  using namespace boost::ut::literals;
+  using namespace ce::literals;
+  "a partitionkey extension travels in the event and does not become a key or a header"_test = [] {
+    const auto keyed = ce::test::pb::base_event(
+        {.extensions = {{"partitionkey"_ext, std::string{"customer-42"}}}});
+    const auto laid_out = ce::kafka::to_message_protobuf(keyed);
+    expect(laid_out.has_value());
+    if (!laid_out) {
+      return;
+    }
+    expect(laid_out->header_fields.size() == 1U);
+    // The value is the whole of what the call returns, so a record around it has no key.
+    const ce::kafka::record around{.value = *laid_out};
+    expect(!around.key.has_value());
+    const auto read = ce::kafka::from_message_protobuf(*laid_out);
+    expect(read.has_value() && bool{*read == keyed});
+  };
+};
+
+// spec: SWR-PROTO-0020
+const boost::ut::suite<"kafka-from-message-protobuf"> kafka_from_message_protobuf = [] {
+  using namespace boost::ut::literals;
+  "a record it laid out is read back to the event"_test = [] {
+    ce_test::protobuf_binding::reads_what_it_lays_out<kafka_protobuf>();
+  };
+  "a record another writer built is read"_test = [] {
+    ce_test::protobuf_binding::reads_a_message_another_writer_built<kafka_protobuf>();
+  };
+  "the decode limits are passed through"_test = [] {
+    ce_test::protobuf_binding::passes_the_decode_limits_through<kafka_protobuf>();
+  };
+  "a bad value is the error of the decoder"_test = [] {
+    ce_test::protobuf_binding::gives_the_decoder_error_for_a_bad_body<kafka_protobuf>();
+  };
+};
+
+// spec: SWR-PROTO-0020
+const boost::ut::suite<"kafka-from-message-protobuf-refuses-other-content-type"> kafka_refuses =
+    [] {
+      using namespace boost::ut::literals;
+      "any other media type, or none, is not_a_cloudevent"_test = [] {
+        ce_test::protobuf_binding::refuses_another_content_type<kafka_protobuf>();
+      };
+    };
+
+// spec: SWR-PROTO-0020
+const boost::ut::suite<"kafka-protobuf-content-type-ignores-case-and-parameters"> kafka_ignores =
+    [] {
+      using namespace boost::ut::literals;
+      "the media type is compared ignoring case and parameters"_test = [] {
+        ce_test::protobuf_binding::ignores_case_and_parameters<kafka_protobuf>();
+      };
+      "the header name is exact, as it is for the JSON entry points"_test = [] {
+        ce_test::protobuf_binding::honours_the_binding_rule_for_header_name_case<kafka_protobuf>();
+      };
+    };
+
+// spec: SWR-PROTO-0020
+const boost::ut::suite<"kafka-protobuf-has-no-moving-variant"> kafka_no_moving = [] {
+  using namespace boost::ut::literals;
+  "a record given with std::move is read and left as it was"_test = [] {
+    ce_test::protobuf_binding::leaves_a_moved_message_alone<kafka_protobuf>();
+  };
 };
 
 int main() {}

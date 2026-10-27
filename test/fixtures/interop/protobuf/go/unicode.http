@@ -1,0 +1,6 @@
+Content-Type: application/cloudevents+protobuf
+
+
+id-unicode-é文%/interop/protobuf/%C3%A9v%C3%A9nement1.0"com.example.unicode*%
+datacontenttypeapplication/json*
+subject日本語 😀2{"text":"é文 😀"}

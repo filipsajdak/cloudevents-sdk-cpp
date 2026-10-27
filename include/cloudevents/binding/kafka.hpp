@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <cloudevents/binding/common.hpp>
+#include <cloudevents/binding/detail/protobuf_structured.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/json_codec.hpp>
@@ -82,6 +83,7 @@ template <json::json_codec Codec>
   return out;
 }
 
+// spec: SWR-PROTO-0022
 // spec: SWR-KAFKA-0006
 // spec: SWR-BIND-0009
 // spec: SWR-BIND-0017
@@ -208,6 +210,24 @@ template <json::json_codec Codec, key_mapper Keys = no_key_mapper>
     return ce::v4::detail::forward_failure(std::move(laid_out).error());
   }
   return record{.value = std::move(*laid_out), .key = Keys::key_of(cloud_event)};
+}
+
+// spec: SYS-PROTO-0002
+// spec: SWR-PROTO-0020
+/// The structured-mode record value of `cloud_event` in the Protobuf format. It sets no key: the
+/// key is the caller's. There is no content mode: structured is the only one.
+[[nodiscard]] inline auto to_message_protobuf(const event& cloud_event) -> result<message> {
+  return binding::detail::encode_protobuf_structured<detail::kafka_traits>(cloud_event);
+}
+
+// spec: SWR-PROTO-0020
+/// The event of a structured Protobuf record, or `errc::not_a_cloudevent` when its content-type
+/// header, found under that exact name, has a media type that, compared ignoring case and
+/// parameters, is not application/cloudevents+protobuf.
+[[nodiscard]] inline auto from_message_protobuf(const message& incoming,
+                                                protobuf::decode_options options = {})
+    -> result<event> {
+  return binding::detail::decode_protobuf_structured<detail::kafka_traits>(incoming, options);
 }
 
 }  // namespace ce::inline v4::kafka

@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0021
 title: nats structured mode in the Protobuf format
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   As SWR-PROTO-0019, for a NATS message. A NATS payload has no content type of its own, so the
@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/nats.hpp, code:include/cloudevents/binding/detail/protobuf_structured.hpp, code:include/cloudevents/cloudevents.cppm]
+verified_by: [test:test/nats_binding_test.cpp::nats-to-message-protobuf, test:test/nats_binding_test.cpp::nats-from-message-protobuf, test:test/nats_binding_test.cpp::nats-from-message-protobuf-refuses-other-content-type, test:test/nats_binding_test.cpp::nats-to-payload-protobuf, test:test/nats_binding_test.cpp::nats-from-payload-protobuf-always-reads-protobuf, test:test/nats_binding_test.cpp::nats-from-payload-protobuf-garbage-is-parse-error, test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format, test:test/module_test.cpp::module-exports-protobuf-bindings]
 owner: filip.sajdak
 version: 3
 ---

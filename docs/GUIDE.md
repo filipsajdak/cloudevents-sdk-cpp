@@ -533,6 +533,7 @@ When you build a message, use `set` rather than `add` unless you mean to repeat 
 | binary mode | yes | yes | yes, NATS 2.2 or later | yes, MQTT 5.0 |
 | structured mode | yes | yes | yes | yes, MQTT 5.0 and 3.1.1 |
 | batched mode | yes | no | no | no |
+| structured Protobuf (section 12) | yes | yes | yes, as a message and as a payload | no |
 
 Every binding offers `to_message<Codec>(event, mode)`, `from_message<Codec>(message, options)` and `detect_content_mode(message)`.
 The last parameter of `from_message`, of `http::from_batch_message` and of `nats::from_payload` is a `ce::json::decode_options`, with the same 16 KiB retention default as `json_format::decode`, applied to every JSON payload the call decodes, in structured, batched and binary mode.
@@ -1108,7 +1109,7 @@ target_link_libraries(app PRIVATE ce::core ce::format_protobuf)
 | `decode_detailed(bytes, options)` and `encode_proto_data(event, type_url)` | the type URL of a `proto_data` payload, beside the event |
 
 The media types are `protobuf_format::content_type` (`application/cloudevents+protobuf`) and `batch_content_type` (`application/cloudevents-batch+protobuf`).
-The format is bytes to event and back; sending them is a binding's job, and the bindings do not carry it yet.
+The format is bytes to event and back; the HTTP, Kafka and NATS bindings carry it as a structured-mode message, below.
 
 ```cpp body
 #include <cloudevents/format/protobuf_format.hpp>
@@ -1134,6 +1135,42 @@ if (bytes) {
 
 Equal events encode to equal bytes: the attributes are written in ascending order of name, which Protobuf itself does not fix.
 Whatever `decode` accepts, `encode` writes, and decoding that gives an equal event.
+
+### In the HTTP, Kafka and NATS bindings
+
+Each of the three bindings has two new functions, under new names, so that nothing already published changes meaning:
+
+| call | does |
+|---|---|
+| `to_message_protobuf(event)` | `result<message>`: the `Content-Type` of the Protobuf format (`content-type` in Kafka) and the bytes of `protobuf_format::encode`; there is no content mode, structured is the only one |
+| `from_message_protobuf(message, options)` | `result<event>`; `errc::not_a_cloudevent` unless the media type of that header, compared ignoring case and parameters, is `application/cloudevents+protobuf` |
+
+NATS also has the payload form, which a payload without a content type needs, so the name carries the format:
+`nats::to_payload_protobuf(event)` returns the bytes and `nats::from_payload_protobuf(bytes, options)` always reads Protobuf, with no argument naming it; it returns what `protobuf_format::decode` returns for the bytes, `parse_error` for malformed ones.
+The `options` are the `protobuf::decode_options` of the format, passed on unchanged.
+None of the functions is a template, none takes a codec, and none has a moving variant: the decoder copies out of the body, so a move gains nothing.
+They take one event; a batch stays `protobuf_format::encode_batch`, which the bindings do not carry.
+
+```cpp body
+const ce::event shipment{"17"_id, "/depot"_source, "com.example.shipment"_type,
+                         {.data = ce::binary{std::byte{7}}}};
+
+auto request = ce::http::to_message_protobuf(shipment);
+auto record = ce::kafka::to_message_protobuf(shipment);
+auto payload = ce::nats::to_payload_protobuf(shipment);
+if (request && record && payload) {
+  auto over_http = ce::http::from_message_protobuf(*request);
+  auto over_kafka = ce::kafka::from_message_protobuf(*record);
+  auto over_nats = ce::nats::from_payload_protobuf(*payload);
+  std::printf("%s / %s / %s\n", over_http ? "http" : "failed", over_kafka ? "kafka" : "failed",
+              over_nats ? "nats" : "failed");
+}
+```
+
+`to_message_protobuf` sets no Kafka key; the key is yours, as in JSON structured mode.
+The published `from_message` does not detect the Protobuf content type, so a message of that type still goes to the JSON reader and fails there as it always did; choose the Protobuf function yourself.
+A Kafka record is found under the header name `content-type` byte for byte, as `kafka::from_message` finds it, so a record that spells it `Content-Type` is `not_a_cloudevent` here too.
+Empty bytes are an event with no attributes, so `from_payload_protobuf` of them gives `missing_required_attribute`, the decoder's answer, and not `parse_error`.
 
 ### The schema
 

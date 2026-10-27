@@ -108,6 +108,14 @@ constexpr std::array nested_exports{
     "ce::v4::nats::from_payload"sv,
     "ce::v4::nats::to_message"sv,
     "ce::v4::nats::from_message"sv,
+    "ce::v4::http::to_message_protobuf"sv,
+    "ce::v4::http::from_message_protobuf"sv,
+    "ce::v4::kafka::to_message_protobuf"sv,
+    "ce::v4::kafka::from_message_protobuf"sv,
+    "ce::v4::nats::to_message_protobuf"sv,
+    "ce::v4::nats::from_message_protobuf"sv,
+    "ce::v4::nats::to_payload_protobuf"sv,
+    "ce::v4::nats::from_payload_protobuf"sv,
     "ce::v4::mqtt::detect_content_mode"sv,
     "ce::v4::mqtt::from_message"sv,
     "ce::v4::mqtt::from_payload"sv,
@@ -348,6 +356,39 @@ const boost::ut::suite<"module-exports-protobuf-format"> module_exports_protobuf
       const std::filesystem::path copy = std::filesystem::path{CE_INCLUDE_DIR} / "cloudevents" /
                                          generation / "format" / "protobuf_format.hpp";
       expect(!std::filesystem::exists(copy)) << copy.string();
+    }
+  };
+};
+
+// spec: SWR-PROTO-0019
+// spec: SWR-PROTO-0020
+// spec: SWR-PROTO-0021
+const boost::ut::suite<"module-exports-protobuf-bindings"> module_exports_protobuf_bindings = [] {
+  using namespace boost::ut;
+
+  "the module exports the Protobuf entry points of each binding from ce::v4"_test = [] {
+    const std::string source = read_module();
+    for (const auto name : {"ce::v4::http::to_message_protobuf"sv,
+                            "ce::v4::http::from_message_protobuf"sv,
+                            "ce::v4::kafka::to_message_protobuf"sv,
+                            "ce::v4::kafka::from_message_protobuf"sv,
+                            "ce::v4::nats::to_message_protobuf"sv,
+                            "ce::v4::nats::from_message_protobuf"sv,
+                            "ce::v4::nats::to_payload_protobuf"sv,
+                            "ce::v4::nats::from_payload_protobuf"sv}) {
+      expect(source.find("using " + std::string{name} + ";") != std::string::npos) << name;
+    }
+  };
+
+  "the entry points are declared in ce::v4 only, in no frozen generation"_test = [] {
+    for (const auto binding : {"http"sv, "kafka"sv, "nats"sv}) {
+      for (const auto generation : {"v1"sv, "v2"sv, "v3"sv}) {
+        std::ifstream in{std::string{CE_INCLUDE_DIR} + "/cloudevents/" + std::string{generation} +
+                         "/binding/" + std::string{binding} + ".hpp"};
+        std::ostringstream buffer;
+        buffer << in.rdbuf();
+        expect(buffer.str().find("_protobuf") == std::string::npos) << generation << "/" << binding;
+      }
     }
   };
 };

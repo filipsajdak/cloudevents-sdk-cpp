@@ -11,6 +11,7 @@
 
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/detail/percent.hpp>
+#include <cloudevents/binding/detail/protobuf_structured.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/json_codec.hpp>
@@ -162,6 +163,7 @@ template <json::json_codec Codec>
   return out;
 }
 
+// spec: SWR-PROTO-0022
 // spec: SWR-HTTP-0004
 // spec: SWR-HTTP-0013
 // spec: SWR-HTTP-0014
@@ -273,6 +275,25 @@ template<json::json_codec Codec>
 [[nodiscard]] auto from_batch_message_moving(message&& request, json::decode_options options = {})
     -> result<std::vector<event>> {
   return from_batch_message<Codec>(request, options);
+}
+
+// spec: SYS-PROTO-0002
+// spec: SWR-PROTO-0019
+/// The structured-mode message of `cloud_event` in the Protobuf format. There is no content mode:
+/// structured is the only one.
+[[nodiscard]] inline auto to_message_protobuf(const event& cloud_event) -> result<message> {
+  return binding::detail::encode_protobuf_structured<detail::http_traits<percent_encoded_values>>(
+      cloud_event);
+}
+
+// spec: SWR-PROTO-0019
+/// The event of a structured Protobuf message, or `errc::not_a_cloudevent` when its Content-Type
+/// media type, compared ignoring case and parameters, is not application/cloudevents+protobuf.
+[[nodiscard]] inline auto from_message_protobuf(const message& request,
+                                                protobuf::decode_options options = {})
+    -> result<event> {
+  return binding::detail::decode_protobuf_structured<detail::http_traits<percent_encoded_values>>(
+      request, options);
 }
 
 }  // namespace ce::inline v4::http

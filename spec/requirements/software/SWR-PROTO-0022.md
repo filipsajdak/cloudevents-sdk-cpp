@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0022
 title: The JSON entry points do not change
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   Structured mode is hard-wired to JSON today. The Protobuf entry points are new names (the
@@ -10,8 +10,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/nats.hpp]
+verified_by: [test:test/binding_core_test.cpp::protobuf-content-type-does-not-change-json-entry-points]
 owner: filip.sajdak
 version: 1
 ---

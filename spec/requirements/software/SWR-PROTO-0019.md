@@ -2,7 +2,7 @@
 uid: SWR-PROTO-0019
 title: http structured mode in the Protobuf format
 type: software
-status: reviewed
+status: approved
 priority: medium
 rationale: >
   An HTTP message in structured mode carries the whole event in the body with the content type
@@ -12,8 +12,8 @@ rationale: >
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/detail/protobuf_structured.hpp, code:include/cloudevents/cloudevents.cppm]
+verified_by: [test:test/http_binding_test.cpp::http-to-message-protobuf, test:test/http_binding_test.cpp::http-from-message-protobuf, test:test/http_binding_test.cpp::http-from-message-protobuf-refuses-other-content-type, test:test/http_binding_test.cpp::http-protobuf-content-type-ignores-case-and-parameters, test:test/http_binding_test.cpp::http-protobuf-has-no-moving-variant, test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format, test:test/module_test.cpp::module-exports-protobuf-bindings]
 owner: filip.sajdak
 version: 3
 ---

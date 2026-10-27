@@ -1,15 +1,19 @@
 #pragma once
 
+#include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include <cloudevents/binding/common.hpp>
 #include <cloudevents/binding/detail/percent.hpp>
+#include <cloudevents/binding/detail/protobuf_structured.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/decode_options.hpp>
 #include <cloudevents/format/json_codec.hpp>
 #include <cloudevents/format/json_format.hpp>
+#include <cloudevents/format/protobuf_format.hpp>
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
@@ -24,6 +28,7 @@ template <json::json_codec Codec>
   return json_format<Codec>::encode(cloud_event);
 }
 
+// spec: SWR-PROTO-0022
 // spec: SWR-NATS-0004
 // spec: SWR-BIND-0009
 template<json::json_codec Codec>
@@ -152,6 +157,39 @@ template<json::json_codec Codec>
 
   return binding::detail::build_taking_body<Codec>(
       std::move(*under_construction), incoming.body, options);
+}
+
+// spec: SYS-PROTO-0002
+// spec: SWR-PROTO-0021
+/// The structured-mode message of `cloud_event` in the Protobuf format, with a Content-Type header.
+/// There is no content mode: structured is the only one.
+[[nodiscard]] inline auto to_message_protobuf(const event& cloud_event) -> result<message> {
+  return binding::detail::encode_protobuf_structured<detail::nats_traits>(cloud_event);
+}
+
+// spec: SWR-PROTO-0021
+/// The event of a structured Protobuf message, or `errc::not_a_cloudevent` when its Content-Type
+/// media type, compared ignoring case and parameters, is not application/cloudevents+protobuf.
+[[nodiscard]] inline auto from_message_protobuf(const message& incoming,
+                                                protobuf::decode_options options = {})
+    -> result<event> {
+  return binding::detail::decode_protobuf_structured<detail::nats_traits>(incoming, options);
+}
+
+// spec: SWR-PROTO-0021
+/// The payload form: the bytes of `protobuf_format::encode`. A payload has no content type, so the
+/// name of the function is the format.
+[[nodiscard]] inline auto to_payload_protobuf(const event& cloud_event) -> result<binary> {
+  return protobuf_format::encode(cloud_event);
+}
+
+// spec: SWR-PROTO-0021
+/// The payload form always reads Protobuf, whatever the bytes are; a payload that is not an event
+/// is the error `protobuf_format::decode` gives for it, `errc::parse_error` for malformed bytes.
+[[nodiscard]] inline auto from_payload_protobuf(std::span<const std::byte> payload,
+                                                protobuf::decode_options options = {})
+    -> result<event> {
+  return protobuf_format::decode(payload, options);
 }
 
 }  // namespace ce::inline v4::nats

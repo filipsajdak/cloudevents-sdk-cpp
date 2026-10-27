@@ -159,5 +159,14 @@ mention them will generate the same questions repeatedly.
   and, below a few kilobytes, no instructions; a JSON body is never moved.
 - Go reads Kafka record headers named `CE_id` or `Content-Type`; Java and this
   SDK refuse them (`D-KAFKA-2`, `D-INTEROP-5`).
+- sdk-go prefixes MQTT User Properties with `ce-` where the specification text
+  does not; the default follows the text and `ce::mqtt::prefixed_names` is the
+  opt-in for a Go peer (`D-MQTT-2`). MQTT has one interop peer, because sdk-java
+  has no MQTT binding, and no broker took part.
+- sdk-go never writes Protobuf `text_data` and reads a `text_data` of
+  `application/json` back as a quoted string (`D-INTEROP-6`).
+- A Protobuf `time` loses its offset and fraction digits and is limited to
+  about 1678 to 2262, and an empty `binary_data` payload without a
+  `datacontenttype` reads back as no payload (`D-PROTO-1`).
 - The module interface exports `ce::v4` only: not `ce::v3`, and not `from_v3`
   or `to_v3`.

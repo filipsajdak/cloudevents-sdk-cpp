@@ -5,17 +5,21 @@ type: software
 status: reviewed
 priority: medium
 rationale: >
-  As SWR-PROTO-0019, for a NATS message. A NATS payload has no content type of its own; the
-  binding of the JSON format already decides how structured mode is told from binary mode, and
-  CR-0009 asks the owner for the Protobuf rule.
+  As SWR-PROTO-0019, for a NATS message. A NATS payload has no content type of its own, so the
+  name of the entry point carries the format (CR-0009, ruling 24 of 2026-10-27): there is no tag
+  argument and no overload of a published function.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
 satisfied_by: []
 verified_by: []
 owner: filip.sajdak
-version: 1
+version: 2
 ---
-The NATS binding shall provide an entry point that maps an event to a message whose body is the
-bytes of `protobuf_format::encode` and which names application/cloudevents+protobuf as its
-content type, and one that maps such a message to an event.
+The NATS binding shall provide `nats::to_message_protobuf` and `nats::from_message_protobuf` for
+the message form, and `nats::to_payload_protobuf` and `nats::from_payload_protobuf` for the
+payload form, whose bytes are those of `protobuf_format::encode`. `nats::from_payload_protobuf`
+shall always read its argument as Protobuf, with no argument naming the format, and shall decode
+any bytes it is given, returning `errc::parse_error` for bytes that are not an event. The
+published `nats::to_payload`, `nats::from_payload`, `nats::to_message` and `nats::from_message`
+shall not change.

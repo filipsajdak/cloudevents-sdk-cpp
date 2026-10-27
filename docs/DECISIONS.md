@@ -1218,6 +1218,8 @@ suite catch each.
 
 ## D-BUILD-4: Before 1.0 a break bumps the minor version, and a break goes to a new generation
 
+*Amended by D-BUILD-5: a feature release also bumps the minor version. The rest of this entry stands.*
+
 Until 1.0, a change that breaks a consumer bumps the minor version; an addition
 or a fix bumps the patch. A break is a changed or removed declaration, or a
 change to behaviour the published documentation states: the owner ruled on
@@ -1281,6 +1283,40 @@ Those stay with the reviewer and the suites that pin each generation.
 A declaration that must change for a reason the owner approves has no
 exception in the script. It is declared in a new generation, or the owner changes
 the rule here first.
+
+## D-BUILD-5: Before 1.0 a feature release also bumps the minor version
+
+Owner decision, 2026-10-27. D-BUILD-4 reads "an addition or a fix bumps the
+patch", so a release that only adds would be a patch however large the addition.
+The release carrying the MQTT binding and the Protobuf format is two large
+additions to `ce::v4` and no break, and the owner ruled it v0.7.0. D-BUILD-4 as
+written would have numbered it v0.6.2, so this entry amends it.
+
+Until 1.0 the version number is chosen as follows:
+
+- **A break** (a published declaration or documented behaviour changes) bumps
+  the minor version and goes to a new generation, as D-BUILD-4 says.
+- **A feature release** bumps the minor version too. It adds a new binding, a
+  new format or another new capability of that size to the library's public
+  surface, and breaks nothing, so it stays in the current generation.
+- **Any other release** bumps the patch: smaller additions, fixes, tooling and
+  documentation.
+
+The owner decides whether a release is a feature release when preparing it, and
+the release-preparation pull request states the reason. There is no numeric
+threshold, such as a count of requirements: the judgement is the owner's and is
+recorded in that pull request. v0.6.1 stays a patch release under this rule,
+because its additions were small (an opt-in and moving entry points).
+
+Declined: keeping D-BUILD-4 as written, which numbers the MQTT and Protobuf
+release v0.6.2; and a numeric threshold for what counts as a feature.
+
+Nothing else changes. `scripts/frozen_api_diff.py` (SWR-BUILD-0015) decides
+whether a declaration broke, not what the version number is, and
+`spec/tools/derive_delivered_in.py` reads the tags and not their numbering. No
+requirement states the version rule, so none is amended. CR-0008 and CR-0009
+quote D-BUILD-4 as it stood when the owner approved them; they are approved text
+and are not edited.
 
 ## D-KAFKA-1: The Kafka binding has no batch mode
 

@@ -11,8 +11,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-PROTO-0002]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:interop/protobuf/go/main.go, code:interop/protobuf/go/messages.go, code:interop/protobuf/java/src/main/java/interop/ProtobufInterop.java, code:interop/protobuf/cpp/produce.cpp]
+verified_by: [test:test/interop_protobuf_test.cpp::interop-protobuf-http-body, test:test/interop_protobuf_test.cpp::interop-protobuf-kafka-value]
 owner: filip.sajdak
 version: 2
 ---

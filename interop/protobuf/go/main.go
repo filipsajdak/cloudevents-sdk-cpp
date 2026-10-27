@@ -148,6 +148,7 @@ func gen(dir string) {
 		must(err)
 		must(os.WriteFile(filepath.Join(dir, name+".pb"), b, 0o644))
 		fmt.Println("wrote", name+".pb", len(b), "bytes")
+		writeMessages(dir, name, b)
 	}
 }
 
@@ -216,6 +217,21 @@ func sameData(want, got *event.Event) error {
 	return fmt.Errorf("data %q != %q", want.Data(), got.Data())
 }
 
+// sameEventAndData checks that got is the event want, in every attribute and in the payload.
+func sameEventAndData(name string, want event.Event, got *event.Event) error {
+	// Validate refuses a dataschema that is a bare protobuf type URL (type.googleapis.com/...),
+	// which is the value the Go SDK itself writes for proto_data, so that one event skips it.
+	if name != "proto_data" {
+		if err := got.Validate(); err != nil {
+			return fmt.Errorf("invalid: %v", err)
+		}
+	}
+	if dumpEvent(&want) != dumpEvent(got) {
+		return fmt.Errorf("want\n%sgot\n%s", dumpEvent(&want), dumpEvent(got))
+	}
+	return sameData(&want, got)
+}
+
 // verify decodes the bytes the C++ SDK wrote for each corpus event, with the Go SDK, and fails
 // on the first difference in any attribute or in the payload.
 func verify(dir string) int {
@@ -234,25 +250,12 @@ func verify(dir string) int {
 			failures++
 			continue
 		}
-		// Validate refuses a dataschema that is a bare protobuf type URL (type.googleapis.com/...),
-		// which is the value the Go SDK itself writes for proto_data, so that one event skips it.
-		if name != "proto_data" {
-			if err := got.Validate(); err != nil {
-				fmt.Fprintf(os.Stderr, "FAIL %s: invalid: %v\n", name, err)
-				failures++
-				continue
-			}
-		}
-		if dumpEvent(&want) != dumpEvent(&got) {
-			fmt.Fprintf(os.Stderr, "FAIL %s: want\n%sgot\n%s", name, dumpEvent(&want), dumpEvent(&got))
-			failures++
-			continue
-		}
-		if err := sameData(&want, &got); err != nil {
+		if err := sameEventAndData(name, want, &got); err != nil {
 			fmt.Fprintf(os.Stderr, "FAIL %s: %v\n", name, err)
 			failures++
 			continue
 		}
+		failures += verifyMessages(dir, name, want)
 		fmt.Printf("go accepted %s\n", name)
 		checked++
 	}

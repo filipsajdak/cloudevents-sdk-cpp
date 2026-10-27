@@ -84,7 +84,7 @@ else
   protobuf_cpp="$fixtures/protobuf/cpp"
   protobuf_cpp_in_container=/w/test/fixtures/interop/protobuf/cpp
 fi
-echo "==> producing the C++ Protobuf events"
+echo "==> producing the C++ Protobuf events and messages"
 "$build/produce-protobuf" "$protobuf_cpp"
 
 # Container-side paths only. Verify mode writes inside the repository rather
@@ -151,17 +151,18 @@ docker run --rm -v "$root:/w" -w /w/interop/mqtt/go -e GOFLAGS=-mod=mod golang:1
           test -f go.mod || { echo "go.mod is not where run.sh expects it"; ls -la; exit 1; }
           exec go run . "$1" "$2"' sh "$mqtt_go_out" "$mqtt_cpp_in_container"
 # The Protobuf format needs no broker either: the bytes are the whole interface. Each program
-# writes its own bytes and then decodes the C++ ones, failing on the first event that does not
-# decode to the corpus event. The protoc cases are not regenerated here; see
+# writes its own bytes, and the structured message of its HTTP and Kafka bindings for each (the
+# headers and the body, in memory, SWR-PROTO-0023), and then decodes the C++ ones, failing on the
+# first event that does not decode to the corpus event. The protoc cases are not regenerated here; see
 # interop/protobuf/protoc/gen_edge.py, which needs protoc and the v1.0.2 cloudevents.proto.
-echo "==> Go: Protobuf bytes, written and read"
+echo "==> Go: Protobuf bytes and HTTP and Kafka messages, written and read"
 docker run --rm -v "$root:/w" -w /w/interop/protobuf/go -e GOFLAGS=-mod=mod golang:1.22 \
   sh -ec 'cd /w/interop/protobuf/go
           test -f go.mod || { echo "go.mod is not where run.sh expects it"; ls -la; exit 1; }
           go run . gen "$1"
           exec go run . verify "$2"' sh "$protobuf_go_out" "$protobuf_cpp_in_container"
 
-echo "==> Java: Protobuf bytes, written and read"
+echo "==> Java: Protobuf bytes and HTTP and Kafka messages, written and read"
 docker run --rm -v "$root:/w" -v "$HOME/.m2:/root/.m2" -w /w/interop/protobuf/java \
   maven:3.9-eclipse-temurin-17 \
   sh -ec 'cd /w/interop/protobuf/java
@@ -210,4 +211,5 @@ fi
 echo
 echo "both SDKs accepted every document and every Kafka record this SDK produced"
 echo "and Go accepted every MQTT message this SDK produced"
-echo "both SDKs accepted every document, every Kafka record and every Protobuf event this SDK produced"
+echo "both SDKs accepted every document, every Kafka record and every Protobuf event this SDK produced,"
+echo "and every Protobuf message of the HTTP and Kafka bindings"

@@ -27,6 +27,18 @@
       <artifactId>cloudevents-protobuf</artifactId>
       <version>${cloudevents.version}</version>
     </dependency>
+    <!-- The message types of the HTTP and Kafka bindings, which convert an event to and from
+         headers and a body in memory (SWR-PROTO-0023); no server and no broker is started. -->
+    <dependency>
+      <groupId>io.cloudevents</groupId>
+      <artifactId>cloudevents-http-basic</artifactId>
+      <version>${cloudevents.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.cloudevents</groupId>
+      <artifactId>cloudevents-kafka</artifactId>
+      <version>${cloudevents.version}</version>
+    </dependency>
   </dependencies>
 
   <build>

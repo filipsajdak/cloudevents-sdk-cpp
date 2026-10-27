@@ -15,8 +15,11 @@
 
 #include <boost/ut.hpp>
 
+#include <cloudevents/binding/http.hpp>
+#include <cloudevents/binding/kafka.hpp>
 #include <cloudevents/core.hpp>
 #include <cloudevents/format/protobuf_format.hpp>
+#include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
 #include "../interop/protobuf/cpp/corpus.hpp"
@@ -26,11 +29,12 @@
 // Protobuf bytes recorded from the Go and Java CloudEvents SDKs and from protoc, and the bytes
 // this SDK produced for them to read (SWR-PROTO-0016, STK-INTEROP-0001).
 //
-// This suite proves the direction "their bytes decode here to the event they encode". The other
-// direction, "our bytes decode there to the event we encoded", is proven by interop/run.sh, which
-// feeds test/fixtures/interop/protobuf/cpp to both SDKs and fails if either decodes a file to a
-// different event. Neither needs a network, and the comparison is by decoded event, never by
-// bytes: the SDKs agree on bytes for one event of thirteen (D-INTEROP-6).
+// This suite proves the direction "their bytes decode here to the event they encode", for the bytes
+// alone and for the HTTP and Kafka messages their bindings wrapped around them (SWR-PROTO-0023).
+// The other direction, "our bytes decode there to the event we encoded", is proven by
+// interop/run.sh, which feeds test/fixtures/interop/protobuf/cpp to both SDKs and fails if either
+// decodes a file to a different event. Neither needs a network, and the comparison is by decoded
+// event, never by bytes: the SDKs agree on bytes for one event of thirteen (D-INTEROP-6).
 
 namespace {
 
@@ -132,6 +136,108 @@ enum class sdk : std::uint8_t { go, java, cpp };
   return std::move(*read);
 }
 
+/// A message file: the headers one per line as "name: value", an empty line, then the body bytes
+/// (interop/protobuf/go/messages.go for the format). The first empty line ends the headers, and a
+/// body may hold any byte, so nothing after that line is read as text.
+[[nodiscard]] auto parse_message(const ce::binary& raw) -> std::optional<ce::message> {
+  constexpr std::string_view separator = ": "sv;
+  ce::message out;
+  std::size_t at = 0;
+  while (at < raw.size()) {
+    const auto end =
+        std::find(raw.begin() + static_cast<std::ptrdiff_t>(at), raw.end(), std::byte{'\n'});
+    if (end == raw.end()) {
+      return std::nullopt;
+    }
+    const auto next = static_cast<std::size_t>(end - raw.begin()) + 1;
+    if (next - at == 1) {
+      out.body.assign(raw.begin() + static_cast<std::ptrdiff_t>(next), raw.end());
+      return out;
+    }
+    const std::string line =
+        ce::to_text(ce::binary{raw.begin() + static_cast<std::ptrdiff_t>(at), end});
+    const auto colon = line.find(separator);
+    if (colon == std::string::npos) {
+      return std::nullopt;
+    }
+    const std::string_view fields{line};
+    out.header_fields.add(std::string{fields.substr(0, colon)},
+                          std::string{fields.substr(colon + separator.size())});
+    at = next;
+  }
+  return std::nullopt;
+}
+
+enum class transport : std::uint8_t { http, kafka };
+
+[[nodiscard]] constexpr auto extension_of(transport via) -> std::string_view {
+  return via == transport::http ? "http"sv : "kafka"sv;
+}
+
+[[nodiscard]] auto recorded_message(sdk producer, transport via, std::string_view name)
+    -> std::optional<ce::message> {
+  const auto raw = read_bytes("interop/protobuf/" + std::string{directory_of(producer)} + "/" +
+                              std::string{name} + "." + std::string{extension_of(via)});
+  return raw ? parse_message(*raw) : std::nullopt;
+}
+
+[[nodiscard]] auto read_through(transport via, const ce::message& given) -> ce::result<ce::event> {
+  return via == transport::http ? ce::http::from_message_protobuf(given)
+                                : ce::kafka::from_message_protobuf(given);
+}
+
+[[nodiscard]] auto write_through(transport via, const ce::event& cloud_event)
+    -> ce::result<ce::message> {
+  return via == transport::http ? ce::http::to_message_protobuf(cloud_event)
+                                : ce::kafka::to_message_protobuf(cloud_event);
+}
+
+/// The header every producer's binding writes for the content type, as it was recorded.
+[[nodiscard]] constexpr auto content_type_header(transport via) -> std::string_view {
+  return via == transport::http ? "Content-Type"sv : "content-type"sv;
+}
+
+/// The checks of one transport, so the HTTP and the Kafka suite read alike.
+void check_transport(transport via) {
+  using boost::ut::expect;
+  const std::string label{extension_of(via)};
+
+  for (const auto producer : {sdk::go, sdk::java}) {
+    for (const auto& entry : corpus::events()) {
+      const auto given = recorded_message(producer, via, entry.name);
+      expect(given.has_value()) << label << "/" << directory_of(producer) << "/" << entry.name;
+      if (!given) {
+        continue;
+      }
+      // What the SDK's binding wrote: one header, the content type, and nothing else.
+      expect(given->header_fields.size() == 1U &&
+             given->header_fields.find_exact(content_type_header(via)) != nullptr)
+          << label << "/" << directory_of(producer) << "/" << entry.name;
+      const auto read = read_through(via, *given);
+      expect(read.has_value()) << label << "/" << directory_of(producer) << "/" << entry.name;
+      if (read) {
+        expect(with_bytes_data(*read) == after_wire(producer, entry))
+            << label << "/" << directory_of(producer) << "/" << entry.name;
+      }
+      // The body of the message is the plain Protobuf bytes of the same event.
+      const auto plain = golden(producer, entry.name);
+      expect(plain.has_value() && given->body == *plain)
+          << label << "/" << directory_of(producer) << "/" << entry.name;
+    }
+  }
+
+  for (const auto& entry : corpus::events()) {
+    // The committed C++ message is what the entry point writes today, and the SDKs are asked to
+    // read exactly that (interop/run.sh).
+    const auto committed = recorded_message(sdk::cpp, via, entry.name);
+    const auto written = write_through(via, entry.event);
+    expect(committed.has_value() && written.has_value() && *committed == *written)
+        << label << "/cpp/" << entry.name;
+    expect(written.has_value() && written->header_fields.find_exact(content_type_header(via)))
+        << label << "/cpp/" << entry.name;
+  }
+}
+
 }  // namespace
 
 // spec: SWR-PROTO-0016
@@ -200,6 +306,20 @@ const boost::ut::suite<"interop-protobuf-cpp-bytes-read-by-sdks"> cpp_bytes = []
       expect(read.has_value() && std::holds_alternative<std::string>(read->data())) << name;
     }
   };
+};
+
+// spec: SWR-PROTO-0023
+const boost::ut::suite<"interop-protobuf-http-body"> http_body = [] {
+  using namespace boost::ut::literals;
+  "the HTTP messages of the Go and Java SDKs are read, and the C++ ones are what we write"_test =
+      [] { check_transport(transport::http); };
+};
+
+// spec: SWR-PROTO-0023
+const boost::ut::suite<"interop-protobuf-kafka-value"> kafka_value = [] {
+  using namespace boost::ut::literals;
+  "the Kafka records of the Go and Java SDKs are read, and the C++ ones are what we write"_test =
+      [] { check_transport(transport::kafka); };
 };
 
 // spec: SWR-PROTO-0016

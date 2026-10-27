@@ -7,7 +7,10 @@ import io.cloudevents.CloudEventData;
 import io.cloudevents.core.builder.CloudEventBuilder;
 import io.cloudevents.core.data.BytesCloudEventData;
 import io.cloudevents.protobuf.ProtoCloudEventData;
+import io.cloudevents.http.HttpMessageFactory;
+import io.cloudevents.kafka.KafkaMessageFactory;
 import io.cloudevents.protobuf.ProtobufFormat;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -16,13 +19,24 @@ import java.nio.file.Paths;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.internals.RecordHeaders;
 
 /**
  * Protobuf format interoperability (CR-0009, SWR-PROTO-0016). Modes:
- *   gen    OUTDIR     write one NAME.pb per corpus event, as sdk-java serializes it
- *   verify CPPDIR     decode every NAME.pb the C++ SDK wrote and compare it with the corpus event
+ *   gen    OUTDIR     write one NAME.pb per corpus event, as sdk-java serializes it, and the
+ *                     structured message of its HTTP and Kafka bindings as NAME.http and NAME.kafka
+ *   verify CPPDIR     decode every NAME.pb, NAME.http and NAME.kafka the C++ SDK wrote and compare
+ *                     each with the corpus event
+ *
+ * A message file is the headers one per line ("name: value"), an empty line, then the body bytes.
+ * The bindings convert to and from headers and a body in memory, so no server and no broker is
+ * started (CR-0009, SWR-PROTO-0023).
  */
 public final class ProtobufInterop {
 
@@ -205,6 +219,139 @@ public final class ProtobufInterop {
     return s + "Z";
   }
 
+  /** A message as a transport carries it: header fields in order, and the body. */
+  private static final class Wire {
+    final List<String[]> headers = new ArrayList<>();
+    byte[] body = new byte[0];
+
+    byte[] toBytes() {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      for (String[] header : headers) {
+        byte[] line = (header[0] + ": " + header[1] + "\n").getBytes(StandardCharsets.UTF_8);
+        out.write(line, 0, line.length);
+      }
+      out.write('\n');
+      out.write(body, 0, body.length);
+      return out.toByteArray();
+    }
+
+    static Wire parse(byte[] raw) {
+      int end = -1;
+      for (int i = 0; i + 1 < raw.length; i++) {
+        if (raw[i] == '\n' && raw[i + 1] == '\n') {
+          end = i;
+          break;
+        }
+      }
+      if (end < 0) {
+        throw new IllegalArgumentException("no empty line after the headers");
+      }
+      Wire wire = new Wire();
+      String head = new String(raw, 0, end, StandardCharsets.UTF_8);
+      for (String line : head.split("\n")) {
+        int colon = line.indexOf(": ");
+        if (colon < 0) {
+          throw new IllegalArgumentException("header line '" + line + "' has no ': '");
+        }
+        wire.headers.add(new String[] {line.substring(0, colon), line.substring(colon + 2)});
+      }
+      wire.body = java.util.Arrays.copyOfRange(raw, end + 2, raw.length);
+      return wire;
+    }
+  }
+
+  private static final String PROTOBUF_MEDIA_TYPE = "application/cloudevents+protobuf";
+
+  private static Wire httpWrite(CloudEvent event) {
+    Wire wire = new Wire();
+    HttpMessageFactory.createWriter(
+            (name, value) -> wire.headers.add(new String[] {name, value}), body -> wire.body = body)
+        .writeStructured(event, FORMAT);
+    wire.headers.sort((left, right) -> left[0].compareTo(right[0]));
+    return wire;
+  }
+
+  private static CloudEvent httpRead(Wire wire) {
+    return HttpMessageFactory.createReader(
+            accept -> wire.headers.forEach(header -> accept.accept(header[0], header[1])),
+            wire.body)
+        .toEvent();
+  }
+
+  private static Wire kafkaWrite(CloudEvent event) {
+    ProducerRecord<Void, byte[]> record =
+        KafkaMessageFactory.createWriter("interop").writeStructured(event, FORMAT);
+    if (record.key() != null) {
+      throw new IllegalStateException("the Java Kafka binding keyed a structured record");
+    }
+    Wire wire = new Wire();
+    for (Header header : record.headers()) {
+      wire.headers.add(new String[] {header.key(), new String(header.value(), StandardCharsets.UTF_8)});
+    }
+    wire.headers.sort((left, right) -> left[0].compareTo(right[0]));
+    wire.body = record.value();
+    return wire;
+  }
+
+  private static CloudEvent kafkaRead(Wire wire) {
+    RecordHeaders headers = new RecordHeaders();
+    for (String[] header : wire.headers) {
+      headers.add(header[0], header[1].getBytes(StandardCharsets.UTF_8));
+    }
+    return KafkaMessageFactory.createReader(headers, wire.body).toEvent();
+  }
+
+  private static void writeMessages(Path dir, String name, CloudEvent event, byte[] encoded)
+      throws Exception {
+    Wire http = httpWrite(event);
+    Wire kafka = kafkaWrite(event);
+    if (!java.util.Arrays.equals(http.body, encoded) || !java.util.Arrays.equals(kafka.body, encoded)) {
+      throw new IllegalStateException("a binding changed the body of " + name);
+    }
+    Files.write(dir.resolve(name + ".http"), http.toBytes());
+    Files.write(dir.resolve(name + ".kafka"), kafka.toBytes());
+  }
+
+  /** Reads NAME.http and NAME.kafka as the SDK's bindings would and compares the event. */
+  private static int verifyMessages(Path dir, String name, CloudEvent want) throws Exception {
+    int failures = 0;
+    for (String transport : new String[] {"http", "kafka"}) {
+      String file = name + "." + transport;
+      Path path = dir.resolve(file);
+      if (!Files.exists(path)) {
+        System.err.println("FAIL " + file + ": " + path + " is missing");
+        failures++;
+        continue;
+      }
+      try {
+        Wire wire = Wire.parse(Files.readAllBytes(path));
+        if (wire.headers.size() != 1
+            || !wire.headers.get(0)[0].equalsIgnoreCase("content-type")
+            || !wire.headers.get(0)[1].equals(PROTOBUF_MEDIA_TYPE)) {
+          System.err.println("FAIL " + file + ": want only the content type as a header");
+          failures++;
+          continue;
+        }
+        CloudEvent got = transport.equals("http") ? httpRead(wire) : kafkaRead(wire);
+        if (!dumpEvent(want).equals(dumpEvent(got))) {
+          System.err.println("FAIL " + file + ": want\n" + dumpEvent(want) + "got\n" + dumpEvent(got));
+          failures++;
+          continue;
+        }
+        if (!sameData(name, want, got)) {
+          System.err.println("FAIL " + file + ": data " + hex(dataOf(want)) + " != " + hex(dataOf(got)));
+          failures++;
+          continue;
+        }
+        System.out.println("java accepted " + file);
+      } catch (Exception ex) {
+        System.err.println("FAIL " + file + ": java refused it: " + ex);
+        failures++;
+      }
+    }
+    return failures;
+  }
+
   public static void main(String[] args) throws Exception {
     if (args[0].equals("gen")) {
       Path out = Paths.get(args[1]);
@@ -213,6 +360,7 @@ public final class ProtobufInterop {
         byte[] b = FORMAT.serialize(e.getValue());
         Files.write(out.resolve(e.getKey() + ".pb"), b);
         System.out.println("wrote " + e.getKey() + ".pb " + b.length + " bytes");
+        writeMessages(out, e.getKey(), e.getValue(), b);
       }
     } else if (args[0].equals("verify")) {
       System.exit(verify(Paths.get(args[1])));
@@ -278,6 +426,7 @@ public final class ProtobufInterop {
         failures++;
         continue;
       }
+      failures += verifyMessages(dir, name, want);
       System.out.println("java accepted " + name);
       checked++;
     }

@@ -7,7 +7,8 @@ A generation's API is fixed at the tag that published it: `ce::v1` is what
 `v0.3.0` published, `ce::v2` what `v0.4.0` published, `ce::v3` what `v0.5.0`
 published and `ce::v4` what `v0.6.0` published. `SWR-BUILD-0006` requires a new
 version namespace for any breaking change after that, and the break bumps the
-minor version before 1.0 (`D-BUILD-4`). A later tag may add to a generation and
+minor version before 1.0 (`D-BUILD-4`), and so does a feature release
+(`D-BUILD-5`). A later tag may add to a generation and
 may not remove from it, so anything that should go has to go before the *first*
 tag of a namespace.
 
@@ -17,7 +18,12 @@ The version a tag takes follows from what changed since the previous one, until
 | Change since the previous tag | Version | Where it goes |
 |---|---|---|
 | A declaration removed or changed, or documented behaviour changed | minor | a new generation (`ce::vN+1`) |
-| A declaration added, or a defect fixed with every declaration and documented behaviour kept | patch | the current generation, and every earlier one the fix applies to |
+| A feature release: a new binding, a new format or another new capability of that size, with every declaration and documented behaviour kept (`D-BUILD-5`) | minor | the current generation |
+| Any other release: a smaller addition, a defect fixed, tooling or documentation, with every declaration and documented behaviour kept | patch | the current generation, and every earlier one the fix applies to |
+
+The owner decides whether a release is a feature release when preparing it, and
+the release-preparation pull request states the reason. There is no numeric
+threshold.
 
 Run every command from a clean `main` at the commit being tagged.
 

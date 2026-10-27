@@ -15,11 +15,13 @@ derived_from: [SYS-PROTO-0002]
 satisfied_by: []
 verified_by: []
 owner: filip.sajdak
-version: 2
+version: 3
 ---
-The HTTP binding shall provide `http::to_message_protobuf`, which maps an event to a message whose
-content type is application/cloudevents+protobuf and whose body is the bytes of
-`protobuf_format::encode`, and `http::from_message_protobuf`, which maps such a message to an event.
-`http::from_message_protobuf` shall return `errc::not_a_cloudevent` for a message whose content
-type is not application/cloudevents+protobuf. The published `http::to_message` and
+The HTTP binding shall provide `http::to_message_protobuf(const event&) -> result<message>`, which
+takes no content mode, maps one event to a message whose Content-Type is
+application/cloudevents+protobuf and whose body is the bytes of `protobuf_format::encode`, and
+`http::from_message_protobuf(const message&, protobuf::decode_options = {}) -> result<event>`, which
+maps such a message to an event. Neither is a template, and there is no moving variant.
+`http::from_message_protobuf` shall return `errc::not_a_cloudevent` for a message whose media
+type, compared ignoring case and parameters, is not application/cloudevents+protobuf. The published `http::to_message` and
 `http::from_message` shall not change.

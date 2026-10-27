@@ -30,6 +30,7 @@ inline constexpr std::string_view media_type_padding = " \t";
 }
 
 // spec: SWR-PROTO-0019
+// spec: SWR-PROTO-0020
 /// The structured-mode message of a binding in the Protobuf format: its content type, written
 /// under the binding's own header spelling, and the bytes of `protobuf_format::encode`.
 template<binding_traits T>
@@ -45,6 +46,7 @@ template<binding_traits T>
 }
 
 // spec: SWR-PROTO-0019
+// spec: SWR-PROTO-0020
 /// The event of a structured Protobuf message. The content type is looked up under the binding's
 /// own rule for header names, and its media type is compared whole, ignoring case and parameters.
 template<binding_traits T>

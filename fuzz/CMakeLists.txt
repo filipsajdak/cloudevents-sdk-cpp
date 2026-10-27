@@ -38,9 +38,11 @@ endfunction()
 ce_add_fuzzer(fuzz_timestamp SOURCES fuzz_timestamp.cpp CORPUS corpus/timestamp)
 ce_add_fuzzer(fuzz_base64 SOURCES fuzz_base64.cpp CORPUS corpus/base64)
 # The Protobuf decoder is hand-written and names no codec, so it builds in every configuration
-# (SWR-PROTO-0017). Its seeds are the goldens of the Go, Java, C++ and protoc producers.
+# (SWR-PROTO-0017). Its seeds are the goldens of the Go, Java, C++ and protoc producers. It also
+# drives the Protobuf entry points of the HTTP, Kafka and NATS bindings, which name no codec either.
 ce_add_fuzzer(fuzz_protobuf_format SOURCES fuzz_protobuf_format.cpp
-  LIBS ce::format_protobuf CORPUS corpus/protobuf)
+  LIBS ce::format_protobuf ce::binding_http ce::binding_kafka ce::binding_nats
+  CORPUS corpus/protobuf)
 
 if(CE_CODEC_NLOHMANN)
   ce_add_fuzzer(fuzz_json_decode SOURCES fuzz_json_decode.cpp

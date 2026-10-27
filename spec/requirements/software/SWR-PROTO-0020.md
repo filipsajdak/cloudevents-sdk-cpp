@@ -11,7 +11,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
 satisfied_by: [code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/detail/protobuf_structured.hpp]
-verified_by: [test:test/kafka_binding_test.cpp::kafka-to-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf-refuses-other-content-type, test:test/kafka_binding_test.cpp::kafka-protobuf-content-type-ignores-case-and-parameters, test:test/kafka_binding_test.cpp::kafka-to-message-protobuf-sets-no-key, test:test/kafka_binding_test.cpp::kafka-protobuf-has-no-moving-variant]
+verified_by: [test:test/kafka_binding_test.cpp::kafka-to-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf, test:test/kafka_binding_test.cpp::kafka-from-message-protobuf-refuses-other-content-type, test:test/kafka_binding_test.cpp::kafka-protobuf-content-type-ignores-case-and-parameters, test:test/kafka_binding_test.cpp::kafka-to-message-protobuf-sets-no-key, test:test/kafka_binding_test.cpp::kafka-protobuf-has-no-moving-variant, test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format]
 owner: filip.sajdak
 version: 3
 ---

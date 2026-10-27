@@ -12,7 +12,7 @@ verification_method: test
 security_classification: operational
 derived_from: [SYS-PROTO-0002]
 satisfied_by: [code:include/cloudevents/binding/nats.hpp, code:include/cloudevents/binding/detail/protobuf_structured.hpp]
-verified_by: [test:test/nats_binding_test.cpp::nats-to-message-protobuf, test:test/nats_binding_test.cpp::nats-from-message-protobuf, test:test/nats_binding_test.cpp::nats-from-message-protobuf-refuses-other-content-type, test:test/nats_binding_test.cpp::nats-to-payload-protobuf, test:test/nats_binding_test.cpp::nats-from-payload-protobuf-always-reads-protobuf, test:test/nats_binding_test.cpp::nats-from-payload-protobuf-garbage-is-parse-error]
+verified_by: [test:test/nats_binding_test.cpp::nats-to-message-protobuf, test:test/nats_binding_test.cpp::nats-from-message-protobuf, test:test/nats_binding_test.cpp::nats-from-message-protobuf-refuses-other-content-type, test:test/nats_binding_test.cpp::nats-to-payload-protobuf, test:test/nats_binding_test.cpp::nats-from-payload-protobuf-always-reads-protobuf, test:test/nats_binding_test.cpp::nats-from-payload-protobuf-garbage-is-parse-error, test:fuzz/fuzz_protobuf_format.cpp::fuzz-protobuf-format]
 owner: filip.sajdak
 version: 3
 ---

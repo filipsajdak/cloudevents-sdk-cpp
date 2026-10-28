@@ -2,7 +2,18 @@
 
 Notable changes per release. Dates are the tag date.
 
-## Unreleased
+## v0.7.0 - 2026-10-27
+
+Events can travel over MQTT, and they can be written and read in the Protobuf event format.
+`ce::mqtt` is a new binding (MQTT 5.0 structured and binary mode, MQTT 3.1.1 structured mode), and `ce::protobuf_format` is a new, hand-written event format that also works as structured mode in the HTTP, Kafka and NATS bindings.
+Around the SDK, the coverage gate now counts branches, and the Go and Java SDKs check the Protobuf bytes and the MQTT messages the way they already check HTTP, Kafka and NATS.
+
+**This is a feature release** (D-BUILD-5: before 1.0 a feature release bumps the minor version, as a break does).
+The reason, as the owner ruled on 2026-10-27: it adds a new binding and a new format, each a capability of its own with its own requirements, entry points and interop suite, and D-BUILD-4 as it stood would have numbered it v0.6.2.
+
+**There are no breaking changes.**
+Everything below is an addition to `ce::v4` or a change outside the library, and `ce::v1` to `ce::v4` keep every declaration and every documented behaviour they had at v0.6.1: `python3 scripts/frozen_api_diff.py --base v0.6.1` finds no frozen declaration removed or changed (1,843 declarations compared).
+The published `to_message`, `from_message` and `from_payload` return what they returned for every input, a message of the Protobuf content type included, and no namespace is added, so `ce::v4` stays the current generation.
 
 ### Added
 
@@ -24,7 +35,7 @@ Notable changes per release. Dates are the tag date.
   `ce::mqtt::to_message<Codec>(event, ce::content_mode::binary_mode)` writes an MQTT 5.0 PUBLISH whose payload is the data, whose Content Type property is `datacontenttype` and whose User Properties are every other attribute and extension; `from_message<Codec>` reads it.
   The names follow the binding text, unchanged (`specversion`, `id`), by default.
   Name the policy for the form the Go SDK writes and requires: `to_message<Codec, ce::mqtt::prefixed_names>(...)` and `from_message<Codec, ce::mqtt::prefixed_names>(...)` use `ce-specversion`, `ce-id`; `unprefixed_names` is the default and the concept is `name_policy`.
-  A message with a CloudEvents Content Type is still structured; any other is binary when it carries the `specversion` User Property under the policy, and `not_a_cloudevent` otherwise, where slice 1 answered `not_a_cloudevent` for every such message (slice 1 is unreleased).
+  A message with a CloudEvents Content Type is still structured; any other is binary when it carries the `specversion` User Property under the policy, and `not_a_cloudevent` otherwise, where an MQTT binding limited to structured mode would answer `not_a_cloudevent` for every such message.
   A User Property that is not an attribute name under the policy is ignored; a `datacontenttype` User Property must equal the Content Type property; values are well-formed UTF-8 without NUL and at most 65,535 bytes.
   The eight Go binary goldens recorded with slice 1 now decode under `prefixed_names`, are `not_a_cloudevent` under the default, and Go reads the binary messages this SDK writes under the policy.
   `fuzz_mqtt_message` covers binary mode under both policies, and the module also exports `name_policy`, `unprefixed_names` and `prefixed_names`.
@@ -62,6 +73,57 @@ Notable changes per release. Dates are the tag date.
   auto record = ce::kafka::to_message_protobuf(event);
   auto back = ce::kafka::from_message_protobuf(*record);
   ```
+
+### Tooling
+
+None of this changes what the library does.
+
+- **Branch coverage is gated** (CR-0007, `SWR-SEC-0007`, D-SEC-5): the `coverage floor` job fails a pull request whose branch coverage, with the compiler's exception edges excluded, falls below `CE_COVERAGE_BRANCH_FLOOR` (86), next to the unchanged 90% line floor.
+  The floor is valid for one toolchain, so the job asserts gcovr 7.0 and gcov-13 and fails before measuring, naming both versions, if the image ships others.
+  `scripts/check_coverage_gate.py` and its cases (`coverage_gate_tools` under ctest) fail on a dropped flag, a literal floor or a floating toolchain.
+  The floor is raised by a person, in the pull request that raises the measurement by a whole point, and never lowered to let a release go out.
+  Tests were added for the untested error paths of JSON decode, header values, typed payloads and the payload scanner (#110).
+- **The versioning rule** (D-BUILD-5, `docs/RELEASE.md`): before 1.0 a break and a feature release each bump the minor version, any other release the patch; the owner decides that a release is a feature release and the release pull request states the reason.
+- **The `delivered_in` check is part of the spec gate** (`SWR-BUILD-0016`, D-SPEC-5): every pull request runs `derive_delivered_in.py --check` with the full history, so a requirement that a tag delivered cannot stay `approved`.
+  The gate is red between a tag and the merge of the post-tag pull request, by design, so that pull request is merged first.
+- **The vcpkg port is proved against a release** (`vcpkg-released` workflow, `scripts/check_vcpkg_release_guard.py`, `SWR-ADOPT-0009`): vcpkg downloads the archive of the tag without `CLOUDEVENTS_CPP_SOURCE_DIR`, refuses a hash that does not match, and the job also checks that a wrong hash is refused.
+  It skips, with a notice, while the tag is missing or the hash is still the previous release's.
+- **Interop covers MQTT and Protobuf** (`interop/mqtt`, `interop/protobuf`, `SWR-MQTT-0014`, `SWR-PROTO-0016`, `SWR-PROTO-0023`, D-INTEROP-6): the `interop` job verifies the Go SDK's MQTT messages and the Go and Java SDKs' Protobuf bytes and HTTP and Kafka messages in both directions, without a broker or a server.
+- **Two fuzz targets**, `fuzz_mqtt_message` and `fuzz_protobuf_format` (which also drives the binding entry points differentially against the decoder).
+- **Spike reports** for the MQTT binding and the Protobuf format (`docs/spikes`, CR-0006), written before the two change requests were approved.
+
+### Measured
+
+- **Coverage, from the `coverage floor` job on `main` at `2118176`, the merge of the last change before this release** (run 40577415617, job 122448222373; GCC 13, gcovr 7.0, C++20, Debug): lines 98.0% (5300 of 5406), functions 92.7% (2325 of 2509), branches 89.1% (5839 of 6554) with exception edges excluded, against floors of 90% lines and 86% branches.
+  The v0.6.1 figures (lines 96.2%, functions 91.9%, branches 60.9%) counted exception edges as branches, so its branch figure is not comparable with this one; the measurement that set the floor was 88.1% (5196 of 5895) on the same metric (D-SEC-5).
+- **CI toolchains** are those of v0.6.1: GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17 at C++23, AppleClang at C++20 and C++23, MSVC 19 (Windows 2022), a C++26 static-reflection job on GCC 15 (GCC 14 if 15 is unavailable; allowed to fail), plus the forced polyfill, exceptions disabled, no default codec, RapidJSON alone, Boost.JSON alone, every codec on Linux and macOS at C++20 and C++23, ASan with UBSan and TSan on Clang 17, the coverage floor on GCC 13, the clang-tidy gate on Homebrew LLVM, install-and-consume, the examples, and interop with the Go and Java SDKs, now including MQTT messages and Protobuf bytes.
+  The `frozen-api`, `packaging` and `mutation` workflows of v0.6.1 are unchanged; `vcpkg-released` is new.
+- **Fuzzing:** 30 targets (seven for each of the four generations and `fuzz_mqtt_message` and `fuzz_protobuf_format` in `ce::v4`), run on every pull request at one minute each against the checked-in seed corpus, and nightly at fifteen minutes.
+  The ten-minute run on the release commit is recorded in the change that dates this release, before the tag.
+  `fuzz_protobuf_format` ran 629,057 inputs in 60 seconds with no finding on the pull request that added the binding entry points (#127).
+
+### Known limitations
+
+- libc++ 17 and 18 implement `std::format` without defining `__cpp_lib_format`; the SDK carves them out by version (D-CI-1).
+- Clang 16 cannot compile libstdc++ 13 or 14 in C++23 mode, so the C++23 Clang job uses libc++ (D-CI-1).
+- The module interface is usable, with constraints on what an importing translation unit may also include (D-MODULE-1), and it exports `ce::v4` only: not `ce::v3`, and not `from_v3` or `to_v3`.
+  It exports the MQTT and Protobuf names.
+- Given the same non-JSON payload, the Java SDK writes `data_base64` where Go and this SDK write a JSON string. Both are legal (D-INTEROP-1).
+- HTTP binary mode percent-encodes header values as the binding requires; the Go and Java SDKs do not, so talking to them needs `ce::http::literal_values` (D-HTTP-1).
+- **The binary-mode parse is the default, and a forwarder turns it off.** A binary-mode body under a JSON media type is parsed once on receive unless `json::decode_options{.parse_binary_body = false}` is passed, and `.retain_document_up_to = 0` alone still parses to validate (SWR-BIND-0007, SWR-BIND-0008).
+  With the option set nothing validates the body: it is accepted as it came.
+  The option applies to binary mode only; structured and batched decode ignore it, and so does `ce::v3`.
+- **Moving saves nothing for a JSON body or a small one.** A JSON body takes the copying path because the parse reads the bytes, and a `std::string` cannot adopt a `std::vector<std::byte>`; a 256 B body saves memory and an allocation, not instructions.
+  `http::from_batch_message_moving` and `nats::from_payload_moving` exist for symmetry and save nothing, because a batch and a NATS payload are JSON.
+- **Kafka header names are case-sensitive here, as in sdk-java and not as in sdk-go.** A record whose headers read `CE_id` or `Content-Type` is read by the Go SDK and refused by this one and by the Java SDK (D-KAFKA-2, D-INTEROP-5).
+- Kafka records of this SDK carry an empty value, not a null one, for an event with no payload, so it cannot write a tombstone; the Go and Java SDKs can (D-INTEROP-5).
+- **MQTT: sdk-go prefixes User Properties with `ce-` and the specification text does not.** The default follows the text; `ce::mqtt::prefixed_names` is the opt-in for a Go peer, and under either policy the other form is `not_a_cloudevent` (D-MQTT-2).
+- **MQTT has one interop peer and no broker.** sdk-java has no MQTT binding, so binary mode has no second opinion, and the Go SDK's messages are checked as in-memory PUBLISH packets; no broker was involved.
+  A lone `datacontenttype` User Property without a Content Type property is refused, and `from_message_moving` does not exist for MQTT (D-MQTT-2).
+- **Protobuf: sdk-go never writes `text_data` and quotes JSON.** sdk-go writes text as `binary_data` and reads a `text_data` of `application/json` back as a quoted JSON string, so a JSON event written by this SDK arrives quoted in a Go consumer; this SDK writes `text_data` as the specification says and reads all three data fields (D-INTEROP-6).
+- **Protobuf timestamps lose the offset and the fraction digits, and have a range.** A decoded `time` is the same instant in UTC with the fewest of 0, 3, 6 or 9 digits; a `Timestamp` outside about 1678 to 2262 is `invalid_timestamp` (D-PROTO-1).
+- **An empty `binary_data` payload without a `datacontenttype` reads back as no payload**, because sdk-go writes that for an event with no data (D-PROTO-1).
+- The type URL of a `proto_data` payload that differs from `dataschema` is returned by `decode_detailed` only; `decode` keeps `dataschema` (D-PROTO-1).
 
 ## v0.6.1 - 2026-10-21
 

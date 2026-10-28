@@ -1,6 +1,6 @@
 {
   "name": "cloudevents-cpp",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "CloudEvents v1.0.2 SDK for C++20: header-only, exception-free, with JSON codecs as optional features.",
   "homepage": "https://github.com/filipsajdak/cloudevents-sdk-cpp",
   "license": "Apache-2.0",

@@ -2,7 +2,7 @@
 
 Notable changes per release. Dates are the tag date.
 
-## v0.7.0 - 2026-10-27
+## v0.7.0 - 2026-10-29
 
 Events can travel over MQTT, and they can be written and read in the Protobuf event format.
 `ce::mqtt` is a new binding (MQTT 5.0 structured and binary mode, MQTT 3.1.1 structured mode), and `ce::protobuf_format` is a new, hand-written event format that also works as structured mode in the HTTP, Kafka and NATS bindings.
@@ -99,7 +99,7 @@ None of this changes what the library does.
 - **CI toolchains** are those of v0.6.1: GCC 13 at C++20 and C++23, Clang 16 with libstdc++ 13, Clang 17 with libc++ 17 at C++23, AppleClang at C++20 and C++23, MSVC 19 (Windows 2022), a C++26 static-reflection job on GCC 15 (GCC 14 if 15 is unavailable; allowed to fail), plus the forced polyfill, exceptions disabled, no default codec, RapidJSON alone, Boost.JSON alone, every codec on Linux and macOS at C++20 and C++23, ASan with UBSan and TSan on Clang 17, the coverage floor on GCC 13, the clang-tidy gate on Homebrew LLVM, install-and-consume, the examples, and interop with the Go and Java SDKs, now including MQTT messages and Protobuf bytes.
   The `frozen-api`, `packaging` and `mutation` workflows of v0.6.1 are unchanged; `vcpkg-released` is new.
 - **Fuzzing:** 30 targets (seven for each of the four generations and `fuzz_mqtt_message` and `fuzz_protobuf_format` in `ce::v4`), run on every pull request at one minute each against the checked-in seed corpus, and nightly at fifteen minutes.
-  The ten-minute run on the release commit is recorded in the change that dates this release, before the tag.
+  On the release commit `eaffb88` all 30 ran ten minutes each (`seconds=600`) with no crash and no finding (`fuzz` workflow run 40795680906, started on demand): 30 of 30 jobs succeeded, each `Fuzz for 600 seconds` step took 601 to 602 seconds, and the run uploaded no findings artifact.
   `fuzz_protobuf_format` ran 629,057 inputs in 60 seconds with no finding on the pull request that added the binding entry points (#127).
 
 ### Known limitations

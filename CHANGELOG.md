@@ -2,7 +2,7 @@
 
 Notable changes per release. Dates are the tag date.
 
-## v0.7.0 - 2026-10-29
+## v0.7.0 - 2026-10-30
 
 Events can travel over MQTT, and they can be written and read in the Protobuf event format.
 `ce::mqtt` is a new binding (MQTT 5.0 structured and binary mode, MQTT 3.1.1 structured mode), and `ce::protobuf_format` is a new, hand-written event format that also works as structured mode in the HTTP, Kafka and NATS bindings.

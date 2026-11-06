@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0020
 title: kafka structured mode in the Protobuf format
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   As SWR-PROTO-0019, for a Kafka record, whose content-type header carries the media type. The names and the

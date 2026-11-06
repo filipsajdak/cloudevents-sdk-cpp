@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0014
 title: Structured MQTT messages interoperate with the Go SDK in both directions
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 1 (CR-0008). STK-INTEROP-0001 makes agreement with the established SDKs the external measure,

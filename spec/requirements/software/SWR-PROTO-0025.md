@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0025
 title: JSON-typed data can be classified on decode
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Ruled by the owner on 2026-10-25 (CR-0009, item 8). The default decode returns text_data as a

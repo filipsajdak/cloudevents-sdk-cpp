@@ -2,7 +2,8 @@
 uid: SYS-MQTT-0001
 title: Events map to and from MQTT PUBLISH messages
 type: system
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   MQTT is the transport of constrained and device-side estates, and the CloudEvents project specifies

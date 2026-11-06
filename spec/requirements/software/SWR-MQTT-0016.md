@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0016
 title: A libFuzzer target covers the decode path of the MQTT binding
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slices 1 and 2 (CR-0008). SWR-SEC-0001 already requires a target for the decode path of every

@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0008
 title: A User Property named content-type is not forwarded as the Content Type property
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Slice 1 (CR-0008). Ruled by the owner on 2026-10-25 (CR-0008, item 6): the Content Type property and a User Property

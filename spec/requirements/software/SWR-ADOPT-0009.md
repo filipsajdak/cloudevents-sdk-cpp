@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0009
 title: CI proves the vcpkg port's released-source mode once the release it names exists
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   The vcpkg port has two sources (SWR-ADOPT-0006): the working tree, which CI builds, and the archive of the release tag, which a consumer gets and which is checked against a SHA-512.

@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0004
 title: Required attributes are fields and every other attribute is a map entry
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Rule 5 of the format: the four required attributes are explicit fields and optional and

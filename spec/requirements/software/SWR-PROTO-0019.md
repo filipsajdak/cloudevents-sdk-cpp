@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0019
 title: http structured mode in the Protobuf format
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   An HTTP message in structured mode carries the whole event in the body with the content type

@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0003
 title: Field numbers follow cloudevents.proto at v1.0.2
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   The prose of protobuf-format.md numbers the attribute map 1 and the data fields 2 to 4, and

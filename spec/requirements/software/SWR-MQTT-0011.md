@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0011
 title: User Property values are canonical strings, valid UTF-8 without NUL
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Slice 2 (CR-0008). Binding text :173-175: values are the attribute type's canonical string

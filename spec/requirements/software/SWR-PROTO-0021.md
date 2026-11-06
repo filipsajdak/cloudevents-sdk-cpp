@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0021
 title: nats structured mode in the Protobuf format
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   As SWR-PROTO-0019, for a NATS message. A NATS payload has no content type of its own, so the

@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0010
 title: Decode limits are named constants
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   The decoder parses untrusted bytes. The schema has a fixed depth (event, map entry, value,

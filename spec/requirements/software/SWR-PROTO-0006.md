@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0006
 title: A timestamp is carried as an instant
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   google.protobuf.Timestamp holds seconds and nanoseconds from the epoch and no offset. The

@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0018
 title: The optional module exports the MQTT binding from ce::v4 only
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: low
 rationale: >
   Slice 1 (CR-0008). The optional cloudevents.cppm exports ce::v4 only (SWR-BUILD-0013); the MQTT

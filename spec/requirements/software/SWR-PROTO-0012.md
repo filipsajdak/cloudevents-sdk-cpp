@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0012
 title: A decoded event always re-encodes
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   The counterpart of SWR-JSON-0031: whatever the decoder accepts, the encoder can write, and

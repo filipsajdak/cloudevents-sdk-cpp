@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0008
 title: Data is read from any of the three data fields
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   The Go SDK writes binary_data where the Java SDK writes text_data for the same event, so a

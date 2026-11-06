@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0003
 title: The Content Type property is the header content-type and maps to datacontenttype
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 1 (CR-0008). Binding text :146-147: the Content Type property must be mapped directly to

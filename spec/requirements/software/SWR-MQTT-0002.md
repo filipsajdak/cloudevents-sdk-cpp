@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0002
 title: MQTT 3.1.1 carries structured JSON in the payload and has no properties
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 1 (CR-0008). Binding text :135-136: with MQTT 3.1.1 the content mode is always structured and

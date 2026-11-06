@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0026
 title: The proto_data type URL has a side channel
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Ruled by the owner on 2026-10-25 (CR-0009, items 9 and 13). A proto_data carries a type URL that

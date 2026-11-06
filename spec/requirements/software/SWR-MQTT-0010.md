@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0010
 title: Binary mode reads each User Property named like an attribute as an attribute or an extension
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 2 (CR-0008). Binding text :156-158: all other context attributes, including extensions, must

@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0019
 title: The user guide documents the MQTT binding and its prefix opt-in
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: low
 rationale: >
   Slices 1 and 2 (CR-0008). docs/GUIDE.md has a section per binding whose code the example_guide test

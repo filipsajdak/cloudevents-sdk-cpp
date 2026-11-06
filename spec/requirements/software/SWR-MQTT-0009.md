@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0009
 title: Binary mode on MQTT 5.0 writes attribute names unchanged as User Properties
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 2 (CR-0008). Binding text :168-169: attribute names must be used unchanged in each mapped User

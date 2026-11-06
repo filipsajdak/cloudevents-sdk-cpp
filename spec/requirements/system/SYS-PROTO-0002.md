@@ -2,7 +2,8 @@
 uid: SYS-PROTO-0002
 title: Protobuf structured mode in the protocol bindings
 type: system
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   The Protobuf format is carried by a transport as the body of a message with the media type

@@ -2,7 +2,8 @@
 uid: SWR-ADOPT-0001
 title: Header-only targets with a downward dependency direction
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   SPEC 4 fixes the target graph so that a consumer can take the core without the JSON

@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0012
 title: The ce- prefix of sdk-go is an opt-in name policy, defaulting to the text
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 2 (CR-0008). Owner ruling 2026-10-24 (ruling 2): follow the text by default and offer an

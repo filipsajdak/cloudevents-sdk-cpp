@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0007
 title: User Property names compare byte for byte
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Slice 1 for the content-type lookup, slice 2 for attribute names (CR-0008). An MQTT User Property

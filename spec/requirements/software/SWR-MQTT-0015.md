@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0015
 title: Binary MQTT messages interoperate with the Go SDK under the prefixed-names policy, and the difference is pinned
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 2 (CR-0008). The only place the SDKs and the text disagree is the binary-mode prefix

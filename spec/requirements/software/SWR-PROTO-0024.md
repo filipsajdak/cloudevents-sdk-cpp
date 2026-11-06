@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0024
 title: Batch is encoded and decoded as format functions
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Ruled by the owner on 2026-10-25 (CR-0009, item 10). The Protobuf format has a CloudEventBatch message

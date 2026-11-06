@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0018
 title: The guide states the mapping and what it loses
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   A user chooses the format knowing which parts of an event survive it: the offset of a time,

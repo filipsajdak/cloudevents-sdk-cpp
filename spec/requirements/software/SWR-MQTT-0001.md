@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0001
 title: Structured mode on MQTT 5.0 carries the event in the payload under its format media type
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 1 (CR-0008). Binding text :213-244 requires the Content Type property to be the media type of

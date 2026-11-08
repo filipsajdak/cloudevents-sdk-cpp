@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0004
 title: The mode is read from the Content Type, then from the specversion User Property
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 1 for the structured branch, slice 2 for the binary one (CR-0008). Binding text :114-119: a

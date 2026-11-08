@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0022
 title: The JSON entry points do not change
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Structured mode is hard-wired to JSON today. The Protobuf entry points are new names (the

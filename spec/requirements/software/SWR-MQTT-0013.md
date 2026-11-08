@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0013
 title: A foreign User Property in binary mode is ignored
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Slice 2 (CR-0008). Ruled by the owner on 2026-10-25 (CR-0008, item 5): the text does not say what a receiver does with a

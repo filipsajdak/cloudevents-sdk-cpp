@@ -2,7 +2,8 @@
 uid: SWR-PROTO-0001
 title: protobuf_format encode and decode entry points
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   The Protobuf format is bytes to event and event to bytes, the shape of json_format without a

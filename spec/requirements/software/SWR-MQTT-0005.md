@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0005
 title: A message that is not a CloudEvent is distinct from a malformed one
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: high
 rationale: >
   Slice 1 (CR-0008). A topic carries whatever its publishers put there, so a subscriber meets a plain

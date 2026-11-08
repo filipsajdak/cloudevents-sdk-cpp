@@ -26,7 +26,7 @@ else()
         OUT_SOURCE_PATH SOURCE_PATH
         REPO filipsajdak/cloudevents-sdk-cpp
         REF "v${VERSION}"
-        SHA512 2aaca8efc52a19c2bb4e9c573d9f4a25a7f643f4d70c3daa4c646ffad6e39b3999b67b3129c430abd9a60ae310a25dcf92b3bcf98d1d96e3bbc17dce5415bbe2
+        SHA512 c8d582dc6a70890989c3fb7483af406ff35eee55852280c94e1fd7bf1ccf15aa80011212e79669a637bbd8e1d0ec198ab4998795e6df79286d89988c229b19f0
         HEAD_REF main
     )
 endif()

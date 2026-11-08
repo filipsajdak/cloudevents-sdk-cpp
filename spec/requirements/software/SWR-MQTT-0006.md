@@ -2,7 +2,8 @@
 uid: SWR-MQTT-0006
 title: The MQTT binding refuses batch mode in both directions
 type: software
-status: approved
+status: implemented
+delivered_in: v0.7.0
 priority: medium
 rationale: >
   Slice 1 (CR-0008). The binding text defines no batch mode, and neither does sdk-go

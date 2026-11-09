@@ -2,7 +2,7 @@
 uid: SWR-BIND-0019
 title: Binary mode refuses a datacontenttype that the reader takes for a CloudEvents format
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Binary mode writes datacontenttype into the content-type field, and the HTTP, Kafka and MQTT
@@ -27,6 +27,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-BIND-0001]
+satisfied_by: [code:include/cloudevents/binding/common.hpp, code:include/cloudevents/binding/http.hpp]
+verified_by: [test:test/http_binding_test.cpp::binary-mode-refuses-a-cloudevents-media-type]
 owner: filip.sajdak
 version: 1
 ---

@@ -41,6 +41,25 @@ using ce::v4::binding::detail::text_of;
 inline constexpr unsigned char first_printable_ascii = 0x20U;
 inline constexpr unsigned char delete_character = 0x7FU;
 
+// spec: SWR-HTTP-0006
+// spec: SWR-BIND-0019
+/// The mode a `Content-Type` value declares, its media type compared ignoring case: `batched` for
+/// one starting with `application/cloudevents-batch`, `structured` for one starting with
+/// `application/cloudevents`, `binary_mode` for any other: what `detect_content_mode` decides for a
+/// message with that `Content-Type`, which the suite `binary-mode-refuses-a-cloudevents-media-type`
+/// holds the two to. Binary-mode `to_message` refuses a `datacontenttype` it does not read as
+/// `binary_mode`.
+[[nodiscard]] constexpr auto content_mode_of(std::string_view content_type) noexcept
+    -> content_mode {
+  if (starts_with_ignoring_case(content_type, binding::detail::batch_media_type_prefix)) {
+    return content_mode::batched;
+  }
+  if (starts_with_ignoring_case(content_type, binding::detail::cloudevents_media_type_prefix)) {
+    return content_mode::structured;
+  }
+  return content_mode::binary_mode;
+}
+
 // spec: SWR-BIND-0004
 template <class Values>
 struct http_traits {
@@ -129,6 +148,11 @@ static_assert(binding::binding_traits<detail::http_traits<literal_values>>);
 // spec: SWR-HTTP-0007
 // spec: SWR-HTTP-0008
 // spec: SWR-HTTP-0009
+// spec: SWR-BIND-0019
+/// An event as an HTTP message in `mode`. Binary mode refuses, with `errc::invalid_argument`, an
+/// event whose `datacontenttype` `detect_content_mode` would read as structured or batched: a
+/// media type starting with `application/cloudevents`, in any letter case, after any leading
+/// whitespace, which an HTTP field parser drops.
 template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
   if (mode == content_mode::structured) {
@@ -137,6 +161,12 @@ template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 
   if (mode == content_mode::batched) {
     return fail(errc::invalid_argument, "a batch carries several events; use to_batch_message");
+  }
+
+  if (auto readable =
+          binding::detail::refuse_format_media_type<detail::content_mode_of>(cloud_event);
+      !readable) {
+    return ce::v4::detail::forward_failure(std::move(readable).error());
   }
 
   message out;

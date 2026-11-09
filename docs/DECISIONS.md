@@ -2022,6 +2022,26 @@ CR-0005: the moving path pays for building without the payload and moving the me
 out and back, which nearly equals the copy it avoids at that size, and it still saves an
 allocation and 73% of the bytes.
 
+## D-BIND-5: Binary mode refuses a CloudEvents media type, tested as the reader tests it
+
+CR-0010 and SWR-BIND-0019 rule the refusal; the code leaves these details to the author, and the owner may overrule each.
+
+- **One function per binding decides for the writer, and a test holds it to the reader.**
+  `http::detail::content_mode_of`, `kafka::detail::content_mode_of` and `mqtt::detail::content_mode_of` map a content type to a mode, and binary-mode `to_message` asks it of `datacontenttype` through `binding::detail::refuse_format_media_type`, a template over the function so the call is direct. The batch prefix starts with the structured one, so one test (`!= binary_mode`) covers both.
+  MQTT's `detect_content_mode` calls the same function. The HTTP and Kafka `detect_content_mode` keep their v0.7.0 text, with the prefixes as literals: when they called the shared function, the perf job (x86, g++-14) measured about 200 more instructions on every binary-mode receive of both bindings, +2.2% to +2.5% on four Kafka operations against the +2% limit of SWR-PERF-0001, while structured receives moved by 10 instructions, so the cost was code generation around the call and not the test itself, and it did not reproduce on arm64 with g++-16. Calling it through a template parameter instead of a function pointer, and testing the structured prefix first, did not change the measurement. With the receive path as it was, the suites `binary-mode-refuses-a-cloudevents-media-type` and `kafka-binary-mode-refuses-a-cloudevents-media-type` check that `content_mode_of` and `detect_content_mode` decide alike for every prefix, letter case, parameter, near miss and unskipped whitespace, so a reader change that the writer misses fails a test.
+  The HTTP and Kafka writers use new named constants in `binding::detail`; MQTT keeps the two it published in v0.7.0, because changing a published declaration's initialiser would fail the frozen-API gate.
+- **The writer drops leading whitespace first; the readers do not.**
+  The media-type grammar admits whitespace before the type, and an HTTP field parser drops leading spaces and tabs, so `" application/cloudevents+json"` reached a reader behind one as a structured message (a review finding on the first version of the fix; with the relay input the result was the inner event).
+  The writer tests the value without the whitespace the grammar admits (`binding::detail::media_type_whitespace`). The readers are left as they are, because trimming there changes what `detect_content_mode` returns; the writer therefore refuses a little more than this SDK's readers would misread. The owner ruled on 2026-11-09 that the readers do not trim.
+- **The refusal names `datacontenttype` in `where`** and happens before any header is written, so no partial message exists.
+- **The fuzz targets compare identity, not equality.**
+  A binary round trip changes an extension's type and may change a JSON payload's representation (D-JSON-4), so the check is `id`, `source`, `type` and `datacontenttype`, which is what a substitution changes.
+- **Binary data under a JSON media type is carved out of the read-back check, by owner decision of 2026-11-09.**
+  An event with `data_base64` (a `ce::binary` payload) under a media type `is_json_content_type` accepts writes its bytes in binary mode, and the reader parses them as JSON, so bytes that are not JSON read back as `parse_error`: the event is lost, never replaced. HTTP since v0.1.0, Kafka since v0.2.0, NATS since v0.3.0 and MQTT since v0.7.0 do this. NATS reads the media type from `ce-datacontenttype` and calls the same `binding::read_body`; it is not changed by this pull request and not covered by the SWR-BIND-0019 refusal, and `fuzz_nats_payload` has no binary read-back check, which is why no run found it there. CR-0011 decides it for all four bindings.
+  The owner kept it out of CR-0010. `ce_fuzz::binary_under_json` names the carve-out: the targets still require the write to succeed and do not check the read, and the seeds `binary_data_under_json_media_type` keep the shape in every run. A follow-up change request decides between refusing it on write and accepting it on read; when it lands, the carve-out goes. That request is CR-0011, and the hardening against CR or LF in a `datacontenttype` written into a header is CR-0012 (both numbers reserved).
+- **A defect fix, released as v0.7.1 (owner decision, 2026-11-09).** The refusal removes a message that never read back as the event sent, so it is a fix and not a break under D-BUILD-4: a patch release (D-BUILD-5), no new generation. The `ce::v1` to `ce::v3` HTTP and Kafka writers keep the defect by the same decision; the changelog and the guide document the exposure.
+- **No ADR.** The CR records the one decision and its alternatives, as CR-0007 did.
+
 ## D-MQTT-1: Slice 1 entry points: the mode argument, the 3.1.1 message form and the binary refusal
 
 CR-0008 names `to_message`, `from_message`, `to_payload` and `from_payload` and leaves three details to the code; each is a choice, and the owner may overrule it.

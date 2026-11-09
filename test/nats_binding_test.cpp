@@ -12,6 +12,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+#include "binary_media_type_checks.hpp"
 #include "binding_decode_options.hpp"
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
@@ -780,5 +781,22 @@ const boost::ut::suite<"nats-from-payload-protobuf-garbage-is-parse-error"> nats
         expect(!ce::nats::from_payload_protobuf(ce::binary{}).has_value());
       };
     };
+
+// spec: SWR-BIND-0019
+const boost::ut::suite<"nats-binary-mode-keeps-a-cloudevents-media-type"> nats_format_type = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_binary_keeps_format_media_type(
+          codec,
+          "Content-Type",
+          [](const ce::event& cloud_event, ce::content_mode mode) {
+            return ce::nats::to_message<C>(cloud_event, mode);
+          },
+          [](const ce::message& incoming) { return ce::nats::from_message<C>(incoming); });
+    };
+  });
+};
 
 int main() {}

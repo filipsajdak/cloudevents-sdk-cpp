@@ -339,7 +339,7 @@ auto order_id(std::string_view text) -> ce::result<std::string> {
 | `invalid_base64` | `data_base64` that is not RFC 4648 section 4 base64, including over-padding and the URL-safe alphabet |
 | `invalid_utf8` | an attribute value, or a header value on either side of a binding, that is not well-formed UTF-8 |
 | `not_a_cloudevent` | an HTTP, Kafka or NATS message with neither a `specversion` field nor a CloudEvents content type; a batch reader given a message that is not a batch |
-| `invalid_argument` | a batch passed to the single-event entry point, or the reverse; a batch on Kafka or NATS, which define none; two header fields carrying one attribute; `ce-datacontenttype` on HTTP or Kafka, which carry it in their content-type field; a control character under `http::literal_values` |
+| `invalid_argument` | a batch passed to the single-event entry point, or the reverse; a batch on Kafka or NATS, which define none; two header fields carrying one attribute; `ce-datacontenttype` on HTTP or Kafka, which carry it in their content-type field; a control character under `http::literal_values`; binary mode on HTTP, Kafka or MQTT for an event whose `datacontenttype` starts with `application/cloudevents` |
 
 `not_a_cloudevent` is kept apart from a malformed event on purpose.
 A receiver usually passes such a message along unchanged, while it rejects a malformed one.
@@ -539,6 +539,12 @@ Every binding offers `to_message<Codec>(event, mode)`, `from_message<Codec>(mess
 The last parameter of `from_message`, of `http::from_batch_message` and of `nats::from_payload` is a `ce::json::decode_options`, with the same 16 KiB retention default as `json_format::decode`, applied to every JSON payload the call decodes, in structured, batched and binary mode.
 Asking for a mode a binding does not define returns `invalid_argument`; the SDK never invents one.
 
+HTTP, Kafka and MQTT carry `datacontenttype` in the content-type field in binary mode, and a reader decides the mode from that field.
+So binary mode refuses, with `invalid_argument` naming `datacontenttype`, an event whose `datacontenttype` starts with `application/cloudevents` (after any leading whitespace): the message would read back as structured or batched, and the event would be lost or replaced by its data.
+Send such an event in structured mode, where `datacontenttype` is a member of the document.
+Each binding compares as its reader does: HTTP ignoring case, Kafka and MQTT byte for byte. NATS carries `datacontenttype` as `ce-datacontenttype` and writes such an event in binary mode.
+The frozen `ce::v1` to `ce::v3` HTTP and Kafka bindings do not refuse it, so with them check the `datacontenttype` yourself before writing in binary mode.
+
 ### HTTP
 
 ```cpp body
@@ -564,6 +570,8 @@ if (!received && received.error().code == ce::errc::not_a_cloudevent) {
 `from_message` detects the mode itself.
 A batch has its own pair, `to_batch_message<Codec>(events)` and `from_batch_message<Codec>(message)`, and `detect_content_mode` tells you which to call.
 
+Binary mode refuses an event whose `datacontenttype` starts with `application/cloudevents` in any letter case, as described under [The bindings side by side](#the-bindings-side-by-side).
+
 Header values are percent-encoded as the binding specification requires.
 The Go and Java SDKs do not do this; see [Interoperability](#9-interoperability) for the opt-out.
 
@@ -586,6 +594,7 @@ if (record && record->key) {
 The default mapper, `no_key_mapper`, sets no key, so the broker spreads records round-robin.
 Write your own as a struct with `static auto key_of(const ce::event&) -> std::optional<std::string>`.
 Record header keys are byte strings, so `CE_ID` is not `ce_id`.
+Binary mode refuses an event whose `datacontenttype` starts with `application/cloudevents`, and `to_record` with it; the comparison is byte for byte, as the reader's is.
 
 ### NATS
 
@@ -633,6 +642,7 @@ Names match byte for byte, so `Content-Type` is another name.
 A batch is `invalid_argument` in both directions, because the binding defines no mode for it.
 
 Binary mode (MQTT 5.0 only) writes the data as the payload, `datacontenttype` as the Content Type property and every other attribute and extension as a User Property.
+An event whose `datacontenttype` starts with `application/cloudevents`, byte for byte, is refused with `invalid_argument`, because the Content Type would make it a structured message.
 The binding specification says the attribute names are used unchanged, so the default writes `specversion`, `id`, `type` and reads the same:
 
 ```cpp body

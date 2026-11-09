@@ -2,7 +2,8 @@
 /// \brief Fuzz HTTP message decoding.
 ///
 /// Splits the input into headers and a body, so the fuzzer explores header names,
-/// percent-escapes and payloads rather than only one of them.
+/// percent-escapes and payloads rather than only one of them. A decoded event is written back in
+/// binary mode and read again, so a media type that would change the mode on the way is caught.
 
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +12,8 @@
 
 #include <cloudevents/binding/http.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
+
+#include "binary_readback.hpp"
 
 namespace {
 
@@ -51,11 +54,16 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
   (void)ce::http::detect_content_mode(request);
   auto decoded = ce::http::from_message<ce::codec::nlohmann_codec>(request);
   if (decoded) {
-    // Anything that decoded must survive a trip back out to a message.
-    if (!ce::http::to_message<ce::codec::nlohmann_codec>(*decoded,
-                                                         ce::content_mode::binary_mode)) {
-      __builtin_trap();
-    }
+    // Anything that decoded writes back out in binary mode and reads back as itself, unless its
+    // datacontenttype would make the message read as structured (SWR-HTTP-0015, SWR-BIND-0019).
+    ce_fuzz::check_binary_write(
+        *decoded,
+        ce::http::to_message<ce::codec::nlohmann_codec>(*decoded, ce::content_mode::binary_mode),
+        ce::http::detail::content_mode_of,
+        ce_fuzz::value_limits::none,
+        [](const ce::message& written) {
+          return ce::http::from_message<ce::codec::nlohmann_codec>(written);
+        });
   }
   (void)ce::http::from_batch_message<ce::codec::nlohmann_codec>(request);
   // The text path above the retention limit takes the same input (SWR-BIND-0007).

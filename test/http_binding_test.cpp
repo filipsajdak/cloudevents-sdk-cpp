@@ -21,6 +21,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+#include "binary_media_type_checks.hpp"
 #include "binding_decode_options.hpp"
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
@@ -2275,6 +2276,49 @@ const boost::ut::suite<"http-protobuf-has-no-moving-variant"> http_no_moving = [
   using namespace boost::ut::literals;
   "a message given with std::move is read and left as it was"_test = [] {
     ce_test::protobuf_binding::leaves_a_moved_message_alone<http_protobuf>();
+  };
+};
+
+// spec: SWR-BIND-0019
+const boost::ut::suite<"binary-mode-refuses-a-cloudevents-media-type"> http_format_media_type = [] {
+  using namespace boost::ut;
+
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      ce_test::check_binary_refuses_format_media_type(
+          codec,
+          "Content-Type",
+          ce_test::media_type_reading::ignoring_case,
+          [](const ce::event& cloud_event, ce::content_mode mode) {
+            return ce::http::to_message<C>(cloud_event, mode);
+          },
+          [](const ce::message& request) { return ce::http::from_message<C>(request); });
+    };
+  });
+
+  "the literal value policy refuses the same media types"_test = [] {
+    ce_test::check_binary_refuses_format_media_type(
+        "literal_values",
+        "Content-Type",
+        ce_test::media_type_reading::ignoring_case,
+        [](const ce::event& cloud_event, ce::content_mode mode) {
+          return ce::http::to_message<ce::codec::nlohmann_codec, ce::http::literal_values>(
+              cloud_event, mode);
+        },
+        [](const ce::message& request) {
+          return ce::http::from_message<ce::codec::nlohmann_codec, ce::http::literal_values>(
+              request);
+        });
+  };
+
+  "the writer's media type test decides as detect_content_mode"_test = [] {
+    ce_test::check_writer_agrees_with_reader(
+        "http",
+        "Content-Type",
+        [](std::string_view content_type) {
+          return ce::http::detail::content_mode_of(content_type);
+        },
+        [](const ce::message& received) { return ce::http::detect_content_mode(received); });
   };
 };
 

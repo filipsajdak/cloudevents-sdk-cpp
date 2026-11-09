@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -33,6 +34,50 @@ namespace detail {
 [[nodiscard]] inline auto text_of(const binary& body) noexcept -> std::string_view {
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   return {reinterpret_cast<const char*>(body.data()), body.size()};
+}
+
+// spec: SWR-BIND-0019
+/// The prefix of every CloudEvents format media type: a reader takes a message whose content type
+/// starts with it for structured mode, or for batched mode when it starts with
+/// `batch_media_type_prefix`, which starts with this one.
+inline constexpr std::string_view cloudevents_media_type_prefix = "application/cloudevents";
+inline constexpr std::string_view batch_media_type_prefix = "application/cloudevents-batch";
+
+// spec: SWR-BIND-0019
+/// The whitespace a media type may carry before its type: the `\s` of the media-type grammar
+/// `datacontenttype` is checked against. An HTTP field parser drops the leading spaces and tabs
+/// of a field value, so a reader can see a content type without them.
+inline constexpr std::string_view media_type_whitespace = " \t\n\v\f\r";
+
+// spec: SWR-BIND-0019
+/// `media_type` from its first character that is not `media_type_whitespace`.
+[[nodiscard]] constexpr auto without_leading_whitespace(std::string_view media_type) noexcept
+    -> std::string_view {
+  const std::size_t first = media_type.find_first_not_of(media_type_whitespace);
+  if (first == std::string_view::npos) {
+    return {};
+  }
+  media_type.remove_prefix(first);
+  return media_type;
+}
+
+// spec: SWR-BIND-0019
+/// `errc::invalid_argument` at `datacontenttype` when the event declares a `datacontenttype` that
+/// `content_mode_of`, the binding's own reading of a received content type, takes for structured or
+/// batched mode once the leading whitespace a transport may drop is gone, because binary mode would
+/// write it into the content-type field and the message would read back in another mode. Success
+/// for any other event, one with no `datacontenttype` included.
+template<content_mode (*content_mode_of)(std::string_view) noexcept>
+[[nodiscard]] auto refuse_format_media_type(const event& cloud_event) -> result<void> {
+  const auto& media_type = cloud_event.datacontenttype();
+  if (!media_type || content_mode_of(without_leading_whitespace(media_type->view())) ==
+                         content_mode::binary_mode) {
+    return {};
+  }
+  return fail(errc::invalid_argument,
+              "binary mode cannot carry a datacontenttype that names a CloudEvents format, "
+              "because the message would read back in another mode",
+              "datacontenttype");
 }
 
 template <class T>

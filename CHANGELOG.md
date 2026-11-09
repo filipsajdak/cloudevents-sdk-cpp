@@ -2,6 +2,25 @@
 
 Notable changes per release. Dates are the tag date.
 
+## Unreleased
+
+### Fixed
+
+- **Binary mode wrote an event that read back as another mode (HTTP since v0.1.0, Kafka since v0.2.0, MQTT since v0.7.0; CR-0010).**
+  An event whose `datacontenttype` starts with `application/cloudevents` (for example `application/cloudevents+json`, or the batch media type) was written in binary mode with that value in the content-type field, which is where every reader decides the mode.
+  The receiver therefore read the message as structured: it failed with `parse_error` or `invalid_argument`, so the event was dropped, or, when the event's data was itself a CloudEvent, it returned that inner event, so a relay forwarding in binary mode delivered a different event from the one it received.
+  `to_message` in binary mode, and `kafka::to_record`, now return `errc::invalid_argument` naming `datacontenttype` for such an event and produce no message, so a caller sees the error when sending instead of a message that reads back differently.
+  Each binding compares as its reader does (HTTP ignoring case, Kafka and MQTT byte for byte), after any leading whitespace, which an HTTP field parser drops.
+  Structured mode, NATS and MQTT 3.1.1 are unchanged; such an event still travels in structured mode.
+  The `ce::v1` to `ce::v3` copies of the HTTP and Kafka bindings are unchanged and still write such an event; see Known limitations.
+  The fuzz targets of the three bindings now check that a binary-mode write reads back as the same event or is refused for this reason.
+
+### Known limitations
+
+- **The frozen generations keep the binary-mode defect above.** The HTTP and Kafka binary writers of `ce::v1` (v0.3.0), `ce::v2` (v0.4.0) and `ce::v3` (v0.5.0) still write an event whose `datacontenttype` starts with `application/cloudevents`, and the receiver reads it as structured mode. Use `ce::v4`, or do not write such an event in binary mode: check the `datacontenttype` first, or send it in structured mode.
+- **Binary data under a JSON media type does not survive binary mode (HTTP, Kafka, MQTT, NATS).**
+  An event whose payload is binary (`data_base64`) and whose `datacontenttype` is JSON, such as `application/json`, is written in binary mode, and the receiver parses the bytes as JSON: unless they happen to be JSON, `from_message` fails with `parse_error` and the event is dropped. NATS binary mode does the same: it reads the media type from `ce-datacontenttype` and the body through the same reader; this release does not change NATS. Send such an event in structured mode. A follow-up change request, CR-0011, decides the fix for all four bindings (D-BIND-5).
+
 ## v0.7.0 - 2026-11-06
 
 Events can travel over MQTT, and they can be written and read in the Protobuf event format.

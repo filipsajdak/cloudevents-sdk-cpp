@@ -28,7 +28,7 @@ verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-BIND-0001]
 satisfied_by: [code:include/cloudevents/binding/common.hpp, code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/mqtt.hpp]
-verified_by: [test:test/http_binding_test.cpp::binary-mode-refuses-a-cloudevents-media-type, test:test/kafka_binding_test.cpp::kafka-binary-mode-refuses-a-cloudevents-media-type, test:test/mqtt_binding_test.cpp::mqtt-binary-mode-refuses-a-cloudevents-media-type]
+verified_by: [test:test/http_binding_test.cpp::binary-mode-refuses-a-cloudevents-media-type, test:test/kafka_binding_test.cpp::kafka-binary-mode-refuses-a-cloudevents-media-type, test:test/mqtt_binding_test.cpp::mqtt-binary-mode-refuses-a-cloudevents-media-type, test:test/nats_binding_test.cpp::nats-binary-mode-keeps-a-cloudevents-media-type]
 owner: filip.sajdak
 version: 1
 ---

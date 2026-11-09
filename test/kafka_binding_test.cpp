@@ -14,6 +14,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+#include "binary_media_type_checks.hpp"
 #include "binding_decode_options.hpp"
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
@@ -667,5 +668,51 @@ const boost::ut::suite<"kafka-protobuf-has-no-moving-variant"> kafka_no_moving =
     ce_test::protobuf_binding::leaves_a_moved_message_alone<kafka_protobuf>();
   };
 };
+
+// spec: SWR-BIND-0019
+const boost::ut::suite<"kafka-binary-mode-refuses-a-cloudevents-media-type"> kafka_format_type =
+    [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::check_binary_refuses_format_media_type(
+              codec,
+              "content-type",
+              ce_test::media_type_reading::byte_for_byte,
+              [](const ce::event& cloud_event, ce::content_mode mode) {
+                return ce::kafka::to_message<C>(cloud_event, mode);
+              },
+              [](const ce::message& incoming) { return ce::kafka::from_message<C>(incoming); });
+        };
+
+        test(std::string{codec} + ": to_record refuses what to_message refuses") = [codec] {
+          const auto received = ce::kafka::from_message<C>(
+              ce_test::structured_message("content-type", ce_test::relay_document));
+          expect(received.has_value()) << codec;
+          if (!received) {
+            return;
+          }
+          const auto keyed = ce::kafka::to_record<C, ce::kafka::partitionkey_mapper>(
+              *received, ce::content_mode::binary_mode);
+          expect(!keyed.has_value()) << codec;
+          if (!keyed) {
+            expect(keyed.error().code == ce::errc::invalid_argument) << codec;
+          }
+          expect(ce::kafka::to_record<C>(*received, ce::content_mode::structured).has_value())
+              << codec;
+        };
+      });
+
+      "the writer's media type test decides as detect_content_mode"_test = [] {
+        ce_test::check_writer_agrees_with_reader(
+            "kafka",
+            "content-type",
+            [](std::string_view content_type) {
+              return ce::kafka::detail::content_mode_of(content_type);
+            },
+            [](const ce::message& received) { return ce::kafka::detect_content_mode(received); });
+      };
+    };
 
 int main() {}

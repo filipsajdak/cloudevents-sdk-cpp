@@ -47,6 +47,24 @@ struct kafka_traits {
 
 static_assert(binding::binding_traits<kafka_traits>);
 
+// spec: SWR-KAFKA-0005
+// spec: SWR-BIND-0019
+/// The mode a `content-type` value declares, compared byte for byte: `batched` for one starting
+/// with `application/cloudevents-batch`, `structured` for one starting with
+/// `application/cloudevents`, `binary_mode` for any other: what `detect_content_mode` decides for a
+/// record with that `content-type`, which the suite
+/// `kafka-binary-mode-refuses-a-cloudevents-media-type` holds the two to. Binary-mode `to_message`
+/// refuses a `datacontenttype` it does not read as `binary_mode`.
+[[nodiscard]] constexpr auto content_mode_of(std::string_view content_type) noexcept
+    -> content_mode {
+  if (!content_type.starts_with(binding::detail::cloudevents_media_type_prefix)) {
+    return content_mode::binary_mode;
+  }
+  return content_type.starts_with(binding::detail::batch_media_type_prefix)
+             ? content_mode::batched
+             : content_mode::structured;
+}
+
 }  // namespace detail
 
 [[nodiscard]] inline auto detect_content_mode(const message& incoming) -> content_mode {
@@ -64,6 +82,10 @@ static_assert(binding::binding_traits<kafka_traits>);
 }
 
 // spec: SWR-KAFKA-0005
+// spec: SWR-BIND-0019
+/// An event as a Kafka record value in `mode`. Binary mode refuses, with `errc::invalid_argument`,
+/// an event whose `datacontenttype` `detect_content_mode` would read as structured: a media type
+/// starting with `application/cloudevents`, byte for byte, after any leading whitespace.
 template <json::json_codec Codec>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
   if (mode == content_mode::batched) {
@@ -72,6 +94,12 @@ template <json::json_codec Codec>
 
   if (mode == content_mode::structured) {
     return binding::encode_structured<detail::kafka_traits, Codec>(cloud_event);
+  }
+
+  if (auto readable =
+          binding::detail::refuse_format_media_type<detail::content_mode_of>(cloud_event);
+      !readable) {
+    return ce::v4::detail::forward_failure(std::move(readable).error());
   }
 
   message out;

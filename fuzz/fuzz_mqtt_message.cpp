@@ -17,6 +17,8 @@
 #include <cloudevents/binding/mqtt.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
 
+#include "binary_readback.hpp"
+
 namespace {
 
 using codec = ce::codec::nlohmann_codec;
@@ -69,14 +71,17 @@ void exercise(const ce::message& incoming) {
   }
 
   // A decoded event writes back out in structured mode, and in binary mode when its values fit an
-  // MQTT string; what binary mode wrote reads back under the same policy.
+  // MQTT string and its datacontenttype would not make the message read as structured
+  // (SWR-BIND-0019); what binary mode wrote reads back under the same policy as the same event.
   if (!ce::mqtt::to_message<codec, Names>(*decoded, ce::content_mode::structured)) {
     __builtin_trap();
   }
-  if (auto written = ce::mqtt::to_message<codec, Names>(*decoded, ce::content_mode::binary_mode);
-      written && !ce::mqtt::from_message<codec, Names>(*written)) {
-    __builtin_trap();
-  }
+  ce_fuzz::check_binary_write(
+      *decoded,
+      ce::mqtt::to_message<codec, Names>(*decoded, ce::content_mode::binary_mode),
+      ce::mqtt::detail::content_mode_of,
+      ce_fuzz::value_limits::transport,
+      [](const ce::message& written) { return ce::mqtt::from_message<codec, Names>(written); });
 }
 
 }  // namespace

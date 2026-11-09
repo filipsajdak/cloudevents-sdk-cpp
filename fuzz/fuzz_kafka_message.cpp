@@ -14,6 +14,8 @@
 #include <cloudevents/binding/kafka.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
 
+#include "binary_readback.hpp"
+
 namespace {
 
 /// Consume `name: value` lines until a blank line; the rest is the record value.
@@ -57,18 +59,32 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
   if (decoded) {
     // Every header value that got here passed UTF-8 validation on the way in, so
     // writing it back out cannot fail on UTF-8; a failure means the two
-    // directions disagree about what a valid value is.
-    if (!ce::kafka::to_message<ce::codec::nlohmann_codec>(*decoded,
-                                                          ce::content_mode::binary_mode)) {
-      __builtin_trap();
-    }
+    // directions disagree about what a valid value is. What binary mode writes
+    // reads back as the same event, and the one refusal is a datacontenttype the
+    // reader would take for structured mode (SWR-BIND-0019).
+    ce_fuzz::check_binary_write(
+        *decoded,
+        ce::kafka::to_message<ce::codec::nlohmann_codec>(*decoded, ce::content_mode::binary_mode),
+        ce::kafka::detail::content_mode_of,
+        ce_fuzz::value_limits::none,
+        [](const ce::message& written) {
+          return ce::kafka::from_message<ce::codec::nlohmann_codec>(written);
+        });
 
-    // Key mapping reads the event and never edits it (SWR-KAFKA-0009).
+    // Key mapping reads the event and never edits it (SWR-KAFKA-0009), and a
+    // record is refused only for the media type, as to_message is.
     const ce::event before = *decoded;
     auto keyed = ce::kafka::to_record<ce::codec::nlohmann_codec, ce::kafka::partitionkey_mapper>(
         *decoded, ce::content_mode::binary_mode);
-    if (!keyed || !(*decoded == before)) {
+    if (!(*decoded == before)) {
       __builtin_trap();
+    }
+    if (!keyed) {
+      if (!ce_fuzz::names_a_format(*decoded, ce::kafka::detail::content_mode_of) ||
+          !ce_fuzz::is_format_refusal(keyed.error())) {
+        __builtin_trap();
+      }
+      return 0;
     }
     // A key implies the attribute that produced it still travels.
     if (keyed->key && keyed->value.header_fields.find_exact("ce_partitionkey") == nullptr) {

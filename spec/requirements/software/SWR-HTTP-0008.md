@@ -10,14 +10,16 @@ rationale: >
   in both places would let a receiver read two conflicting media types for one body.
   CR-0010 added the exception: a datacontenttype that starts with application/cloudevents would make
   the Content-Type header declare structured mode, so SWR-BIND-0019 refuses the event instead.
+  CR-0011 added another: binary data under a JSON media type would be parsed by the reader and fail,
+  so SWR-BIND-0021 refuses that event too.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-HTTP-0001]
 satisfied_by: [code:include/cloudevents/binding/http.hpp]
 verified_by: [test:test/http_binding_test.cpp::datacontenttype-header-mapping]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
 When producing a `message` in binary mode from an event carrying `datacontenttype` that
-SWR-BIND-0019 does not refuse, the binding shall emit that value as the `Content-Type`
+neither SWR-BIND-0019 nor SWR-BIND-0021 refuses, the binding shall emit that value as the `Content-Type`
 header while omitting any `ce-datacontenttype` header.

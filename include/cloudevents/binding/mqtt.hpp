@@ -68,6 +68,22 @@ struct mqtt_traits {
   }
 };
 
+// spec: SWR-MQTT-0004
+// spec: SWR-BIND-0019
+/// The mode a Content Type property declares, compared byte for byte: `batched` for one starting
+/// with `application/cloudevents-batch`, `structured` for one starting with
+/// `application/cloudevents`, `binary_mode` for any other. `detect_content_mode` reads a received
+/// message with it, and binary-mode `to_message` refuses a `datacontenttype` it does not read as
+/// `binary_mode`.
+[[nodiscard]] constexpr auto content_mode_of(std::string_view content_type) noexcept
+    -> content_mode {
+  if (!content_type.starts_with(structured_media_type_prefix)) {
+    return content_mode::binary_mode;
+  }
+  return content_type.starts_with(batch_media_type_prefix) ? content_mode::batched
+                                                           : content_mode::structured;
+}
+
 }  // namespace detail
 
 // spec: SWR-MQTT-0012
@@ -105,13 +121,7 @@ static_assert(binding::binding_traits<detail::mqtt_traits<prefixed_names>>);
   if (declared == nullptr) {
     return content_mode::binary_mode;
   }
-  if (std::string_view{*declared}.starts_with(detail::batch_media_type_prefix)) {
-    return content_mode::batched;
-  }
-  if (std::string_view{*declared}.starts_with(detail::structured_media_type_prefix)) {
-    return content_mode::structured;
-  }
-  return content_mode::binary_mode;
+  return detail::content_mode_of(*declared);
 }
 
 namespace detail {
@@ -216,8 +226,13 @@ template<json::json_codec Codec, name_policy Names>
   return std::move(*under_construction).build();
 }
 
+// spec: SWR-BIND-0019
 template<json::json_codec Codec, name_policy Names>
 [[nodiscard]] auto encode_binary(const event& cloud_event) -> result<message> {
+  if (auto readable = binding::detail::refuse_format_media_type<content_mode_of>(cloud_event);
+      !readable) {
+    return ce::v4::detail::forward_failure(std::move(readable).error());
+  }
   message out;
   if (auto written = binding::write_attributes<mqtt_traits<Names>>(cloud_event, out.header_fields);
       !written) {
@@ -237,7 +252,9 @@ template<json::json_codec Codec, name_policy Names>
 /// Content Type `application/cloudevents+json` as the only header. Binary mode is the data as the
 /// body, `datacontenttype` as the Content Type property and every other attribute and extension as
 /// a User Property named as `Names` says: unchanged by default, `ce-` followed by the name for
-/// `prefixed_names`. Batch mode is refused with `errc::invalid_argument`. A value that is not
+/// `prefixed_names`. Batch mode is refused with `errc::invalid_argument`, and so is binary mode for
+/// an event whose `datacontenttype` `detect_content_mode` would read as structured once its leading
+/// whitespace is gone (SWR-BIND-0019). A value that is not
 /// well-formed UTF-8 is `errc::invalid_utf8`; one with NUL or over 65,535 bytes is
 /// `errc::invalid_argument`.
 template<json::json_codec Codec, name_policy Names = unprefixed_names>

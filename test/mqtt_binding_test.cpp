@@ -13,6 +13,7 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+#include "binary_media_type_checks.hpp"
 #include "binding_decode_options.hpp"
 #include "codecs_under_test.hpp"
 #include "equality.hpp"
@@ -973,6 +974,30 @@ const boost::ut::suite<"mqtt-foreign-user-property-ignored"> mqtt_foreign_ignore
 const boost::ut::suite<"mqtt-binary-mode-detection"> mqtt_binary_detection = [] {
   for_each_codec_named(
       []<class C>(std::string_view codec) { check_binary_mode_detection<C>(codec); });
+};
+
+// spec: SWR-BIND-0019
+const boost::ut::suite<"mqtt-binary-mode-refuses-a-cloudevents-media-type"> mqtt_format_type = [] {
+  for_each_codec_named([]<class C>(std::string_view codec) {
+    ce_test::check_binary_refuses_format_media_type(
+        std::string{codec}.append(", unprefixed_names"),
+        content_type_name,
+        ce_test::media_type_reading::byte_for_byte,
+        [](const ce::event& cloud_event, ce::content_mode mode) {
+          return ce::mqtt::to_message<C>(cloud_event, mode);
+        },
+        [](const ce::message& incoming) { return ce::mqtt::from_message<C>(incoming); });
+    ce_test::check_binary_refuses_format_media_type(
+        std::string{codec}.append(", prefixed_names"),
+        content_type_name,
+        ce_test::media_type_reading::byte_for_byte,
+        [](const ce::event& cloud_event, ce::content_mode mode) {
+          return ce::mqtt::to_message<C, ce::mqtt::prefixed_names>(cloud_event, mode);
+        },
+        [](const ce::message& incoming) {
+          return ce::mqtt::from_message<C, ce::mqtt::prefixed_names>(incoming);
+        });
+  });
 };
 
 int main() {}

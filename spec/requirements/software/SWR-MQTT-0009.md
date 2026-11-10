@@ -11,13 +11,14 @@ rationale: >
   (:62-66, :146-147). Owner ruling 2026-10-24 (ruling 2): follow the text by default. The same call
   with the opt-in of SWR-MQTT-0012 writes the sdk-go form. CR-0010 added the exception: a
   datacontenttype that starts with application/cloudevents would make the Content Type declare
-  structured mode (SWR-MQTT-0004), so SWR-BIND-0019 refuses the event instead.
+  structured mode (SWR-MQTT-0004), so SWR-BIND-0019 refuses the event instead. CR-0011 added another: binary data under a JSON media type
+  would be parsed by the reader and fail, so SWR-BIND-0021 refuses that event too.
 verification_method: test
 security_classification: operational
 derived_from: [SYS-MQTT-0001]
 satisfied_by: [code:include/cloudevents/binding/mqtt.hpp]
 verified_by: [test:test/mqtt_binding_test.cpp::mqtt-binary-mode-unprefixed-names, test:test/mqtt_binding_test.cpp::mqtt-binary-mode-no-ce-prefix]
 owner: filip.sajdak
-version: 2
+version: 3
 ---
-The MQTT binding shall write an event that SWR-BIND-0019 does not refuse in binary mode as a message whose body is the event data as is, whose Content Type is datacontenttype, and whose User Properties are every other attribute and extension under its own name with no prefix.
+The MQTT binding shall write an event that neither SWR-BIND-0019 nor SWR-BIND-0021 refuses in binary mode as a message whose body is the event data as is, whose Content Type is datacontenttype, and whose User Properties are every other attribute and extension under its own name with no prefix.

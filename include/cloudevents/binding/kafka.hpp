@@ -83,9 +83,11 @@ static_assert(binding::binding_traits<kafka_traits>);
 
 // spec: SWR-KAFKA-0005
 // spec: SWR-BIND-0019
+// spec: SWR-BIND-0020
 /// An event as a Kafka record value in `mode`. Binary mode refuses, with `errc::invalid_argument`,
 /// an event whose `datacontenttype` `detect_content_mode` would read as structured: a media type
-/// starting with `application/cloudevents`, byte for byte, after any leading whitespace.
+/// starting with `application/cloudevents`, byte for byte, after any leading whitespace. It
+/// refuses the same way a `datacontenttype` containing CR or LF.
 template <json::json_codec Codec>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
   if (mode == content_mode::batched) {

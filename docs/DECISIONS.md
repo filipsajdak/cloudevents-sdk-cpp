@@ -1928,6 +1928,31 @@ model has an empty identity and the models differ, as the v4 operator does. No
 declaration changes, and no document v0.5.0 could build has an empty identity
 (SWR-JSON-0039), so every result v0.5.0 produced is kept (D-CODEC-3).
 
+## D-CORE-12: The CR and LF check sits beside the media-type grammar, not in it
+
+CR-0012 and SWR-CORE-0041 rule that a `datacontenttype` with CR or LF is invalid in every generation, and SWR-BIND-0020 adds the writer check; the code leaves these details to the author, and the owner may overrule each.
+
+- **A pattern local to the policy body, not a change to the shared one.**
+  `content_type_pattern` is a `ctll::fixed_string` whose type carries its length, so any change to it changes a published declaration and fails the frozen-API gate.
+  It also drives `is_json_content_type`, whose answer this change must not move.
+  `datacontenttype_policy::check` therefore matches a pattern declared inside its body: the same grammar with the whitespace class `[ \t\x0B\x0C]` (`\s` without CR and LF) and a parameter part of `[^\r\n]*`.
+  One pass refuses a line break and a malformed media type alike, with the same `invalid_content_type` and the same detail.
+  A random comparison of 3,000,000 strings over space, tab, VT, FF, CR, LF and media-type characters found no input on which it differs from "no CR or LF, and `content_type_pattern` matches".
+  VT and FF are written as `\x0B` and `\x0C` because CTRE reads `\v` as the vertical-whitespace class, which includes LF.
+- **`ce::v1` searches for CR and LF in `event::validate()`**, with two single-character `find` calls, ahead of its `is_json_content_type` short cut, which reads the same grammar and accepts `application/json; a=b\r\nc`.
+  It keeps the separate search because of that short cut, and its `validate()` is on no `ce::v4` receive path.
+- **The writer check is one function for the three bindings.**
+  `binding::detail::refuse_media_type<content_mode_of>(std::string_view)` refuses a line break first and then makes the SWR-BIND-0019 prefix test; `refuse_format_media_type`, which every binary writer already calls, delegates to it, so no call site changes and no new branch is added to a writer.
+  The suites call it directly, because no event can carry such a value to `to_message`.
+- **Only CR and LF.** VT and FF stay as the grammar admits them: they end no line in any of the four transports and CR-0012 does not rule on them.
+  The SWR-BIND-0019 writer still skips them, with space and tab, before its prefix test.
+- **The fuzz targets check the invariant, not the refusal.** `ce_fuzz::check_media_type_has_no_line_break` traps when a decoded event holds such a value, in the JSON target, the NATS target and every target that calls `check_binary_write`.
+- **One pass, because a separate scan cost too much on the receive path.**
+  The perf job (x86, g++-14) measured a `find_first_of("\r\n")` scan before the grammar at +2.05% to +5.30% on 23 binary-decode operations of HTTP, Kafka and NATS, against the +2% limit of SWR-PERF-0001.
+  Two single-character `find` calls brought HTTP and NATS to +0.4% and left four Kafka operations at +2.43% to +2.69%.
+  The local pattern replaces the grammar match instead of adding to it.
+- **`fuzz/corpus/** -text` in a root `.gitattributes`** keeps the CR in the binary-mode seeds, which `core.autocrlf=input` would otherwise strip on commit.
+
 ## D-EXT-6: `set_data` copies the declared media type back, and a refusal changes nothing
 
 v4 `set_data` (SWR-EXT-0011, SWR-EXT-0013) tests the declared media type first

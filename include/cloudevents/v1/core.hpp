@@ -428,8 +428,13 @@ struct event {
       return fail(errc::invalid_attribute_value,
                   "datacontenttype is present but empty", "datacontenttype");
     }
-    if (datacontenttype && !is_json_content_type(*datacontenttype) &&
-        !ctre::match<detail::content_type_pattern>(*datacontenttype)) {
+    // spec: SWR-CORE-0041
+    constexpr char carriage_return = '\r';
+    constexpr char line_feed = '\n';
+    if (datacontenttype && (datacontenttype->find(carriage_return) != std::string::npos ||
+                            datacontenttype->find(line_feed) != std::string::npos ||
+                            (!is_json_content_type(*datacontenttype) &&
+                             !ctre::match<detail::content_type_pattern>(*datacontenttype)))) {
       return fail(errc::invalid_content_type, "not a valid media type", "datacontenttype");
     }
     if (dataschema && dataschema->empty()) {

@@ -13,12 +13,13 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 #include <cloudevents/binding/nats.hpp>
 #include <cloudevents/codec/nlohmann.hpp>
 
-#include <string>
+#include "media_type_line_break.hpp"
 
 namespace {
 
@@ -61,6 +62,7 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
   (void)ce::nats::from_message<ce::codec::nlohmann_codec>(incoming, {.retain_document_up_to = 0});
   (void)ce::nats::from_payload<ce::codec::nlohmann_codec>(payload, {.retain_document_up_to = 0});
   if (auto from_headers = ce::nats::from_message<ce::codec::nlohmann_codec>(incoming)) {
+    ce_fuzz::check_media_type_has_no_line_break(*from_headers);
     // Everything that got here percent-decoded and validated, so writing it back
     // out cannot fail; a failure means the two directions disagree.
     if (!ce::nats::to_message<ce::codec::nlohmann_codec>(*from_headers,
@@ -73,6 +75,7 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
   if (!decoded) {
     return 0;
   }
+  ce_fuzz::check_media_type_has_no_line_break(*decoded);
 
   auto reserialized = ce::nats::to_payload<ce::codec::nlohmann_codec>(*decoded);
   if (!reserialized) {

@@ -11,6 +11,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <boost/ut.hpp>
 
@@ -55,7 +56,6 @@ inline constexpr std::array media_type_cases{
     media_type_case{" application/cloudevents+json", true, true},
     media_type_case{"\\tapplication/cloudevents+json", true, true},
     media_type_case{" \\t application/cloudevents", true, true},
-    media_type_case{"\\r\\n application/cloudevents-batch+json", true, true},
     media_type_case{"\\u000b\\fapplication/cloudevents+json", true, true},
     media_type_case{"application/cloudevents+json \\t", true, true},
     media_type_case{" Application/CloudEvents+json", false, true},
@@ -71,6 +71,16 @@ inline constexpr std::array media_type_cases{
     media_type_case{"application/cloudevent", false, false},
     media_type_case{"application/json", false, false},
     media_type_case{"text/plain; x=application/cloudevents", false, false},
+};
+
+/// Media types with a line break before the CloudEvents prefix, as a JSON string spells them. The
+/// media-type grammar admits them, but SWR-CORE-0041 makes a CR or LF anywhere invalid, so the
+/// structured message carrying them no longer decodes and binary mode never sees them.
+inline constexpr std::array media_types_with_a_line_break{
+    std::string_view{"\\r\\n application/cloudevents-batch+json"},
+    std::string_view{"\\napplication/cloudevents+json"},
+    std::string_view{"application/cloudevents+json\\r\\n"},
+    std::string_view{"application/cloudevents+json; a=b\\r\\nX-Injected: 1"},
 };
 
 [[nodiscard]] inline auto document_declaring(std::string_view datacontenttype) -> std::string {
@@ -168,6 +178,18 @@ void check_binary_refuses_format_media_type(std::string_view label,
       expect_round_trip(case_label, *received, lay_out, read);
     }
   }
+
+  // A line break makes the media type invalid (SWR-CORE-0041): the structured message is refused.
+  for (const auto media_type : media_types_with_a_line_break) {
+    const auto received =
+        read(structured_message(content_type_name, document_declaring(media_type)));
+    expect(!received.has_value()) << label << ": " << media_type;
+    if (!received) {
+      expect(received.error().code == ce::errc::invalid_content_type)
+          << label << ": " << media_type;
+      expect(received.error().where == "datacontenttype") << label << ": " << media_type;
+    }
+  }
 }
 
 /// Content types the writer's predicate and the reader's detection must classify alike: every
@@ -231,6 +253,62 @@ void check_binary_keeps_format_media_type(std::string_view label,
       expect_round_trip(
           std::string{label}.append(": ").append(sample.datacontenttype), *received, lay_out, read);
     }
+  }
+}
+
+/// Content types with a CR, an LF or both at the start, in the parameters and at the end, as a
+/// transport would deliver them in the content-type field.
+inline constexpr std::array content_types_with_a_line_break{
+    std::string_view{"\r\ntext/plain"},
+    std::string_view{"\ntext/plain"},
+    std::string_view{"text/plain; a=b\r\nX-Injected: 1"},
+    std::string_view{"text/plain\r"},
+    std::string_view{"text/plain\r\n"},
+};
+
+/// A binary-mode message whose content-type field, under `content_type_name`, holds a line break
+/// fails `read` with `invalid_content_type` naming `datacontenttype`. `attributes` are the
+/// binding's fields for the required attributes.
+template<class Read>
+void check_reader_refuses_a_line_break(std::string_view label,
+                                       const ce::raw_headers& attributes,
+                                       std::string_view content_type_name,
+                                       Read read) {
+  using namespace boost::ut;
+
+  for (const auto content_type : content_types_with_a_line_break) {
+    ce::raw_headers fields = attributes;
+    fields.set_exact(std::string{content_type_name}, std::string{content_type});
+    const auto received = read(ce::message{.header_fields = std::move(fields)});
+    expect(!received.has_value()) << label << ": " << content_type;
+    if (!received) {
+      expect(received.error().code == ce::errc::invalid_content_type)
+          << label << ": " << content_type;
+      expect(received.error().where == "datacontenttype") << label << ": " << content_type;
+    }
+  }
+}
+
+/// The check binary mode makes before it writes a media type into the content-type field,
+/// `refuse(media_type)`, refuses each of `content_types_with_a_line_break` with `invalid_argument`
+/// naming `datacontenttype`, and accepts the same media types without the line break. No event
+/// holds such a value, so the check is called directly.
+template<class Refuse>
+void check_writer_refuses_a_line_break(std::string_view label, Refuse refuse) {
+  using namespace boost::ut;
+
+  for (const auto content_type : content_types_with_a_line_break) {
+    const auto checked = refuse(content_type);
+    expect(!checked.has_value()) << label << ": " << content_type;
+    if (!checked) {
+      expect(checked.error().code == ce::errc::invalid_argument) << label << ": " << content_type;
+      expect(checked.error().where == "datacontenttype") << label << ": " << content_type;
+    }
+  }
+  for (const auto content_type : {std::string_view{"text/plain"},
+                                  std::string_view{" text/plain\t"},
+                                  std::string_view{"text/plain; a=b"}}) {
+    expect(refuse(content_type).has_value()) << label << ": " << content_type;
   }
 }
 

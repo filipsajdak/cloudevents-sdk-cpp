@@ -715,4 +715,28 @@ const boost::ut::suite<"kafka-binary-mode-refuses-a-cloudevents-media-type"> kaf
       };
     };
 
+// spec: SWR-CORE-0041
+// spec: SWR-BIND-0020
+const boost::ut::suite<"kafka-binary-mode-refuses-a-line-break-in-the-media-type">
+    kafka_media_type_line_break = [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::check_reader_refuses_a_line_break(
+              codec,
+              {{"ce_specversion", "1.0"}, {"ce_id", "1"}, {"ce_source", "/s"}, {"ce_type", "t"}},
+              "content-type",
+              [](const ce::message& incoming) { return ce::kafka::from_message<C>(incoming); });
+        };
+      });
+
+      "the binary writer's check refuses a line break"_test = [] {
+        ce_test::check_writer_refuses_a_line_break("kafka", [](std::string_view media_type) {
+          return ce::binding::detail::refuse_media_type<ce::kafka::detail::content_mode_of>(
+              media_type);
+        });
+      };
+    };
+
 int main() {}

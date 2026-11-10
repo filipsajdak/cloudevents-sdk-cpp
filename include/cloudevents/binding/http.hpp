@@ -149,10 +149,12 @@ static_assert(binding::binding_traits<detail::http_traits<literal_values>>);
 // spec: SWR-HTTP-0008
 // spec: SWR-HTTP-0009
 // spec: SWR-BIND-0019
+// spec: SWR-BIND-0020
 /// An event as an HTTP message in `mode`. Binary mode refuses, with `errc::invalid_argument`, an
 /// event whose `datacontenttype` `detect_content_mode` would read as structured or batched: a
 /// media type starting with `application/cloudevents`, in any letter case, after any leading
-/// whitespace, which an HTTP field parser drops.
+/// whitespace, which an HTTP field parser drops. It refuses the same way a `datacontenttype`
+/// containing CR or LF, which would break the `Content-Type` field.
 template <json::json_codec Codec, value_policy Values = percent_encoded_values>
 [[nodiscard]] auto to_message(const event& cloud_event, content_mode mode) -> result<message> {
   if (mode == content_mode::structured) {

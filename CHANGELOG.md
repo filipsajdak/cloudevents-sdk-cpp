@@ -6,6 +6,14 @@ Notable changes per release. Dates are the tag date.
 
 ### Fixed
 
+- **A `datacontenttype` with CR or LF in it was accepted and written into a header field (every release since v0.1.0, every generation; CR-0012).**
+  The media-type check admitted a line break before the type, after the subtype and anywhere in the parameters, so such a value decoded from JSON, Protobuf or a message, and binary mode wrote it unchanged into the HTTP `Content-Type` header, the Kafka `content-type` header and the MQTT Content Type property.
+  `datacontenttype::make`, the `_mediatype` literal and `ce::v1::event::validate()` now refuse CR or LF anywhere with `errc::invalid_content_type`, in `ce::v1` to `ce::v4`.
+  A JSON or Protobuf document, or an HTTP, Kafka, MQTT or NATS message, whose `datacontenttype` contains CR or LF decoded before and now fails with `invalid_content_type`, in each generation that has that format or binding (Protobuf and MQTT are `ce::v4` only).
+  Spaces and tabs around the media type are still accepted.
+  The `ce::v4` HTTP, Kafka and MQTT binary writers also refuse such a media type with `errc::invalid_argument`, as a second check.
+  The fuzz targets of JSON and the four bindings now check that no decoded event holds such a value.
+
 - **Binary mode wrote an event that read back as another mode (HTTP since v0.1.0, Kafka since v0.2.0, MQTT since v0.7.0; CR-0010).**
   An event whose `datacontenttype` starts with `application/cloudevents` (for example `application/cloudevents+json`, or the batch media type) was written in binary mode with that value in the content-type field, which is where every reader decides the mode.
   The receiver therefore read the message as structured: it failed with `parse_error` or `invalid_argument`, so the event was dropped, or, when the event's data was itself a CloudEvent, it returned that inner event, so a relay forwarding in binary mode delivered a different event from the one it received.

@@ -1,0 +1,2 @@
+# Fuzz seeds are raw bytes: a CR in one is part of the input, never a line ending.
+fuzz/corpus/** -text

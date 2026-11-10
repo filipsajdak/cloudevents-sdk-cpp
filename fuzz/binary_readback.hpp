@@ -12,6 +12,8 @@
 #include <cloudevents/message.hpp>
 #include <cloudevents/result.hpp>
 
+#include "media_type_line_break.hpp"
+
 namespace ce_fuzz {
 
 /// Whether binary mode must refuse `cloud_event`: its `datacontenttype`, after leading whitespace,
@@ -61,15 +63,17 @@ inline constexpr std::string_view media_type_attribute = "datacontenttype";
          failure.where != media_type_attribute;
 }
 
-/// Traps unless the binary-mode `written` of `decoded` is the SWR-BIND-0019 refusal exactly when
-/// `names_a_format` says so, otherwise a transport-limit refusal where `limits` allows one, and
-/// otherwise reads back through `read` as the same event.
+/// Traps unless `decoded` declares no `datacontenttype` with CR or LF (SWR-CORE-0041) and the
+/// binary-mode `written` of `decoded` is the SWR-BIND-0019 refusal exactly when `names_a_format`
+/// says so, otherwise a transport-limit refusal where `limits` allows one, and otherwise reads back
+/// through `read` as the same event.
 template<class Read>
 void check_binary_write(const ce::event& decoded,
                         const ce::result<ce::message>& written,
                         ce::content_mode (*content_mode_of)(std::string_view) noexcept,
                         value_limits limits,
                         Read read) {
+  check_media_type_has_no_line_break(decoded);
   if (names_a_format(decoded, content_mode_of)) {
     if (written || !is_format_refusal(written.error())) {
       __builtin_trap();

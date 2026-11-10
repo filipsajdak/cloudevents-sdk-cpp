@@ -799,4 +799,29 @@ const boost::ut::suite<"nats-binary-mode-keeps-a-cloudevents-media-type"> nats_f
   });
 };
 
+// spec: SWR-CORE-0041
+const boost::ut::suite<"nats-datacontenttype-line-break"> nats_line_break = [] {
+  using namespace boost::ut;
+
+  // NATS binary mode carries datacontenttype percent-encoded, and its reader decodes an escaped CR
+  // or LF back into the byte, which the media-type check then refuses.
+  ce_test::for_each_codec([]<class C>(std::string_view codec) {
+    test(std::string{codec}) = [codec] {
+      for (const auto escaped :
+           {"%0D%0Atext/plain"sv, "text/plain%0A"sv, "text/plain;%20a=b%0D%0AX-Injected:%201"sv}) {
+        const ce::message incoming{.header_fields = {{"ce-specversion", "1.0"},
+                                                     {"ce-id", "1"},
+                                                     {"ce-source", "/s"},
+                                                     {"ce-type", "t"},
+                                                     {"ce-datacontenttype", std::string{escaped}}}};
+        const auto read = ce::nats::from_message<C>(incoming);
+        expect(!read.has_value()) << codec << ": " << escaped;
+        if (!read) {
+          expect(read.error().code == ce::errc::invalid_content_type) << codec << ": " << escaped;
+        }
+      }
+    };
+  });
+};
+
 int main() {}

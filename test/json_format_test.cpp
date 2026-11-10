@@ -2194,4 +2194,45 @@ const boost::ut::suite<"format-rules-shared-with-the-bench"> format_rules_shared
   });
 };
 
+// spec: SWR-CORE-0041
+const boost::ut::suite<"datacontenttype-cr-lf-in-a-json-document"> json_datacontenttype_line_break =
+    [] {
+      using namespace boost::ut;
+
+      // The members as a JSON document spells them: `\r` and `\n` are escapes the codec turns into
+      // CR and LF, at the start, inside the parameters and at the end.
+      constexpr std::string_view escaped_media_types[] = {
+          R"(\r\ntext/plain)",
+          R"(text/plain; a=b\r\nX-Injected: 1)",
+          R"(text/plain\n)",
+          R"(text/plain\r)",
+      };
+
+      ce_test::for_each_codec([&escaped_media_types]<class C>(std::string_view codec) {
+        for (const auto media_type : escaped_media_types) {
+          const auto document =
+              std::string{R"({"specversion":"1.0","id":"1","source":"/s","type":"t",)"
+                          R"("datacontenttype":")"}
+                  .append(media_type)
+                  .append(R"(","data":"x"})");
+          const auto decoded = ce::json_format<C>::decode(document);
+          expect(!decoded.has_value()) << codec << ": " << media_type;
+          if (!decoded) {
+            expect(decoded.error().code == ce::errc::invalid_content_type)
+                << codec << ": " << media_type;
+            expect(decoded.error().where == "datacontenttype"sv) << codec << ": " << media_type;
+          }
+          const auto batch =
+              ce::json_format<C>::decode_batch(std::string{"["}.append(document).append("]"));
+          expect(!batch.has_value()) << codec << ": batch, " << media_type;
+        }
+
+        // Spaces and tabs around the media type still decode.
+        const auto spaced =
+            ce::json_format<C>::decode(R"({"specversion":"1.0","id":"1","source":"/s","type":"t",)"
+                                       R"("datacontenttype":" text/plain\t"})");
+        expect(spaced.has_value()) << codec;
+      });
+    };
+
 int main() {}

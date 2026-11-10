@@ -93,7 +93,7 @@ An event built from these types is valid, so there is no validation step to run 
 | `source` | `ce::source` | `"..."_source` | non-empty UTF-8 |
 | `type` | `ce::type` | `"..."_type` | non-empty UTF-8 |
 | `specversion` | `ce::spec_version` | none | always `1.0` |
-| `datacontenttype` | `ce::datacontenttype` | `"..."_mediatype` | an RFC 2046 media type |
+| `datacontenttype` | `ce::datacontenttype` | `"..."_mediatype` | an RFC 2046 media type, with no CR or LF anywhere |
 | `dataschema` | `ce::dataschema` | `"..."_dataschema` | non-empty UTF-8 |
 | `subject` | `ce::subject` | `"..."_subject` | non-empty UTF-8 |
 | `time` | `ce::timestamp` | none | RFC 3339 |
@@ -101,6 +101,10 @@ An event built from these types is valid, so there is no validation step to run 
 
 `source` is not checked against RFC 3986.
 Real producers send values like `/sensors/7`, and refusing them helps no one.
+
+A `datacontenttype` that contains CR or LF anywhere, in the parameters too, is refused with `invalid_content_type`, because binary mode writes it into a header field, which may not contain either (RFC 9110).
+Spaces and tabs around the media type are accepted.
+This holds in every generation, `ce::v1::event::validate()` included, since v0.7.1: a JSON document, a Protobuf document (`ce::v4` only) or a message that declares such a `datacontenttype` decoded before and now fails with `invalid_content_type`.
 
 ### Constants are checked at compile time
 
@@ -331,7 +335,7 @@ auto order_id(std::string_view text) -> ce::result<std::string> {
 | `invalid_attribute_value` | an empty `subject`, `dataschema` or `datacontenttype`; a context attribute that is not a JSON string; a fractional digit count above nine; `sampled_rate::validate()` on a rate below one |
 | `unsupported_spec_version` | a `specversion` other than `1.0` |
 | `invalid_timestamp` | text that is not an RFC 3339 date-time, or names a date or time that does not exist |
-| `invalid_content_type` | a `datacontenttype` that is not a media type |
+| `invalid_content_type` | a `datacontenttype` that is not a media type, including one that contains CR or LF |
 | `parse_error` | text the codec cannot parse; a document that is not a JSON object; a batch that is not a JSON array; a `json_text` payload that is not JSON, found when encoding |
 | `type_mismatch` | a floating-point, array or object extension value; `data_as` on a payload that is not JSON; a typed extension or payload field whose value has the wrong type |
 | `out_of_range` | an integer extension outside 32 bits; a timestamp outside roughly 1678 to 2262; an integer too large for a typed payload field |
@@ -339,7 +343,7 @@ auto order_id(std::string_view text) -> ce::result<std::string> {
 | `invalid_base64` | `data_base64` that is not RFC 4648 section 4 base64, including over-padding and the URL-safe alphabet |
 | `invalid_utf8` | an attribute value, or a header value on either side of a binding, that is not well-formed UTF-8 |
 | `not_a_cloudevent` | an HTTP, Kafka or NATS message with neither a `specversion` field nor a CloudEvents content type; a batch reader given a message that is not a batch |
-| `invalid_argument` | a batch passed to the single-event entry point, or the reverse; a batch on Kafka or NATS, which define none; two header fields carrying one attribute; `ce-datacontenttype` on HTTP or Kafka, which carry it in their content-type field; a control character under `http::literal_values`; binary mode on HTTP, Kafka or MQTT for an event whose `datacontenttype` starts with `application/cloudevents` |
+| `invalid_argument` | a batch passed to the single-event entry point, or the reverse; a batch on Kafka or NATS, which define none; two header fields carrying one attribute; `ce-datacontenttype` on HTTP or Kafka, which carry it in their content-type field; a control character under `http::literal_values`; binary mode on HTTP, Kafka or MQTT for an event whose `datacontenttype` starts with `application/cloudevents`, or for a media type with CR or LF, which only a value that bypassed the attribute check can carry |
 
 `not_a_cloudevent` is kept apart from a malformed event on purpose.
 A receiver usually passes such a message along unchanged, while it rejects a malformed one.

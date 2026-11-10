@@ -218,6 +218,12 @@ if(Python3_Interpreter_FOUND)
     COMMAND Python3::Interpreter -m unittest discover
             -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_vcpkg_release_*.py")
   set_tests_properties(vcpkg_release_guard_tools PROPERTIES LABELS "tools")
+  # The helper that keeps the suites building git repositories out of the real one
+  # when ctest runs inside git rebase --exec or a hook (scripts/git_testing.py).
+  add_test(NAME git_testing_tools
+    COMMAND Python3::Interpreter -m unittest discover
+            -s "${PROJECT_SOURCE_DIR}/scripts" -p "test_git_testing*.py")
+  set_tests_properties(git_testing_tools PROPERTIES LABELS "tools")
   # The coverage gate's configuration (SWR-SEC-0007): the named branch floor, both
   # gcovr flags and the pinned toolchain of the CI job. Dropping any of them leaves
   # the job green and ungating, so a build that runs ctest has to notice.

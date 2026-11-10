@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import git_testing  # noqa: E402
 import mutation_summary  # noqa: E402
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -121,6 +122,7 @@ class Scenario(unittest.TestCase):
     """mutation.sh in a throwaway repository, with a stub in place of mull-runner."""
 
     def setUp(self) -> None:
+        git_testing.isolate(self)
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         tmp = Path(self._tmp.name).resolve()

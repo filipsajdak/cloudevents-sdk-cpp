@@ -19,8 +19,12 @@ import sys
 import tempfile
 import unittest
 
+SCRIPTS = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
 SPEC_TOOLS = pathlib.Path(__file__).resolve().parent.parent / "spec" / "tools"
 sys.path.insert(0, str(SPEC_TOOLS))
+
+import git_testing  # noqa: E402
 
 try:
     import derive_delivered_in as tool  # noqa: E402
@@ -114,6 +118,7 @@ class Scenario:
     repo: Repo
 
     def setUp(self) -> None:
+        git_testing.isolate(self)  # type: ignore[arg-type]
         self.repo = Repo()
         self.addCleanup(self.repo.close)  # type: ignore[attr-defined]
 

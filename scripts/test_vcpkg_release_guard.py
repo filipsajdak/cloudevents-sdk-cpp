@@ -24,6 +24,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import check_vcpkg_release_guard as guard  # noqa: E402
+import git_testing  # noqa: E402
 
 OLD_HASH = "a" * guard.SHA512_HEX_DIGITS
 NEW_HASH = "b" * guard.SHA512_HEX_DIGITS
@@ -128,6 +129,7 @@ class GitRepository(unittest.TestCase):
     """The verdict read from a repository whose tags are releases."""
 
     def setUp(self) -> None:
+        git_testing.isolate(self)
         holder = tempfile.TemporaryDirectory()
         self.addCleanup(holder.cleanup)
         self.root = pathlib.Path(holder.name) / "repository"

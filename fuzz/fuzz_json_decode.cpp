@@ -14,6 +14,7 @@
 #include <cloudevents/format/json_format.hpp>
 
 #include "../test/mini_codec.hpp"
+#include "media_type_line_break.hpp"
 
 namespace {
 
@@ -72,6 +73,7 @@ extern "C" auto LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t siz
   using format = ce::json_format<ce::codec::nlohmann_codec>;
   auto decoded = format::decode(text);
   if (decoded) {
+    ce_fuzz::check_media_type_has_no_line_break(*decoded);
     // An event that decoded must re-encode, and the encoding must decode to the
     // same event: the decoder must not produce a value the encoder rejects or
     // rewrites (SWR-JSON-0031).

@@ -2,7 +2,7 @@
 uid: SWR-BIND-0020
 title: Binary mode refuses a datacontenttype containing CR or LF
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   Binary mode writes datacontenttype into the content-type field without the value policy that
@@ -17,8 +17,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-BIND-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/binding/common.hpp, code:include/cloudevents/binding/http.hpp, code:include/cloudevents/binding/kafka.hpp, code:include/cloudevents/binding/mqtt.hpp]
+verified_by: [test:test/http_binding_test.cpp::http-binary-mode-refuses-a-line-break-in-the-media-type, test:test/kafka_binding_test.cpp::kafka-binary-mode-refuses-a-line-break-in-the-media-type, test:test/mqtt_binding_test.cpp::mqtt-binary-mode-refuses-a-line-break-in-the-media-type]
 owner: filip.sajdak
 version: 1
 ---

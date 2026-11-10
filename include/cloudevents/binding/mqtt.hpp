@@ -227,6 +227,7 @@ template<json::json_codec Codec, name_policy Names>
 }
 
 // spec: SWR-BIND-0019
+// spec: SWR-BIND-0020
 template<json::json_codec Codec, name_policy Names>
 [[nodiscard]] auto encode_binary(const event& cloud_event) -> result<message> {
   if (auto readable = binding::detail::refuse_format_media_type<content_mode_of>(cloud_event);

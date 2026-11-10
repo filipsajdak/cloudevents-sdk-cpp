@@ -289,4 +289,27 @@ void check_reader_refuses_a_line_break(std::string_view label,
   }
 }
 
+/// The check binary mode makes before it writes a media type into the content-type field,
+/// `refuse(media_type)`, refuses each of `content_types_with_a_line_break` with `invalid_argument`
+/// naming `datacontenttype`, and accepts the same media types without the line break. No event
+/// holds such a value, so the check is called directly.
+template<class Refuse>
+void check_writer_refuses_a_line_break(std::string_view label, Refuse refuse) {
+  using namespace boost::ut;
+
+  for (const auto content_type : content_types_with_a_line_break) {
+    const auto checked = refuse(content_type);
+    expect(!checked.has_value()) << label << ": " << content_type;
+    if (!checked) {
+      expect(checked.error().code == ce::errc::invalid_argument) << label << ": " << content_type;
+      expect(checked.error().where == "datacontenttype") << label << ": " << content_type;
+    }
+  }
+  for (const auto content_type : {std::string_view{"text/plain"},
+                                  std::string_view{" text/plain\t"},
+                                  std::string_view{"text/plain; a=b"}}) {
+    expect(refuse(content_type).has_value()) << label << ": " << content_type;
+  }
+}
+
 }  // namespace ce_test

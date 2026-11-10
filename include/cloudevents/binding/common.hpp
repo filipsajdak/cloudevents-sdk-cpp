@@ -61,23 +61,43 @@ inline constexpr std::string_view media_type_whitespace = " \t\n\v\f\r";
   return media_type;
 }
 
+// spec: SWR-BIND-0020
+/// The characters that end a header field line, which no content-type field may carry.
+inline constexpr std::string_view line_break_characters = "\r\n";
+
 // spec: SWR-BIND-0019
-/// `errc::invalid_argument` at `datacontenttype` when the event declares a `datacontenttype` that
-/// `content_mode_of`, the binding's own reading of a received content type, takes for structured or
-/// batched mode once the leading whitespace a transport may drop is gone, because binary mode would
-/// write it into the content-type field and the message would read back in another mode. Success
-/// for any other event, one with no `datacontenttype` included.
+// spec: SWR-BIND-0020
+/// `errc::invalid_argument` at `datacontenttype` when binary mode cannot write `media_type` into
+/// the content-type field: it contains CR or LF, which would break the field, or `content_mode_of`,
+/// the binding's own reading of a received content type, takes it for structured or batched mode
+/// once the leading whitespace a transport may drop is gone, so the message would read back in
+/// another mode. Success for any other media type.
 template<content_mode (*content_mode_of)(std::string_view) noexcept>
-[[nodiscard]] auto refuse_format_media_type(const event& cloud_event) -> result<void> {
-  const auto& media_type = cloud_event.datacontenttype();
-  if (!media_type || content_mode_of(without_leading_whitespace(media_type->view())) ==
-                         content_mode::binary_mode) {
+[[nodiscard]] auto refuse_media_type(std::string_view media_type) -> result<void> {
+  if (media_type.find_first_of(line_break_characters) != std::string_view::npos) {
+    return fail(errc::invalid_argument,
+                "binary mode cannot write a datacontenttype with CR or LF into a header field",
+                "datacontenttype");
+  }
+  if (content_mode_of(without_leading_whitespace(media_type)) == content_mode::binary_mode) {
     return {};
   }
   return fail(errc::invalid_argument,
               "binary mode cannot carry a datacontenttype that names a CloudEvents format, "
               "because the message would read back in another mode",
               "datacontenttype");
+}
+
+// spec: SWR-BIND-0019
+// spec: SWR-BIND-0020
+/// `refuse_media_type` of the event's `datacontenttype`; success for an event without one.
+template<content_mode (*content_mode_of)(std::string_view) noexcept>
+[[nodiscard]] auto refuse_format_media_type(const event& cloud_event) -> result<void> {
+  const auto& media_type = cloud_event.datacontenttype();
+  if (!media_type) {
+    return {};
+  }
+  return refuse_media_type<content_mode_of>(media_type->view());
 }
 
 template <class T>

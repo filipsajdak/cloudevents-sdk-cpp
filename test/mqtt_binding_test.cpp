@@ -1001,6 +1001,7 @@ const boost::ut::suite<"mqtt-binary-mode-refuses-a-cloudevents-media-type"> mqtt
 };
 
 // spec: SWR-CORE-0041
+// spec: SWR-BIND-0020
 const boost::ut::suite<"mqtt-binary-mode-refuses-a-line-break-in-the-media-type">
     mqtt_media_type_line_break = [] {
       using namespace boost::ut;
@@ -1019,6 +1020,13 @@ const boost::ut::suite<"mqtt-binary-mode-refuses-a-line-break-in-the-media-type"
               return ce::mqtt::from_message<C, ce::mqtt::prefixed_names>(incoming);
             });
       });
+
+      "the binary writer's check refuses a line break"_test = [] {
+        ce_test::check_writer_refuses_a_line_break("mqtt", [](std::string_view media_type) {
+          return ce::binding::detail::refuse_media_type<ce::mqtt::detail::content_mode_of>(
+              media_type);
+        });
+      };
     };
 
 int main() {}

@@ -246,4 +246,72 @@ const boost::ut::suite<"attribute-literals-are-checked-when-compiled"> attribute
   };
 };
 
+namespace {
+
+/// Media types with a CR, an LF or both before the type, inside the parameter part, after the
+/// subtype and at the end: each matched the media-type grammar, which admits whitespace around the
+/// type and any byte in the parameters.
+constexpr std::string_view media_types_with_a_line_break[] = {
+    "\r\ntext/plain",
+    "\rtext/plain",
+    "\ntext/plain",
+    " \r\n text/plain",
+    "text/plain; a=b\r\nX-Injected: 1",
+    "text/plain; a=b\rc",
+    "text/plain; a=b\nc",
+    "text/plain\r\n; charset=utf-8",
+    "text/plain\r\n",
+    "text/plain\r",
+    "text/plain\n",
+    "application/json; charset=utf-8\r\n",
+};
+
+}  // namespace
+
+// spec: SWR-CORE-0041
+const boost::ut::suite<"datacontenttype-refuses-cr-and-lf"> datacontenttype_line_breaks = [] {
+  using namespace boost::ut;
+
+  "a CR or LF anywhere is not a media type"_test = [] {
+    for (const auto text : media_types_with_a_line_break) {
+      const auto built = ce::datacontenttype::make(text);
+      expect(!built.has_value()) << text;
+      if (!built) {
+        expect(built.error().code == ce::errc::invalid_content_type) << text;
+        expect(built.error().where == "datacontenttype"sv) << text;
+      }
+    }
+  };
+
+  // The literal runs the same check while compiling, so a literal with a line break is refused
+  // there; the policy's verdict is the evidence, as a literal that refuses cannot be written.
+  "the literal's check refuses a CR or LF"_test = [] {
+    using policy = ce::datacontenttype::policy_type;
+    static_assert(policy::check("\r\ntext/plain").has_value());
+    static_assert(policy::check("text/plain; a=b\r\nX-Injected: 1").has_value());
+    static_assert(policy::check("text/plain\n").has_value());
+    static_assert(policy::check("text/plain\r\n")->code == ce::errc::invalid_content_type);
+    static_assert(!policy::check(" text/plain \t").has_value());
+    expect(true);
+  };
+
+  // RFC 9110 lets a field value carry optional whitespace around it, and a field parser drops it,
+  // so spaces and tabs stay accepted.
+  "space and tab around the media type stay accepted"_test = [] {
+    expect(accepts<ce::datacontenttype>(" text/plain"sv));
+    expect(accepts<ce::datacontenttype>("\ttext/plain"sv));
+    expect(accepts<ce::datacontenttype>("text/plain \t"sv));
+    expect(accepts<ce::datacontenttype>("text/plain ; charset=utf-8"sv));
+    expect(accepts<ce::datacontenttype>("text/plain; a=\"b c\""sv));
+  };
+
+  // One check serves every generation that shares the type.
+  "every shared generation refuses it"_test = [] {
+    static_assert(std::is_same_v<ce::v2::datacontenttype, ce::datacontenttype>);
+    static_assert(std::is_same_v<ce::v3::datacontenttype, ce::datacontenttype>);
+    expect(refused<ce::v2::datacontenttype>("text/plain\r\n"sv, ce::errc::invalid_content_type));
+    expect(refused<ce::v3::datacontenttype>("\ntext/plain"sv, ce::errc::invalid_content_type));
+  };
+};
+
 int main() {}

@@ -2322,4 +2322,20 @@ const boost::ut::suite<"binary-mode-refuses-a-cloudevents-media-type"> http_form
   };
 };
 
+// spec: SWR-CORE-0041
+const boost::ut::suite<"http-binary-mode-refuses-a-line-break-in-the-media-type">
+    http_media_type_line_break = [] {
+      using namespace boost::ut;
+
+      ce_test::for_each_codec([]<class C>(std::string_view codec) {
+        test(std::string{codec}) = [codec] {
+          ce_test::check_reader_refuses_a_line_break(
+              codec,
+              {{"ce-specversion", "1.0"}, {"ce-id", "1"}, {"ce-source", "/s"}, {"ce-type", "t"}},
+              "Content-Type",
+              [](const ce::message& request) { return ce::http::from_message<C>(request); });
+        };
+      });
+    };
+
 int main() {}

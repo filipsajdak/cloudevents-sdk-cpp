@@ -302,7 +302,12 @@ struct datacontenttype_policy {
         refused) {
       return refused;
     }
-    if (!ctre::match<content_type_pattern>(text)) {
+    // spec: SWR-CORE-0041
+    // `content_type_pattern` without CR and LF: its whitespace class minus the two, and a parameter
+    // part of any other character, so one pass refuses a line break and a malformed media type.
+    constexpr auto media_type_without_line_breaks = ctll::fixed_string{
+        R"(^[ \t\x0B\x0C]*([A-Za-z0-9!#$%&'*+.^_`|~\-]+)/([A-Za-z0-9!#$%&'*+.^_`|~\-]+)[ \t\x0B\x0C]*(;[^\r\n]*)?$)"};
+    if (!ctre::match<media_type_without_line_breaks>(text)) {
       return static_error{
           .code = errc::invalid_content_type,
           .detail = "not a valid media type",

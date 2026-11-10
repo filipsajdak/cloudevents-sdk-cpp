@@ -1177,4 +1177,36 @@ const boost::ut::suite<"core-validate"> core_validate = [] {
 
 }  // namespace
 
+// spec: SWR-CORE-0041
+const boost::ut::suite<"v1-validate-refuses-cr-and-lf-in-datacontenttype"> v1_line_break = [] {
+  using namespace boost::ut;
+
+  // ce::v1 keeps its own copy of the media-type grammar, which admits CR and LF around the type
+  // and in the parameters; validate() refuses them as the shared check of ce::v2 to ce::v4 does.
+  "a CR or LF anywhere in datacontenttype is invalid_content_type"_test = [] {
+    for (const auto media_type : {"\r\ntext/plain"sv,
+                                  "\ntext/plain"sv,
+                                  "text/plain; a=b\r\nX-Injected: 1"sv,
+                                  "text/plain\r"sv,
+                                  "application/json\n"sv,
+                                  "application/json; a=b\r\nc"sv}) {
+      auto event = good_event();
+      event.datacontenttype = std::string{media_type};
+      const auto res = event.validate();
+      expect(!res.has_value()) << media_type;
+      expect(!res.has_value() && res.error().code == ce::v1::errc::invalid_content_type)
+          << media_type;
+      expect(!res.has_value() && res.error().where == "datacontenttype") << media_type;
+    }
+  };
+
+  "space and tab around the media type stay accepted"_test = [] {
+    for (const auto media_type : {" text/plain"sv, "text/plain \t"sv, "\tapplication/json"sv}) {
+      auto event = good_event();
+      event.datacontenttype = std::string{media_type};
+      expect(event.validate().has_value()) << media_type;
+    }
+  };
+};
+
 int main() {}

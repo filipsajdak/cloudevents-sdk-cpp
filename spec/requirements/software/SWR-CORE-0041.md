@@ -2,7 +2,7 @@
 uid: SWR-CORE-0041
 title: A datacontenttype containing CR or LF is refused as an invalid media type
 type: software
-status: reviewed
+status: approved
 priority: high
 rationale: >
   The CloudEvents core specification makes datacontenttype an RFC 2046 media type: a type, a
@@ -19,8 +19,8 @@ rationale: >
 verification_method: test
 security_classification: security-relevant
 derived_from: [SYS-CORE-0001]
-satisfied_by: []
-verified_by: []
+satisfied_by: [code:include/cloudevents/attributes.hpp, code:include/cloudevents/v1/core.hpp]
+verified_by: [test:test/attribute_types_test.cpp::datacontenttype-refuses-cr-and-lf, test:test/json_format_test.cpp::datacontenttype-cr-lf-in-a-json-document, test:test/protobuf_decode_test.cpp::protobuf-datacontenttype-cr-lf, test:test/http_binding_test.cpp::http-binary-mode-refuses-a-line-break-in-the-media-type, test:test/kafka_binding_test.cpp::kafka-binary-mode-refuses-a-line-break-in-the-media-type, test:test/mqtt_binding_test.cpp::mqtt-binary-mode-refuses-a-line-break-in-the-media-type, test:test/nats_binding_test.cpp::nats-datacontenttype-line-break, test:test/v1/core_test.cpp::v1-validate-refuses-cr-and-lf-in-datacontenttype]
 owner: filip.sajdak
 version: 1
 ---

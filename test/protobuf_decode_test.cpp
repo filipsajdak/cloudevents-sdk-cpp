@@ -439,4 +439,19 @@ const boost::ut::suite<"protobuf-decoded-event-reencodes"> reencodes = [] {
   };
 };
 
+// spec: SWR-CORE-0041
+const boost::ut::suite<"protobuf-datacontenttype-cr-lf"> datacontenttype_line_break = [] {
+  using namespace boost::ut;
+
+  "a datacontenttype with a CR or LF anywhere is invalid_content_type"_test = [] {
+    for (const auto media_type :
+         {"\r\ntext/plain"sv, "text/plain; a=b\r\nX-Injected: 1"sv, "text/plain\n"sv}) {
+      expect(refused(event_bytes({string_entry("datacontenttype", media_type)}),
+                     ce::errc::invalid_content_type))
+          << media_type;
+    }
+    expect(decoded(event_bytes({string_entry("datacontenttype", " text/plain\t")})).has_value());
+  };
+};
+
 int main() {}
